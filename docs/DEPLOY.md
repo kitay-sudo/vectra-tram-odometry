@@ -130,6 +130,7 @@ python3 tools/ws_check.py wss://demo.example.org/ros               # снару�
 | `wss://proxy/ros` с тестовым самоподписанным сертификатом, `--insecure` | 20 Гц |
 | тот же `wss://` без `--insecure` | отказ: `CERTIFICATE_VERIFY_FAILED` |
 | страница через прокси по HTTP и HTTPS | 148 739 байт, как с диска |
+| то же с `nginx:1.30-alpine` (1.30.5), `docker compose --profile server up -d` | `/healthz` ok; страница 148 739 байт по HTTP и HTTPS; `ws://proxy/ros` и `wss://proxy/ros` — 20 Гц; у `estimator` `restart=no` |
 
 ## 4. Сетевые заметки
 
