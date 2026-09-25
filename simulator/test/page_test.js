@@ -90,7 +90,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     };
     // точность показа на странице: MAE 4 знака, дрейф 3, план 2, доля 3; допуск — квантование файла
     const near = (a, b, tol) => isFinite(a) && isFinite(b) && Math.abs(a - b) <= tol;
-    const ok = near(m.mae, s.v_mae, 2e-5) && near(m.maeN, s.naive_v_mae, 2e-5) && near(m.drift, s.drift_pct, 2e-5) && near(m.driftN, s.naive_drift_pct, 2e-5)
+    // дрейф — допуск и относительный: у базы с отказом датчиков дрейф ~3 %, и
+    // квантование файла даёт 3e-5 (интеграция 26.09, both_zero: 3,06203 / 3,06200)
+    const nearRel = (a, b, tol) => near(a, b, Math.max(tol, tol * Math.abs(b)));
+    const ok = near(m.mae, s.v_mae, 2e-5) && near(m.maeN, s.naive_v_mae, 2e-5) && nearRel(m.drift, s.drift_pct, 2e-5) && nearRel(m.driftN, s.naive_drift_pct, 2e-5)
       && near(m.h, s.p2d_mean, 2e-3) && near(m.cov, s.cov2s_v, 1e-6);
     const shown = same(m.mae, s.v_mae, 4) && same(m.maeN, s.naive_v_mae, 4) && same(m.drift, s.drift_pct, 3) && same(m.driftN, s.naive_drift_pct, 3) && same(m.h, s.p2d_mean, 2) && same(m.cov, s.cov2s_v, 3);
     cmp.shown_equal = [shown, true];

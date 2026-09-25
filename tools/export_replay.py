@@ -685,6 +685,11 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         refn = frn["ref"]
         aln, _, _, _ = along_cross(refn, idx, frn["disp"][jp])
         d2n = np.hypot(*(frn["disp"][jp] - refn[idx]).T)
+        # у базы своё «положение опубликовано» (pos_valid): у края квадрата
+        # MGRS её строки без положения (x = s, y = 0) в пары не идут
+        bad_n = ~ready_n[jp]
+        aln = np.where(bad_n, np.nan, aln)
+        d2n = np.where(bad_n, np.nan, d2n)
     else:
         aln = d2n = np.full(len(idx), np.nan)
 
@@ -703,7 +708,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         cov2s_v=float(np.mean(cov)),
         path_m=float(path),
         p2d_mean=float(np.mean(d2)), p3d_mean=float(np.mean(d3)), p2d_max=float(np.max(d2)),
-        p2d_end=float(d2[-1]), naive_p2d_mean=float(np.nanmean(d2n)), naive_p2d_end=float(d2n[-1]),
+        p2d_end=float(d2[-1]), naive_p2d_mean=float(np.nanmean(d2n)), naive_p2d_end=last(d2n),
         along_end=last(al), naive_along_end=last(aln),
         along_mean_abs=float(np.nanmean(np.abs(al))) if fin.any() else None,
         # «накопленный дрейф» по ТЗ: ошибка положения в конце прогона / пройденный путь.
