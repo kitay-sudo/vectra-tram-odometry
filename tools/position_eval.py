@@ -19,7 +19,7 @@
 Подкоманды (в образе vectra/tram:dev, из корня репозитория):
 
   run    --tag T [--pkg DIR] [--map FILE|none] [--ids holdout|train|a,b]
-         [--gnss window|full] [--scenario normal|norover|cut|cut_norover]
+         [--gnss window|full] [--scenario normal|norover|nomaster|cut|cut_norover]
          [--opt key=value ...] [--frame rel_equirect] [--replay] [--workers N]
          -> out/position_eval/T/<bag>.npz
   score  --tag T[,T2...]                     -> out/position_eval/T/score.json
@@ -28,6 +28,7 @@
   boundary                                   -> какие прогоны пересекают E = 400 км
 
 Сценарии: normal — GNSS первые 3 с; full — весь прогон; norover — без rover;
+nomaster — без master (выставка по rover со сдвигом на базу);
 cut — запись начинается на ходу (первая метка master/vel после 300 с со
 скоростью > 8 м/с, всё раньше отброшено).
 --frame rel_equirect — выход старого кода (относительный equirect от первой
@@ -87,7 +88,7 @@ def scenario_data(a, scenario):
     return a
 
 
-def events(a, gnss="window", drop_rover=False):
+def events(a, gnss="window", drop_rover=False, drop_master=False):
     ev = []
     for i, key in enumerate(("front", "rear")):
         for tb, th, v in a[key]:
@@ -96,7 +97,7 @@ def events(a, gnss="window", drop_rover=False):
         ev.append((tb, 1, 0, th, n, None))
     t_end = (a["mfix"][0, 0] + INIT_S) if (gnss == "window" and len(a["mfix"])) else math.inf
     for key, ant in (("mfix", "master"), ("rfix", "rover")):
-        if drop_rover and ant == "rover":
+        if (drop_rover and ant == "rover") or (drop_master and ant == "master"):
             continue
         for row in a[key]:
             if row[0] <= t_end:
@@ -182,7 +183,8 @@ def _run_one(b):
             r.pos = _Rec(r.pos, log)
         fix_status = "status" in inspect.signature(r.on_fix).parameters
         outs = []
-        for tb, kind, i, th, val, st in events(a, cfg["gnss"], "norover" in cfg["scenario"]):
+        for tb, kind, i, th, val, st in events(a, cfg["gnss"], "norover" in cfg["scenario"],
+                                               "nomaster" in cfg["scenario"]):
             if kind == 0:
                 o = r.on_wheel(i, th, val)
             elif kind == 1:
@@ -350,6 +352,11 @@ def score_run(b, tag):
     if frame == "abs":
         Xk, nsq = output_continuous(Xk, Pk, cfg, extra)
         res["sq_mismatch"] = nsq
+        if proj == "mgrs" and not extra.get("grid"):
+            # как у судьи, сравнивающего плоские координаты MGRS напрямую:
+            # эталон тоже «каждая точка в своём квадрате», без разворота
+            _, Pm = georef.reference(a["mfix"], "mgrs")
+            res["mean3d_insq"] = float(np.linalg.norm(X[j[ok]] - Pm[ok], axis=1).mean())
         res["west_frac"] = float(np.mean(Pk[:, 0] < 4e5))
         res["crosses_400km"] = bool((Pk[:, 0] < 4e5).any() and (Pk[:, 0] >= 4e5).any())
     E = Xk - Pk
@@ -403,7 +410,9 @@ def summary(res):
                 along_rmse=wm("along_rmse"), cross_mean=wm("cross_mean"),
                 mz=wm("mz"), v_mae=wm("v_mae"), v_bias=wm("v_bias"),
                 v_mae_rover=float(np.mean([x[1].get("v_mae_rover", np.nan) for x in rows])),
-                sq=int(sum(x[1].get("sq_mismatch", 0) for x in rows)))
+                sq=int(sum(x[1].get("sq_mismatch", 0) for x in rows)),
+                insq=(wm("mean3d_insq") if all("mean3d_insq" in x[1] for x in rows)
+                      else float("nan")))
 
 
 def load_score(tag):
@@ -415,15 +424,17 @@ def cmd_report(args):
     print("\nСредние взвешены числом пар скорости GNSS; конец — ошибка 3D в конце "
           "прогона; дрейф — конец / путь GNSS.\n")
     print("| вариант | прогонов | ср. 3D, м | конец ср. / мед. / макс, м | дрейф, % | "
-          "along ср. / RMSE / макс, м | cross ср., м | \\|z\\|, м | MAE v, м/с | разн. квадрат |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+          "along ср. / RMSE / макс, м | cross ср., м | \\|z\\|, м | MAE v, м/с | разн. квадрат | "
+          "ср. 3D в квадрате, м |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for t in tags:
         s = summary(load_score(t))
         if s is None:
             continue
         print(f"| {t} | {s['n']} | {s['mean3d']:.2f} | {s['end_mean']:.1f} / {s['end_median']:.1f} / "
               f"{s['end_max']:.1f} | {s['drift_pct']:.3f} | {s['along_mean']:.2f} / {s['along_rmse']:.2f} / "
-              f"{s['along_max']:.1f} | {s['cross_mean']:.2f} | {s['mz']:.2f} | {s['v_mae']:.4f} | {s['sq']} |")
+              f"{s['along_max']:.1f} | {s['cross_mean']:.2f} | {s['mz']:.2f} | {s['v_mae']:.4f} | {s['sq']} | "
+              f"{s['insq']:.2f} |")
     if args.runs:
         S = {t: load_score(t) for t in tags}
         ids = sorted(set().union(*[set(v) for v in S.values()]))
@@ -515,7 +526,7 @@ def main():
     r.add_argument("--ids", default="holdout")
     r.add_argument("--gnss", default="window", choices=["window", "full"])
     r.add_argument("--scenario", default="normal",
-                   choices=["normal", "norover", "cut", "cut_norover"])
+                   choices=["normal", "norover", "nomaster", "cut", "cut_norover"])
     r.add_argument("--frame", default=None, help="abs (по умолчанию) | rel_equirect | rel_enu")
     r.add_argument("--opt", action="append")
     r.add_argument("--replay", action="store_true",
