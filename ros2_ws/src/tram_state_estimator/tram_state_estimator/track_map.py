@@ -34,7 +34,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .geodesy import (A_WGS, E2_WGS, Frame, mgrs_inv, utm_inv)
+from .geodesy import (A_WGS, E2_WGS, Frame, mgrs_inv, utm_fwd, utm_inv)
 
 CELL = 2.0
 SCALE_FRAMES = ("utm", "true", "equirect")
@@ -98,6 +98,7 @@ class TrackMap:
         self.probe_len = 60.0            # м: насколько далеко искать продолжение
         self._term_xy = np.zeros((0, 2))
         self._xy = None
+        self._ucache = None              # prepare(): (зона, север) -> величины
         self.frame = None
 
     # ---------- загрузка ----------
@@ -118,8 +119,10 @@ class TrackMap:
         stops = z["stops"] if "stops" in z.files else None
         frame = str(z["scale_frame"]) if "scale_frame" in z.files else "equirect"
         term = z["terminals"] if "terminals" in z.files else None
-        return TrackMap(z["lat"], z["lon"], z["alt"], z["head"], z["weight"],
-                        scale, stops, frame, term)
+        m = TrackMap(z["lat"], z["lon"], z["alt"], z["head"], z["weight"],
+                     scale, stops, frame, term)
+        m.prepare()                      # при загрузке, не в колбэке выставки
+        return m
 
     def save(self, path, **meta):
         np.savez_compressed(path, lat=self.lat, lon=self.lon, alt=self.alt,
@@ -241,16 +244,42 @@ class TrackMap:
 
     # ---------- привязка к системе прогона ----------
 
+    def prepare(self, frame=None):
+        """Величины карты, зависящие только от зоны UTM (не от точки
+        выставки): абсолютные E, N точек, остановок и конечных, масштаб и
+        курс сетки. Считаются один раз — при загрузке карты (для зоны её
+        центра) или при первой привязке; bind() в колбэке выставки тогда
+        только вычитает начало (перевод 27 тыс. точек рядами Крюгера — это
+        десятки мс)."""
+        if frame is None:
+            frame = Frame(float(np.mean(self.lat)), float(np.mean(self.lon)), 0.0, "utm")
+        # смена точек/остановок/конечных после привязки — пересчёт
+        key = (frame.zone, frame.north, id(self.lat), id(self.head),
+               id(self.stops), id(self.terminals))
+        if self._ucache is not None and self._ucache[0] == key:
+            return self._ucache[1]
+        E, N = utm_fwd(self.lat, self.lon, frame.zone, frame.north)
+        k, h = frame.scale_heading(self.lat, self.lon, self.head)
+        u = dict(E=E, N=N, k=k, h=h)
+        st, te = self.stops, self.terminals
+        if len(st):
+            u["SE"], u["SN"] = utm_fwd(st[:, 0], st[:, 1], frame.zone, frame.north)
+            u["Sh"] = frame.scale_heading(st[:, 0], st[:, 1], st[:, 2])[1]
+        if len(te):
+            u["TE"], u["TN"] = utm_fwd(te[:, 0], te[:, 1], frame.zone, frame.north)
+        self._ucache = (key, u)
+        return u
+
     def bind(self, frame):
         """Перевод карты во внутреннюю систему прогона (geodesy.Frame; для
         совместимости — любой объект с lat0/lon0/alt0)."""
         if not isinstance(frame, Frame):
             frame = Frame(frame.lat0, frame.lon0, frame.alt0, "utm")
         self.frame = frame
-        P = frame.fwd_arr(self.lat, self.lon, self.alt)
-        self._xy = np.ascontiguousarray(P[:, :2])
-        self._z = P[:, 2].copy()
-        k, h = frame.scale_heading(self.lat, self.lon, self.head)
+        u = self.prepare(frame)
+        self._xy = np.ascontiguousarray(np.c_[u["E"] - frame.E0, u["N"] - frame.N0])
+        self._z = self.alt.astype(float).copy()
+        k, h = u["k"], u["h"]
         if self.scale_frame == "utm":
             k = np.ones(len(k))
         elif self.scale_frame == "equirect":
@@ -268,14 +297,11 @@ class TrackMap:
             a_, b_ = np.r_[0, brk], np.r_[brk, len(order)]
             keys = zip(cs[a_, 0].tolist(), cs[a_, 1].tolist())
             self._grid = {k: order[a:b] for k, a, b in zip(keys, a_.tolist(), b_.tolist())}
-        te = self.terminals
-        self._term_xy = (frame.fwd_arr(te[:, 0], te[:, 1], np.zeros(len(te)))[:, :2].copy()
-                         if len(te) else np.zeros((0, 2)))
-        st = self.stops
-        if len(st):
-            S = frame.fwd_arr(st[:, 0], st[:, 1], np.zeros(len(st)))
-            self._stop_xy = S[:, :2].copy()
-            self._stop_head = frame.scale_heading(st[:, 0], st[:, 1], st[:, 2])[1]
+        self._term_xy = (np.c_[u["TE"] - frame.E0, u["TN"] - frame.N0]
+                         if len(self.terminals) else np.zeros((0, 2)))
+        if len(self.stops):
+            self._stop_xy = np.c_[u["SE"] - frame.E0, u["SN"] - frame.N0]
+            self._stop_head = u["Sh"]
         else:
             self._stop_xy = np.zeros((0, 2))
             self._stop_head = np.zeros(0)
