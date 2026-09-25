@@ -179,6 +179,32 @@ def test_odometry_covariances_have_no_zero_diagonal(ros, monkeypatch):
             assert all(math.isfinite(x) and x > 0.0 for x in d)
 
 
+def test_fallback_alignment_widens_pose_covariance(ros, monkeypatch):
+    """После сброса, пока новый прогон не выставился, положение идёт по
+    запасной выставке: σ положения не меньше FALLBACK_SD."""
+    ft = FakeTime()
+    monkeypatch.setattr(TN, "time", ft)
+    node = TN.TramEstimatorNode()
+    node.runner = Runner(trt.P)
+    got = []
+    node.pub_p.publish = got.append
+    ev1 = trt.stream(20.0)
+    ev2 = [(t + 21.0, m, a) for t, m, a in trt._bag2(-159.0) if t < 5.0]
+    for t, m, a in ev1 + ev2:
+        ft.now = 1000.0 + t
+        node._input(m, a)
+    node.destroy_node()
+    T = np.array([to_s(od.header.stamp) for od in got])
+    k = int(np.argmax(np.diff(T) < 0)) + 1      # первый выход второго bag
+    fb = [od.pose.covariance[0] for od in got[k:k + 3]]
+    assert all(c >= TN.FALLBACK_SD ** 2 for c in fb)
+    assert got[-1].pose.covariance[0] < TN.FALLBACK_SD ** 2   # выставился
+
+
+def to_s(st):
+    return st.sec + st.nanosec * 1e-9
+
+
 # ------------------------------------------------------------ лист пакета
 
 class _Log:

@@ -69,6 +69,8 @@ YAW_MAP_SD = 0.05       # рад: курс по оси пути карты (~3°
 LAT_V_SD = 0.05         # м/с: боковая скорость на рельсах ≈ 0
 ANG_RATE_SD = 0.02      # рад/с: крен и тангаж почти не меняются
 R_CURVE_MIN = 20.0      # м: наименьший радиус кривой трамвая — предел рыскания
+FALLBACK_SD = 10.0      # м: запасная выставка после сброса — путь, потерянный,
+                        # пока новое ядро догоняло скорость (~1 с на 10 м/с)
 
 
 def _sheet_section(doc, node):
@@ -397,7 +399,8 @@ class TramEstimatorNode(Node):
         # (theta_max); курс — ось пути карты. До выставки положение и курс
         # в абсолютной системе неизвестны.
         pc = od.pose.covariance
-        pc[0] = pc[7] = ss2 if ready else UNKNOWN_VAR
+        pc[0] = pc[7] = ((ss2 + FALLBACK_SD ** 2 if o.get("pos_fallback") else ss2)
+                         if ready else UNKNOWN_VAR)
         pc[14] = Z_MAP_SD ** 2 if ready else UNKNOWN_VAR
         pc[21] = ROLL_SD ** 2
         pc[28] = th ** 2
