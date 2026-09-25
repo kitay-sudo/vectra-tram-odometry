@@ -5,7 +5,7 @@ build/
 install/
 log/
 # данные кейса и кэш анализа (большие, не в репозиторий)
-data/
+/data/
 _incoming/
 analysis/cache/
 analysis/*.log
