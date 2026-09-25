@@ -1,0 +1,41 @@
+# Демо «Живой ROS 2» на сервере: нода + rosbridge + прогон по кругу (tram-live)
+# и страница симулятора с прокси /ros -> rosbridge (web) за одним адресом.
+#
+#   DOMAIN=demo.example.ru DATA_DIR=/srv/tram/data BAG=30618_e9a34502 \
+#     docker compose -f simulator/deploy/compose.demo.yml up -d
+#   открыть https://demo.example.ru/?mode=live   (адрес моста подставится сам: wss://<хост>/ros)
+#
+# Без домена (ноутбук, локальная сеть): DOMAIN=:80, страница http://<хост>/?mode=live.
+# Нужен образ vectra/tram:dev (docker build -t vectra/tram:dev -f docker/Dockerfile .).
+# rosbridge наружу не публикуется: доступ только через /ros веб-сервера.
+name: tram-demo
+services:
+  tram-live:
+    image: ${TRAM_IMAGE:-vectra/tram:dev}
+    command: ["bash", "/repo/simulator/deploy/live_demo.sh"]
+    environment:
+      BAG: ${BAG:-30618_e9a34502}
+      RATE: ${RATE:-1.0}
+      PORT: "9090"
+      ADDRESS: "0.0.0.0"
+      ROS_LOCALHOST_ONLY: "1"
+    volumes:
+      - ../..:/repo:ro
+      - ${DATA_DIR:-../../data}:/data:ro
+    expose: ["9090"]
+    restart: unless-stopped
+  web:
+    image: caddy:2-alpine
+    depends_on: [tram-live]
+    environment:
+      DOMAIN: ${DOMAIN:-:80}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ..:/srv:ro
+      - caddy_data:/data
+    restart: unless-stopped
+volumes:
+  caddy_data: {}
