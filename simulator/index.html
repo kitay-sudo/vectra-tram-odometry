@@ -421,6 +421,7 @@
   <div class="h-[3px] rounded-full mt-3" style="background: var(--line);"><div id="presBar" class="h-full rounded-full" style="background: var(--ok); width: 0;"></div></div>
 </div>
 
+<script src="config.js"></script>
 <script>
 // ---- Tram state estimator: JavaScript port of estimator_core.py (UKF over the motion model), port of 25.09 ----
 // Перенос текущего ядра: лист параметров (позиции ручки, единицы и раскладка датчиков,
@@ -3079,6 +3080,7 @@ const TramPlant = (() => {
   function defaultUrl() {
     const q = qs.get('ros'); if (q) return q;
     const st = store.get('tv.ros'); if (st) return st;
+    const cf = (window.TV_CONFIG || {}).ros; if (cf) return cf;
     if (location.protocol === 'https:') return `wss://${location.host}/ros`;
     if (location.protocol === 'http:' && !/^(localhost|127\.|\[::1\])/.test(location.hostname)) return `ws://${location.host}/ros`;
     return 'ws://localhost:9090';

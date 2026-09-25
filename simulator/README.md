@@ -35,6 +35,9 @@ docker run --rm --cpus 2 -v <repo>:/repo -v <repo>/analysis/cache:/repo/analysis
 | ноутбук | `docker run --rm -p 127.0.0.1:9090:9090 -v <repo>:/repo:ro -v <data>:/data:ro -e BAG=30618_e9a34502 vectra/tram:dev bash /repo/simulator/deploy/live_demo.sh`, затем `index.html?mode=live` |
 | сервер с доменом | `DOMAIN=demo.example.ru DATA_DIR=/srv/data docker compose -f simulator/deploy/compose.demo.yml up -d` → `https://demo.example.ru/?mode=live` (Caddy: TLS, `/ros` → rosbridge) |
 | свой прокси | `deploy/nginx.conf`: страница и `location /ros` → `tram-live:9090/` с заголовками Upgrade |
+| страница и ROS на разных хостах | страница — любой статический хостинг (каталог `simulator/`); ROS-сервер — `compose.demo.yml` с `DOMAIN=ros.example.ru` (Caddy даёт `wss://ros.example.ru/ros`); адрес моста — `config.js` (`ros: 'wss://ros.example.ru/ros'`) или `?ros=` |
+
+Порядок выбора адреса моста: `?ros=` → адрес, введённый на странице (запоминается в браузере) → `config.js` → по умолчанию. Страница по https ходит только на `wss://`. С сервера (не localhost) страница подключается сама; с `file://` — по кнопке или с `?ros=`.
 
 Подписки: `/result/velocity`, `/result/position`, `/tram/estimator_status`, `/vehicle/*`, `/sensing/gnss/master/{vel,fix}` (GNSS — только эталон для показа), `throttle_rate` 100 мс (fix 200 мс), `queue_length` 1. Частота ноды на странице — по `frame_count` статуса.
 
