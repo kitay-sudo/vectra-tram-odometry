@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+install/
+log/
+# данные кейса и кэш анализа (большие, не в репозиторий)
+data/
+_incoming/
+analysis/cache/
+analysis/*.log
+analysis/drive_samples.npz
+out/
+*.db3
+node_modules/

@@ -1,0 +1,42 @@
+# Состояние резервного оценщика скорости и положения трамвая.
+# Модель и обозначения — MODEL.md.
+
+std_msgs/Header header
+
+# --- режим движения ---
+uint8 MODE_COAST=0
+uint8 MODE_TRACTION=1
+uint8 MODE_BRAKE=2
+uint8 MODE_TRANSITION=3
+uint8 MODE_SLIP=4
+uint8 MODE_STANDSTILL=5
+uint8 MODE_DEGRADED=6
+uint8 mode
+
+# --- оценка состояния x = [s, v, d, k_t, k_b] ---
+float32 v                    # м/с, скорость корпуса
+float64 s                    # м, путь от точки инициализации
+float32 d                    # м/с^2, приведённое возмущение (уклон, масса, ветер)
+float32 k_traction           # масштаб тяговой характеристики, номинал 1.0
+float32 k_brake              # масштаб тормозной характеристики, номинал 1.0
+float32 mu                   # оценка доступного сцепления рельса
+
+# --- неопределённость ---
+float32 sigma_v              # м/с, СКО оценки скорости
+float32 sigma_s              # м, СКО оценки положения
+
+# --- состояние измерительного тракта ---
+bool[] wheel_healthy         # по колёсам, в порядке осей
+float32[] axle_scale         # калибровочные масштабы осей
+bool slip                    # признак насыщения сцепления (срыв)
+bool ambiguous               # все оси в срыве: «стоим или скользим» по колёсам
+                             # не различить; v ненадёжна, sigma_v расширена
+uint8 n_accepted             # осей, принятых фильтром на этом шаге
+uint8 n_rejected             # осей, отвергнутых проверкой правдоподобия
+bool odometry_used           # измерение применено на этом шаге
+bool valid                   # оценка достоверна
+
+# --- контроль живости ---
+uint32 frame_count
+builtin_interfaces/Time sensor_stamp   # метка времени ИСХОДНЫХ данных
+float32 step_time_us                   # время шага ядра, мкс

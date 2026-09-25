@@ -1,0 +1,176 @@
+"""Сборка карты путей из GNSS обучающих прогонов (офлайн).
+
+Точки GNSS master на ходу (скорость > 1 м/с) агрегируются по клеткам 1 м и
+секторам курса 15°: средние широта, долгота, высота, курс; вес — число разных
+прогонов, прошедших через клетку в этом направлении.
+
+    py -3 build_map.py all                                  # из всех -> карта пакета
+    py -3 build_map.py train cache/track_map_train.npz      # из обучающих -> для оценки
+"""
+
+import json
+import sys
+
+import numpy as np
+
+import bagio
+
+sys.path.insert(0, str(bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator"))
+from tram_state_estimator.track_map import TrackMap  # noqa: E402
+
+LAT0, LON0 = 55.80484, 37.42050
+R = 6378137.0
+OUT = bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator" / "config" / "track_map.npz"
+
+
+def main():
+    use_all = len(sys.argv) > 1 and sys.argv[1] == "all"
+    out = bagio.ROOT / "analysis" / sys.argv[2] if len(sys.argv) > 2 else OUT
+    dm = json.loads((bagio.CACHE.parent / "drive_model.json").read_text(encoding="utf-8"))
+    ids = bagio.bag_ids() if use_all else dm["train"]
+    k = np.cos(np.radians(LAT0))
+    acc = {}
+    for rid, b in enumerate(ids):
+        a = bagio.load(b)
+        m, v = a["mfix"], a["mvel"]
+        if len(m) < 100 or len(v) < 100:
+            continue
+        ok = m[:, 5] >= 0
+        m = m[ok]
+        ve = np.interp(m[:, 1], v[:, 1], v[:, 2])
+        vn = np.interp(m[:, 1], v[:, 1], v[:, 3])
+        mv = np.hypot(ve, vn) > 1.0
+        x = np.radians(m[:, 3] - LON0) * R * k
+        y = np.radians(m[:, 2] - LAT0) * R
+        jump = np.r_[False, np.hypot(np.diff(x), np.diff(y)) > 5.0]
+        sel = mv & ~jump
+        h = np.arctan2(ve, vn)
+        cx = np.floor(x / 1.0).astype(np.int64)
+        cy = np.floor(y / 1.0).astype(np.int64)
+        hb = np.floor((h + np.pi) / np.radians(15.0)).astype(np.int64) % 24
+        for i in np.flatnonzero(sel):
+            key = (cx[i], cy[i], hb[i])
+            e = acc.get(key)
+            if e is None:
+                e = acc[key] = [0.0, 0.0, 0.0, 0.0, 0.0, 0, set()]
+            e[0] += m[i, 2]; e[1] += m[i, 3]; e[2] += m[i, 4]
+            e[3] += np.sin(h[i]); e[4] += np.cos(h[i]); e[5] += 1
+            e[6].add(rid)
+    rows = [(e[0] / e[5], e[1] / e[5], e[2] / e[5], np.arctan2(e[3], e[4]), len(e[6]))
+            for e in acc.values()]
+    R_ = np.array(rows)
+    # одиночные случайные клетки (выбросы) — вон; путь, пройденный хоть одним
+    # прогоном дважды в разные дни, остаётся
+    keep = R_[:, 4] >= (2 if use_all or len(ids) > 20 else 1)
+    R_ = R_[keep]
+    tm = TrackMap(R_[:, 0], R_[:, 1], R_[:, 2], R_[:, 3], R_[:, 4].astype(float))
+    tm.stops = find_stops(ids)
+    tm.scale = calibrate_scale(tm, ids)
+    tm.save(out)
+    print(f"прогонов {len(ids)}, точек карты {len(R_)}, множитель пути "
+          f"{tm.scale:.5f}, записано {out}")
+
+
+def find_stops(ids, dwell=8.0, join_r=8.0, min_runs=3, max_spread=4.0):
+    """Устойчивые точки остановок: платформы и стоп-линии.
+
+    Стоянка — скорость GNSS ниже 0,2 м/с дольше dwell. Её точка — медиана
+    положения, курс — последний курс на ходу перед ней. Стоянки ближе join_r
+    с тем же курсом объединяются; остаются точки, где стояли не меньше
+    min_runs разных прогонов с разбросом вдоль пути не больше max_spread.
+    """
+    k = np.cos(np.radians(LAT0))
+    ev = []
+    for rid, b in enumerate(ids):
+        a = bagio.load(b)
+        m, v = a["mfix"], a["mvel"]
+        if len(m) < 100 or len(v) < 100:
+            continue
+        m = m[m[:, 5] >= 0]
+        sp = np.interp(m[:, 1], v[:, 1], np.hypot(v[:, 2], v[:, 3]))
+        hd = np.arctan2(np.interp(m[:, 1], v[:, 1], v[:, 2]),
+                        np.interp(m[:, 1], v[:, 1], v[:, 3]))
+        still = sp < 0.2
+        i = 0
+        while i < len(m):
+            if not still[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(m) and still[j + 1]:
+                j += 1
+            mv = np.flatnonzero(sp[:i] > 1.0)
+            if m[j, 1] - m[i, 1] >= dwell and len(mv):
+                ev.append((float(np.median(m[i:j + 1, 2])), float(np.median(m[i:j + 1, 3])),
+                           float(hd[mv[-1]]), rid))
+            i = j + 1
+    E = np.array(ev)
+    x = np.radians(E[:, 1] - LON0) * R * k
+    y = np.radians(E[:, 0] - LAT0) * R
+    used = np.zeros(len(E), bool)
+    out = []
+    for i in range(len(E)):
+        if used[i]:
+            continue
+        dh = np.abs(np.angle(np.exp(1j * (E[:, 2] - E[i, 2]))))
+        grp = (~used) & (np.hypot(x - x[i], y - y[i]) <= join_r) & (dh < np.radians(35))
+        used |= grp
+        g = np.flatnonzero(grp)
+        h = float(np.arctan2(np.sin(E[g, 2]).sum(), np.cos(E[g, 2]).sum()))
+        cx, cy = x[g].mean(), y[g].mean()
+        along = (x[g] - cx) * np.sin(h) + (y[g] - cy) * np.cos(h)
+        runs = len(set(E[g, 3].astype(int)))
+        spread = float(np.std(along))
+        if runs >= min_runs and spread <= max_spread:
+            out.append((float(E[g, 0].mean()), float(E[g, 1].mean()), h, max(spread, 1.0)))
+    print(f"стоянок {len(E)}, устойчивых точек остановки {len(out)}")
+    return np.array(out) if out else np.zeros((0, 4))
+
+
+def calibrate_scale(tm, ids, n_runs=30):
+    """Сколько метров карты приходится на метр пути колёс.
+
+    Курсор идёт по карте на путь колёс (среднее тележек × meas_scale) от
+    истинной точки старта; опережение вдоль пути делится на пройденный путь.
+    Участки, где курсор ушёл с эталона вбок больше чем на 3 м (другая ветка),
+    не учитываются.
+    """
+    import math
+    from evaluate import tram_params
+    from tram_state_estimator.runner import Enu
+    ms = tram_params().meas_scale
+    runs = sorted(ids, key=lambda b: -len(bagio.load(b)["mfix"]))[:n_runs]
+    fr = []
+    for b in runs:
+        a = bagio.load(b)
+        m, g, f, r = a["mfix"], a["mvel"], a["front"], a["rear"]
+        if len(m) < 1000:
+            continue
+        enu = Enu(m[0, 2], m[0, 3], m[0, 4])
+        ref = np.array([enu.fwd(*q) for q in m[:, 2:5]])
+        tm.bind(enu)
+        sp = np.hypot(g[:, 2], g[:, 3])
+        vg = np.interp(m[:, 1], g[:, 1], sp)
+        k0 = int(np.argmax(vg > 1.0))
+        j0 = np.searchsorted(g[:, 1], m[k0, 1])
+        c = tm.locate(ref[k0], math.atan2(g[j0, 2], g[j0, 3]))
+        grid = np.arange(m[k0, 1], m[-1, 1], 0.05)
+        w = 0.5 * (np.interp(grid, f[:, 1], f[:, 2]) + np.interp(grid, r[:, 1], r[:, 2])) / 3.6 * ms
+        sw = np.interp(m[:, 1], grid, np.r_[0, np.cumsum(w[:-1] * 0.05)])
+        for q in range(k0 + 1, len(m)):
+            tm.advance(c, sw[q] - sw[q - 1])
+            if q % 50 or vg[q] < 2 or sw[q] < 1000:
+                continue
+            ve = np.interp(m[q, 1], g[:, 1], g[:, 2]) / vg[q]
+            vn = np.interp(m[q, 1], g[:, 1], g[:, 3]) / vg[q]
+            dx, dy = c["x"] - ref[q, 0], c["y"] - ref[q, 1]
+            if abs(-dx * vn + dy * ve) < 3.0:
+                fr.append((dx * ve + dy * vn) / sw[q])
+    f = float(np.median(fr))
+    print(f"опережение курсора по карте: медиана {100 * f:+.3f} % пути "
+          f"({len(fr)} отсчётов)")
+    return 1.0 / (1.0 + f)
+
+
+if __name__ == "__main__":
+    main()
