@@ -15,7 +15,8 @@
     python3 analysis/build_map.py eval   # -> config/eval/track_map.npz
     python3 analysis/build_map.py jury   # -> config/track_map.npz
     python3 analysis/build_map.py --set train --split tools/split.json --out F
-    опции: --calib <tram_calibration.json> (meas_scale колёс), --n-runs 30,
+    опции: --calib <tram_calibration.json> (meas_scale колёс; по умолчанию лист
+           своего набора: EVAL — config/eval/, JURY — config/), --n-runs 30,
            --e2e-mult 0.999 (поправка множителя по сквозной оценке, см. ниже)
 
 Поправка --e2e-mult выбрана ТОЛЬКО по обучающим прогонам: полная связка
@@ -48,7 +49,8 @@ R = 6378137.0
 OUT_JURY = PKG / "config" / "track_map.npz"
 OUT_EVAL = PKG / "config" / "eval" / "track_map.npz"
 SPLIT = bagio.ROOT / "tools" / "split.json"
-CALIB = PKG / "config" / "tram_calibration.json"
+CALIB = PKG / "config" / "tram_calibration.json"            # лист ЖЮРИ (все данные)
+CALIB_EVAL = PKG / "config" / "eval" / "tram_calibration.json"  # лист ОЦЕНКИ (train)
 
 
 def all_ids():
@@ -71,13 +73,20 @@ def main():
     ap.add_argument("--set", default=None, help="train | all | ключ split-файла")
     ap.add_argument("--split", default=str(SPLIT))
     ap.add_argument("--out")
-    ap.add_argument("--calib", default=str(CALIB))
+    ap.add_argument("--calib", default=None,
+                    help="калибровка (meas_scale колёс); по умолчанию лист своего "
+                         "набора: EVAL — config/eval/tram_calibration.json, JURY — "
+                         "config/tram_calibration.json")
     ap.add_argument("--n-runs", type=int, default=30)
     ap.add_argument("--e2e-mult", type=float, default=0.999)
     a = ap.parse_args()
     which = a.set or {"eval": "train", "jury": "all", None: "train"}[a.preset]
     out = a.out or (OUT_JURY if (a.preset == "jury" or which == "all") else OUT_EVAL)
     ids = select_ids(which, bagio.Path(a.split))
+    if a.calib is None:
+        # карта ОЦЕНКИ — с масштабом колёс листа ОЦЕНКИ (только train), иначе
+        # множитель карты подогнан к масштабу листа жюри (утечка через масштаб)
+        a.calib = str(CALIB if which == "all" or not CALIB_EVAL.exists() else CALIB_EVAL)
     ms = Params.from_dict(json.loads(bagio.Path(a.calib).read_text(encoding="utf-8"))
                           ["params"]).meas_scale
     tm = build(ids, which == "all" or len(ids) > 20)
