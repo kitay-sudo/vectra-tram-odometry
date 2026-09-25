@@ -17,8 +17,11 @@
   wp23    новая связка, узлы сетки кратны dt, целый счётчик (WP23), без
           приведения;
   wp23_6  новая связка по умолчанию: WP23 + приведение показаний к шагу (WP6).
-Листы: json — config/tram_calibration.json (как analysis/evaluate.py);
-json_nocreep — он же с c_creep = c_creep_drag = 0 (правка WP5 потока calib).
+Листы: json — config/tram_calibration.json (как analysis/evaluate.py; это
+источник листа жюри, A(u,v) подогнана по всем 122 bag — на holdout значимы
+только разности вариантов); evaldraft — снимок листа EVAL потока calib
+(только split train), out/robust/eval_draft_calibration.json;
+json_nocreep — json с c_creep = c_creep_drag = 0 (правка WP5 потока calib).
 Карта: analysis/cache/track_map_train.npz (только обучающие прогоны). GNSS —
 первые 3 с (analysis/evaluate.events), эталон — |v| GNSS master (и rover).
 Набор holdout — 15 чистых отложенных (tools/split.json: holdout_scored),
@@ -57,8 +60,24 @@ V_STAND = 0.2
 SHIFTS = np.round(np.arange(-0.2, 0.2001, 0.005), 3)
 
 
+EVAL_DRAFT = OUT / "eval_draft_calibration.json"
+
+
 def params(sheet):
-    p = E.tram_params()
+    """json — config/tram_calibration.json: источник листа жюри tram.yaml,
+    таблица A(u,v) подогнана по ВСЕМ 122 bag, включая отложенные (DATA.md
+    §4): абсолютные числа на holdout оптимистичны, значимы разности
+    вариантов. evaldraft — снимок листа EVAL потока calib (калибровка только
+    по split train) в out/robust/eval_draft_calibration.json; ключи, которых
+    нет в Params этой ветки (новое ядро calib), отбрасываются."""
+    if sheet.startswith("evaldraft"):
+        from dataclasses import fields
+        from tram_state_estimator.estimator_core import Params
+        d = json.loads(EVAL_DRAFT.read_text(encoding="utf-8"))["params"]
+        names = {f.name for f in fields(Params)}
+        p = Params.from_dict({k: v for k, v in d.items() if k in names})
+    else:
+        p = E.tram_params()
     if sheet.endswith("nocreep"):
         p = replace(p, c_creep=0.0, c_creep_drag=0.0)
     return p
@@ -100,10 +119,16 @@ def make(variant, p):
     tmap = TrackMap.load(MAP) if MAP.exists() else None
     if variant == "main":
         return main_runner()(p, track_map=tmap)
+    fwd = None
+    if variant.endswith("_f05"):        # порог скачка вперёд 0,5 с (опыт)
+        variant, fwd = variant[:-4], 0.5
     if variant == "same":
-        return LegacyGrid(p, track_map=tmap)
-    r = Runner(p, track_map=tmap)
-    r.age_comp = variant == "wp23_6"
+        r = LegacyGrid(p, track_map=tmap)
+    else:
+        r = Runner(p, track_map=tmap)
+        r.age_comp = variant == "wp23_6"
+    if fwd is not None:
+        r.FWD_JUMP_S = fwd
     return r
 
 

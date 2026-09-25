@@ -143,9 +143,11 @@ class Runner:
         второй bag, далеко вперёд) — полный сброс reset(): ядро, выставка,
         s0, стоянка, сетка; прежняя выставка остаётся запасной, пока новый
         прогон не выставится по своему GNSS. Отложенные сообщения после
-        подтверждения исполняются заново по порядку (не теряются);
-      * не больше MAX_STEPS шагов сетки за вызов: остаток догоняется
-        следующими вызовами;
+        подтверждения исполняются заново по порядку прихода (не теряются);
+      * не больше MAX_STEPS шагов сетки за вызов: сообщения, до метки
+        которых сетка за вызов не доходит, ждут в очереди _defer и
+        применяются, когда дойдёт (порядок «узлы до метки, потом значение»
+        как в main); остаток догоняется следующими вызовами;
       * неконечное состояние ядра — сброс ядра с сохранением пути.
     Сетка (WP23): узлы кратны p.dt, t = (k0 + n)·dt по целому счётчику n —
     совпадают с метками GNSS (кратны 0,1 с) и не дрейфуют.
@@ -193,6 +195,7 @@ class Runner:
         self._t0g = None            # первая метка (сетка без выравнивания)
         self._n = 0                 # шагов от первого узла
         self._pend = []             # кандидаты новой базы: (метка, вход, повтор)
+        self._defer = []            # ждут сетку: (метка, повтор) по порядку прихода
         self._replaying = False     # исполняются отложенные сообщения
         self._budget = self.MAX_STEPS   # шагов, оставшихся на этот вызов
         self.stamp_ok = False       # принята ли метка последнего сообщения
@@ -278,23 +281,66 @@ class Runner:
         if not math.isfinite(stamp) or stamp <= 0.0:
             self.rejected_stamps += 1
             return []
-        if not self._replaying:
-            self._budget = self.MAX_STEPS
+        if self._replaying:             # из очереди: база и порядок проверены
+            return self._accept(stamp)
+        self._budget = self.MAX_STEPS
         if self.t is None:
             self._start(stamp)
             return []
-        if not self._replaying and not self._in_base(stamp):
+        if not self._in_base(stamp):
             return self._candidate(stamp, src, replay)
         if self._pend:
             self._drop_pending()        # база прежняя: кандидаты — выбросы
-        self.stamp_ok = True
-        self.stamp_last = stamp
-        self.n_in += 1
+        if self._defer or self._due(stamp) > self._budget:
+            # сетка не дойдёт до метки за этот вызов: значение применится,
+            # когда дойдёт (как в main: сначала все узлы до метки, потом
+            # значение), не больше MAX_STEPS узлов за вызов
+            self._note(stamp)
+            if replay is not None:
+                self._defer.append((stamp, replay))
+            return self._drain()
+        return self._accept(stamp)
+
+    def _note(self, stamp):
         if stamp > self.stamp_max:
             self.stamp_max = stamp
         if stamp < self._t_lo:
             self._t_lo = stamp
+
+    def _accept(self, stamp):
+        """Метка принята: узлы сетки до неё; значение применит вызывающий."""
+        if self.t is None:
+            self._start(stamp)          # первый повтор после сброса
+            return []
+        self.stamp_ok = True
+        self.stamp_last = stamp
+        self.n_in += 1
+        self._note(stamp)
         return self._run_to(stamp)
+
+    def _due(self, stamp):
+        """Сколько узлов сетки не позже stamp ещё не пройдено."""
+        return int(math.floor((stamp + 1e-6 - self._node(self._n)) / self.p.dt))
+
+    def _drain(self):
+        """Очередь сообщений, ждущих сетку (отложенные кандидаты новой базы,
+        догоняние провала): узлы до метки головы в пределах бюджета вызова,
+        затем её значение (повтор метода), и так далее."""
+        outs = []
+        while self._defer:
+            stamp, rp = self._defer[0]
+            if self.t is not None:
+                outs += self._run_to(stamp)
+                if self._due(stamp) > 0:
+                    break               # бюджет вызова исчерпан: дальше — потом
+            self._defer.pop(0)
+            self._replaying = True
+            try:
+                outs += getattr(self, rp[0])(*rp[1])
+            finally:
+                self._replaying = False
+        self.stamp_ok = False           # значение этого сообщения — через очередь
+        return outs
 
     def _in_base(self, stamp):
         """Метка в текущей базе времени прогона (см. docstring класса)."""
@@ -330,18 +376,14 @@ class Runner:
         else:
             self.reset(f"разрыв меток {lo - self.stamp_max:+.1f} с ({why}): "
                        f"новый прогон")
-        outs = []
-        self._replaying = True
-        try:
-            for _, _, rp in P:
-                if rp is None:
-                    self.rejected_stamps += 1   # повтора нет (GNSS): потеряно
-                else:
-                    outs += getattr(self, rp[0])(*rp[1])
-        finally:
-            self._replaying = False
-        self.stamp_ok = False           # это сообщение уже исполнено повтором
-        return outs
+        for st, _, rp in P:             # по порядку прихода, через очередь
+            if rp is None:
+                self.rejected_stamps += 1   # повтора нет (GNSS): потеряно
+                continue
+            if self.t is not None:
+                self._note(st)
+            self._defer.append((st, rp))
+        return self._drain()
 
     def _start(self, stamp):
         """Первый узел сетки — кратный dt не позже первой метки (WP23);
@@ -368,7 +410,7 @@ class Runner:
         """Узлы сетки <= stamp, но не больше MAX_STEPS за вызов (_budget):
         остаток догоняется следующими вызовами. Узлы сверх провала GAP_MAX_S
         пропускаются (по построению не бывает: дальше — новый прогон)."""
-        due = int(math.floor((stamp + 1e-6 - self._node(self._n)) / self.p.dt))
+        due = self._due(stamp)
         if due <= 0:
             return []
         cap = int((self.GAP_MAX_S + self.MAX_JUMP_S) / self.p.dt) + self.MAX_STEPS
@@ -386,8 +428,10 @@ class Runner:
         return outs
 
     def backlog(self):
-        """Есть ли узлы сетки не позже принятой метки (догоняние провала)."""
-        return self.t is not None and self.next_node() <= self.stamp_max + 1e-6
+        """Связка догоняет провал: есть сообщения, ждущие сетку, или узлы не
+        позже принятой метки."""
+        return bool(self._defer) or (
+            self.t is not None and self.next_node() <= self.stamp_max + 1e-6)
 
     def tick(self, stamp):
         """Узлы сетки до stamp без входного сообщения. Для прогноза на копии

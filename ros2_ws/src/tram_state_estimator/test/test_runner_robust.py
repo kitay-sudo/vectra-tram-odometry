@@ -371,6 +371,12 @@ def test_input_gap_inside_run_keeps_state(clean, gap):
     # только вдоль пути — отставание выбега от 10 м/с за время провала
     assert d[:, 1].max() < 4.0 * gap
     assert np.abs(verr(outs, t_from=17.0 + gap + 5.0)).max() < 0.3
+    # как main: все узлы провала до метки сообщения, потом его значение —
+    # только не больше MAX_STEPS за вызов
+    like_main = Runner(P)
+    like_main.MAX_STEPS, like_main.FWD_JUMP_S = 10 ** 6, 1e9
+    ref_main, most_main = run(like_main, ev2)
+    assert same(outs, ref_main) and (gap < 10 or most_main > Runner.MAX_STEPS)
 
 
 @pytest.mark.parametrize("jump", [-100.0, 3600.0])
