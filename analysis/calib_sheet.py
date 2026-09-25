@@ -21,7 +21,10 @@
     привода (только для отчёта; решение о c_creep — по прогону фильтра на
     обучающих, calib_tune.py);
   * параметры фильтра, подобранные прогоном связки на подгоночных прогонах
-    (q_v, крип, σ), — analysis/calib_tuned_<лист>.json (пишет calib_tune.py).
+    (q_v, крип, адаптация — calib_tune.py; выходная σ — calib_sigma.py), —
+    analysis/calib_tuned_<лист>.json.
+
+Весь пересчёт по порядку — analysis/calib_all.sh.
 """
 
 import json
