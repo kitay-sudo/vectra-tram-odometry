@@ -734,6 +734,9 @@ class Estimator:
         self.axle_prev = np.zeros(p.n_axles)
         self.axle_dot = np.zeros(p.n_axles)
         self.axle_seen = np.zeros(p.n_axles, dtype=bool)
+        # скачок показания оси за один интервал больше физически возможного
+        # (см. step): ловится сразу, без сглаживания axle_dot
+        self.axle_jump = np.zeros(p.n_axles, dtype=bool)
         self.axle_scale = np.ones(p.n_axles)
 
         self.initialised = False    # скорость взята из первых показаний
@@ -1013,8 +1016,9 @@ class Estimator:
         # неопределённость скорости расширяется до расхождения, и показание
         # принимается. Буксование части осей согласия не даёт (холостые
         # расходятся с моторными), резкий срыв ловит предел ускорения.
-        spin_all = np.abs(self.axle_dot) > np.where(
+        spin_all = (np.abs(self.axle_dot) > np.where(
             self.axle_dot > 0, p.a_max_acc, p.a_max_brake) + p.a_slip_margin
+                    ) | self.axle_jump
         recent = (self.t - self.t_axle) <= p.agree_age
 
         def agreed(a):
@@ -1034,7 +1038,7 @@ class Estimator:
             # физический предел: колесо не может ускоряться быстрее корпуса
             dot = self.axle_dot[a]
             lim = p.a_max_acc if dot > 0 else p.a_max_brake
-            spinning = abs(dot) > lim + p.a_slip_margin
+            spinning = abs(dot) > lim + p.a_slip_margin or bool(self.axle_jump[a])
 
             Z = Zall[:, a]
             zh = float(self.wm @ Z)
@@ -1199,6 +1203,7 @@ class Estimator:
             self._diagnose(meas, dts, fm)
             self._frozen_all(meas, u)
             z, ok = self._axle_speeds(meas, fm)
+            self.axle_jump[:] = False
             for a in range(p.n_axles):
                 if not ok[a]:
                     continue
@@ -1206,7 +1211,19 @@ class Estimator:
                     self.axle_prev[a] = z[a]
                     self.axle_seen[a] = True
                     self.t_axle[a] = self.t - p.dt
-                raw = (z[a] - self.axle_prev[a]) / (self.t - self.t_axle[a])
+                gap = self.t - self.t_axle[a]
+                raw = (z[a] - self.axle_prev[a]) / gap
+                # Скачок за один интервал больше физически возможного (предел
+                # ускорения с запасом плюс допуск согласия осей) — срыв или
+                # отказ датчика СРАЗУ, а не только по сглаженной axle_dot:
+                # сглаженная производная пересекала порог или нет в
+                # зависимости от интервала между показаниями (фаза сетки,
+                # 10 Гц с пропусками). Иначе обе тележки, разом упавшие с
+                # 4 м/с в ноль, при интервале 0,2 с принимались «по согласию
+                # осей» за остановку (инъекция both_zero, 30639_d3c43d69).
+                dz = z[a] - self.axle_prev[a]
+                lim_j = p.a_max_acc if dz > 0 else p.a_max_brake
+                self.axle_jump[a] = abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol
                 self.axle_dot[a] += p.axle_dot_alpha * (raw - self.axle_dot[a])
                 self.axle_prev[a] = z[a]
                 self.t_axle[a] = self.t
