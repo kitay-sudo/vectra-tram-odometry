@@ -2,8 +2,12 @@
 
 Прогон воспроизводится в порядке записи в bag через ту же связку Runner, что
 в ноде. GNSS подаётся в связку только первые INIT_S секунд — как в проверочных
-прогонах. Эталон — GNSS master: скорость |vel|, положение fix в ENU от первой
-точки. Пары «выход — эталон» — по ближайшей метке времени в пределах 0,05 с.
+прогонах. Эталон — GNSS master: скорость |vel|, положение fix, посчитанное
+НЕЗАВИСИМО от кода ноды (georef.py: UTM по Снайдеру). Выход ноды (по умолчанию
+MGRS) сравнивается в непрерывных координатах UTM: MGRS с переносом по 100-км
+квадратам разворачивается к квадрату эталона. Пары «выход — эталон» — по
+ближайшей метке времени в пределах 0,05 с; выходы без положения (pos_valid)
+в пары не входят. Подробная оценка положения — tools/position_eval.py.
 
     py -3 evaluate.py                # отложенные прогоны
     py -3 evaluate.py all            # все прогоны с GNSS
@@ -17,10 +21,11 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 
 import bagio
+import georef
 
 sys.path.insert(0, str(bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator"))
 from tram_state_estimator.estimator_core import Params          # noqa: E402
-from tram_state_estimator.runner import Runner, Enu              # noqa: E402
+from tram_state_estimator.runner import Runner                   # noqa: E402
 
 INIT_S = 3.0
 TOL = 0.05
@@ -34,14 +39,14 @@ def tram_params():
 
 
 def track_map():
-    """Карта: TRAM_MAP=<файл> или config/track_map.npz пакета. Для честной
-    оценки на отложенных — карта только из обучающих прогонов
-    (build_map.py без all; копия лежит в cache/track_map_train.npz)."""
+    """Карта: TRAM_MAP=<файл>, иначе оценочная карта из обучающих прогонов
+    config/eval/track_map.npz (build_map.py eval). Боевая карта жюри
+    (config/track_map.npz, все прогоны) для чисел на отложенных не годится."""
     import os
     try:
         from tram_state_estimator.track_map import TrackMap
         f = os.environ.get("TRAM_MAP") or (
-            bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator" / "config" / "track_map.npz")
+            bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator" / "config" / "eval" / "track_map.npz")
         from pathlib import Path
         f = Path(f)
         return TrackMap.load(f) if f.exists() else None
@@ -60,7 +65,7 @@ def events(a):
     for key, ant in (("mfix", "master"), ("rfix", "rover")):
         for row in a[key]:
             if row[0] <= t_end:
-                ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4])))
+                ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4], int(row[5]))))
     ev.sort(key=lambda e: e[0])
     return ev
 
@@ -102,13 +107,17 @@ def score(b):
     f, r = a["front"], a["rear"]
     naive = 0.5 * (np.interp(g[:, 1], f[:, 1], f[:, 2]) + np.interp(g[:, 1], r[:, 1], r[:, 2])) / KMH
     en = naive[ok] - vg[ok]
-    # положение
-    m = a["mfix"]
-    enu = Enu(m[0, 2], m[0, 3], m[0, 4])
-    ref = np.array([enu.fwd(la, lo, al) for la, lo, al in m[:, 2:5]])
-    j2, ok2 = nearest(T, m[:, 1])
-    d3 = np.linalg.norm(X[j2[ok2]] - ref[ok2], axis=1)
-    d2 = np.linalg.norm(X[j2[ok2], :2] - ref[ok2, :2], axis=1)
+    # положение: эталон независимо от ноды, сравнение в непрерывных UTM
+    valid = np.array([bool(o.get("pos_valid", True)) for o in outs])
+    t_ref, ref = georef.reference(a["mfix"], "utm")
+    j2, ok2 = nearest(T, t_ref)
+    ok2 &= valid[j2]
+    Xk = X[j2[ok2]].copy()
+    if len(Xk) and np.abs(Xk[:, 0]).max() < 2e5:        # MGRS: в квадрате
+        for k in (0, 1):
+            Xk[:, k] += 1e5 * np.round((ref[ok2, k] - Xk[:, k]) / 1e5)
+    d3 = np.linalg.norm(Xk - ref[ok2], axis=1)
+    d2 = np.linalg.norm(Xk[:, :2] - ref[ok2, :2], axis=1)
     dur = T[-1] - T[0]
     path = float(np.sum(np.linalg.norm(np.diff(ref[:, :2], axis=0), axis=1)))
     return b, dict(dur=dur, path=path, v_mae=float(np.mean(np.abs(ev))),

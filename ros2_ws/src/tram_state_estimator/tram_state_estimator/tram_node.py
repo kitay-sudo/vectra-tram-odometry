@@ -8,7 +8,9 @@
     /sensing/gnss/master/fix, /sensing/gnss/rover/fix   sensor_msgs/NavSatFix
 Выходы:
     /result/velocity   tram_vehicle_msgs/VelocitySensor   скорость, м/с
-    /result/position   nav_msgs/Odometry                  x, y, z в ENU, м
+    /result/position   nav_msgs/Odometry                  x, y, z, м: по умолчанию
+                       плоские координаты MGRS (x — восток, y — север в 100-км
+                       квадрате, z — абсолютная высота), см. параметр projection
     /result/acceleration geometry_msgs/AccelStamped        ускорение, м/с²
     /tram/estimator_status tram_msgs/EstimatorStatus       состояние оценщика
 
@@ -63,7 +65,7 @@ SHEET = os.path.join("config", "tram.yaml")
 # Ковариации Odometry (WP12a): диагонали, которые ядро не оценивает, заданы
 # физически осмысленными конечными значениями, а не нулём («известно точно»).
 ROLL_SD = 0.05          # рад: возвышение наружного рельса в кривой до ~3°
-UNKNOWN_VAR = 1.0e6     # до выставки: абсолютное положение неизвестно
+UNKNOWN_VAR = 1.0e6     # курс неизвестен (якорь есть, курса ещё нет)
 Z_MAP_SD = 1.0          # м: высота из карты (усреднённый GNSS)
 YAW_MAP_SD = 0.05       # рад: курс по оси пути карты (~3°)
 LAT_V_SD = 0.05         # м/с: боковая скорость на рельсах ≈ 0
@@ -161,6 +163,19 @@ class TramEstimatorNode(Node):
         P("origin_alt", float("nan"))
         P("frame_id", "map")
         P("child_frame_id", "base_link")
+        # выходная система /result/position (docs/POSITION_FRAME.md):
+        # mgrs | utm | enu | equirect; mgrs_grid "" — каждая точка в своём
+        # 100-км квадрате, "37UDB" — непрерывно от угла этого квадрата
+        P("projection", "mgrs")
+        P("mgrs_grid", "")
+        P("utm_zone", 0)                   # 0 — по точке выставки
+        P("mgrs_guard_m", 20.0)            # ближе к краю 100-км квадрата не публиковать (0 — выкл.)
+        P("scale_adapt", True)             # онлайн-масштаб пути по остановкам
+        P("nomap_mode", "hold")            # без карты: hold (стоять в якоре) | line
+        P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе,
+        P("keep_offset_z", True)           # если медиана статуса окна ≤
+        P("keep_offset_max_status", -1)    # этого: −1 никогда, 1 без RTK, 2 всегда
+        P("terminal_hold", "terminals")    # тупик карты: terminals | off | any
         g = lambda n: self.get_parameter(n).value
 
         params = declare_core_params(self, include_dt=True)
@@ -176,8 +191,15 @@ class TramEstimatorNode(Node):
         origin = o if all(math.isfinite(x) for x in o) else None
         self.runner = Runner(params, track_map=tmap, origin=origin,
                              wheel_timeout=g("wheel_timeout_s"),
-                             handle_timeout=g("handle_timeout_s"))
-        self.runner.pos.init_window = g("init_window_s")
+                             handle_timeout=g("handle_timeout_s"),
+                             init_window=g("init_window_s"),
+                             projection=g("projection"), mgrs_grid=g("mgrs_grid"),
+                             utm_zone=g("utm_zone"), mgrs_guard_m=g("mgrs_guard_m"),
+                             scale_adapt=g("scale_adapt"), nomap_mode=g("nomap_mode"),
+                             keep_offset_xy=g("keep_offset_xy"),
+                             keep_offset_z=g("keep_offset_z"),
+                             keep_offset_max_status=g("keep_offset_max_status"),
+                             terminal_hold=g("terminal_hold"))
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
         self._robust_setup()
@@ -195,7 +217,7 @@ class TramEstimatorNode(Node):
         for ant in ("master", "rover"):
             sub(NavSatFix, f"/sensing/gnss/{ant}/fix", "on_fix",
                 lambda m, a=ant: (to_sec(m.header.stamp), a, m.latitude,
-                                  m.longitude, m.altitude))
+                                  m.longitude, m.altitude, m.status.status))
 
         self.pub_v = self.create_publisher(VelocitySensor, "/result/velocity", 10)
         self.pub_p = self.create_publisher(Odometry, "/result/position", 10)
@@ -206,7 +228,10 @@ class TramEstimatorNode(Node):
             f"оценщик запущен: шаг {params.dt * 1000:.0f} мс, "
             f"карта {'есть' if tmap is not None else 'нет'}; "
             f"лист: {self.sheet_src}; карта: {path or 'нет (map_file пуст)'}; "
-            f"единицы {params.meas_units}; пульс {self.pulse_h:.1f} с")
+            f"единицы {params.meas_units}; пульс {self.pulse_h:.1f} с; выход "
+            f"{g('projection')}"
+            + (f" {g('mgrs_grid')}" if g("mgrs_grid") else
+               " (MGRS: каждая точка в своём 100-км квадрате)" if g("projection") == "mgrs" else ""))
 
     # ---------- устойчивость ----------
 
@@ -367,6 +392,9 @@ class TramEstimatorNode(Node):
         st = to_msg(o["stamp"])
         v_ = float(o["v"])
         xyz = tuple(float(o[k]) for k in ("x", "y", "z"))
+        # без якоря GNSS (или у края квадрата MGRS) положения в выходной
+        # системе нет: /result/position не публикуется, а не выдаёт мусор
+        pos_ok = bool(o.get("pos_valid", True))
         if not (math.isfinite(v_) and all(math.isfinite(c) for c in xyz)):
             # последний рубеж: NaN в выход не уходит (ядро сбрасывается само)
             self.get_logger().warn("неконечный выход заменён последним конечным",
@@ -374,8 +402,8 @@ class TramEstimatorNode(Node):
             v_ = v_ if math.isfinite(v_) else 0.0
             xyz = tuple(c if math.isfinite(c) else g
                         for c, g in zip(xyz, self._good))
-        self._good = xyz
-        ready = bool(o.get("pos_ready"))
+        if pos_ok:
+            self._good = xyz
         sv2 = float(o["sigma_v"]) ** 2
         ss2 = float(o["sigma_s"]) ** 2
         th = float(self.runner.p.theta_max)
@@ -396,12 +424,12 @@ class TramEstimatorNode(Node):
             od.pose.pose.orientation.w = math.cos(yaw / 2.0)
         # WP12a: ни одной нулевой диагонали. x, y — σ пути ядра (изотропно);
         # z — высота карты; крен — возвышение рельса; тангаж — уклон линии
-        # (theta_max); курс — ось пути карты. До выставки положение и курс
-        # в абсолютной системе неизвестны.
+        # (theta_max); курс — ось пути карты. Положение публикуется только с
+        # якорем GNSS (pos_valid), поэтому x, y, z известны всегда; без курса
+        # (якорь есть, выставка не полная) неизвестен только курс.
         pc = od.pose.covariance
-        pc[0] = pc[7] = ((ss2 + FALLBACK_SD ** 2 if o.get("pos_fallback") else ss2)
-                         if ready else UNKNOWN_VAR)
-        pc[14] = Z_MAP_SD ** 2 if ready else UNKNOWN_VAR
+        pc[0] = pc[7] = ss2 + FALLBACK_SD ** 2 if o.get("pos_fallback") else ss2
+        pc[14] = Z_MAP_SD ** 2
         pc[21] = ROLL_SD ** 2
         pc[28] = th ** 2
         pc[35] = YAW_MAP_SD ** 2 if yaw is not None else UNKNOWN_VAR
@@ -415,7 +443,8 @@ class TramEstimatorNode(Node):
         tc[14] = (v_ * th) ** 2 + LAT_V_SD ** 2
         tc[21] = tc[28] = ANG_RATE_SD ** 2
         tc[35] = (v_ / R_CURVE_MIN) ** 2 + ANG_RATE_SD ** 2
-        self.pub_p.publish(od)
+        if pos_ok:
+            self.pub_p.publish(od)
 
         ac = AccelStamped()
         ac.header.stamp, ac.header.frame_id = st, self.child

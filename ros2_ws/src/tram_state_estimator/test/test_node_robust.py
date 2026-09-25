@@ -163,16 +163,19 @@ def test_odometry_covariances_have_no_zero_diagonal(ros, monkeypatch):
     monkeypatch.setattr(TN, "time", ft)
     node = TN.TramEstimatorNode()
     node.runner = Runner(trt.P)
-    got = []
+    got, vel = [], []
     node.pub_p.publish = got.append
+    node.pub_v.publish = vel.append
     ev = trt.stream(10.0)
     for t, m, a in ev:
         ft.now = 1000.0 + t
         node._input(m, a)
     node.destroy_node()
     assert len(got) > 150
-    ready = [o for o in got if o.pose.covariance[0] < 1e5]
-    assert ready and len(ready) < len(got)      # и до выставки, и после
+    # до якоря GNSS положение не публикуется (pos_valid, поток «положение»),
+    # поэтому все опубликованные — с якорем: σ x, y конечна и мала
+    assert len(got) < len(vel)
+    assert all(o.pose.covariance[0] < 1e5 for o in got)
     for od in got:
         for cov in (od.pose.covariance, od.twist.covariance):
             d = [cov[i] for i in (0, 7, 14, 21, 28, 35)]
