@@ -153,6 +153,7 @@ if [ "$REPEAT" != "1" ]; then
   python3 - "$OUT" "$REPEAT" <<'PY'
 import json, os, sys
 out, n = sys.argv[1], int(sys.argv[2])
+miss = 0
 print("| прогон | итог | выходов | in2out p99 устан., мс | выставка | ср. 3D, м | потери у пробы |")
 print("|---|---|---|---|---|---|---|")
 for i in range(1, n + 1):
@@ -166,6 +167,11 @@ for i in range(1, n + 1):
     print(f"| {i} | {v.get('verdict')} | {v['outputs']}/{v['expected']} | "
           f"{v['in2out_steady_ms'].get('p99')} | {'да' if p.get('aligned') else ('нет' if p else '—')} | "
           f"{p.get('mean_m', '—')} | {lost} |")
+    miss = miss + 1 if p and not p.get("aligned") else miss
+if any(os.path.exists(os.path.join(out, f"run{i}", "verdict.json")) for i in range(1, n + 1)):
+    # «НЕ ЗАСЧИТАН» — про обвязку; для жюри прогон без выставки — потеря баллов
+    print()
+    print(f"срывов выставки ноды (положения нет): {miss} из {n}")
 PY
   log "ИТОГ ПОВТОРОВ из $REPEAT: PASS $npass, FAIL $((REPEAT - npass - nlost)), НЕ ЗАСЧИТАН (проба потеряла начало bag) $nlost"
 fi
