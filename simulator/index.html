@@ -8,9 +8,9 @@
 <style>
   :root {
     color-scheme: light;
-    /* без сети: системные шрифты (Onest — только если установлен локально) */
-    --font-heading: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --font-body: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    /* без сети: только системные шрифты */
+    --font-heading: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --bg: #eef1f4;
     --fg: #000000;
     --pill-bg: #ffffff;
@@ -190,7 +190,7 @@
   <div class="flex items-center gap-4 sm:gap-9 min-w-0">
     <span class="flex items-center gap-3 flex-none">
       <span class="text-[21px] sm:text-[26px] tracking-tight" style="font-family: var(--font-heading); font-weight: 500;">Vectra</span>
-      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Песочница · JS-порт ядра, сверен 25.09</span>
+      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Песочница · JS-порт ядра</span>
     </span>
   </div>
   <span id="modeNav" class="seg" role="radiogroup" aria-label="Режим страницы">
@@ -285,7 +285,7 @@
     <div><div class="k">Режим</div><div class="big text-[22px] sm:text-[26px] pt-[4px] flex items-center gap-2 whitespace-nowrap" id="bH">Стоянка</div><div class="k truncate" id="bHsub">вагон стоит, скорость ноль</div></div>
   </div>
 
-  <div class="k mt-2">Песочница: имитатор трамвая и JS-порт ядра пакета (сверен с Python 25.09, расхождение ≤ 10⁻¹² м/с), лист по умолчанию: 4 оси, паспортный привод. Реальные записи — «Прогон данных комиссии».</div>
+  <div class="k mt-2">Песочница: имитатор трамвая и <span id="portNote">JS-порт ядра пакета</span>, лист по умолчанию: 4 оси, паспортный привод. Реальные записи — «Прогон данных комиссии».</div>
 
   <span hidden><span id="bAdh"></span><span id="bLo"></span><span id="bHi"></span><span id="bWsub"></span><span id="bAnc"></span><span id="bProf"></span><span id="bGrHat"></span><span id="bK"></span></span>
 
@@ -427,8 +427,14 @@
 // Перенос текущего ядра: лист параметров (позиции ручки, единицы и раскладка датчиков,
 // табличный привод), маска свежих показаний, восстанавливаемые отказы датчиков, согласие
 // осей, защёлка «стоим или скользим». Сверка с Python: js-port/record.py + compare.js.
+// PORT — ядро пакета, с которым порт сверен: sha1 estimator_core.py (переводы строк LF,
+// 12 знаков; так же его пишут tools/export_replay.py и js-port/record*.py). Страница
+// сравнивает его с ядром, которым посчитаны прогоны комиссии, и при расхождении
+// подписывает песочницу «упрощённое ядро». Перенёс правку ядра и сверил — обнови PORT
+// здесь и во вшитой копии в simulator/index.html (js-port/check.sh это проверяет).
 const TramEst = (() => {
   const G = 9.81;
+  const PORT = { core_git: '56933cc', core_sha1: '674bab988601', checked: '25.09', dv: '6·10⁻¹³ м/с' };
   const DEFAULT = {
     M_nom: 28000.0, r_nom: 0.35, n_axles: 4, driven: [true, true, false, false], braked: [true, true, true, true], v_max_line: 20.0,
     F_notch: 36000.0, F_brake: 30000.0, v_base: 8.0, v_ed_fade: 1.5, brake_hold_frac: 1.0,
@@ -931,7 +937,7 @@ const TramEst = (() => {
       };
     }
   }
-  return { Estimator, DEFAULT, MODE_NAMES, COAST, TRACTION, BRAKE, TRANSITION, SLIP, STANDSTILL, DEGRADED, G, notch_to_u, sensor_to_speed };
+  return { Estimator, DEFAULT, MODE_NAMES, COAST, TRACTION, BRAKE, TRANSITION, SLIP, STANDSTILL, DEGRADED, G, notch_to_u, sensor_to_speed, PORT };
 })();
 
 // ---- Tram plant: JavaScript port of plant.py (the "truth" the estimator never sees directly) ----
@@ -1083,9 +1089,30 @@ const TramPlant = (() => {
 (() => {
   const $ = id => document.getElementById(id);
 
+  // ---------- сверка JS-порта ----------
+  // TramEst.PORT — ядро пакета, с которым сверен порт. Режим прогонов читает replays/index.js:
+  // если прогоны посчитаны другим ядром (core_sha1), ядро менялось после сверки, и
+  // песочница честно подписана «упрощённое ядро (JS-порт от …)».
+  const PORT = TramEst.PORT;
+  function portClaim(kind) {
+    const stale = window.TV_PORT_STALE;
+    if (kind === 'badge') return stale ? `Песочница · упрощённое ядро (JS-порт от ${PORT.checked})` : `Песочница · JS-порт ядра, сверен ${PORT.checked}`;
+    if (kind === 'note') return stale ? `упрощённое ядро (JS-порт ядра пакета от ${PORT.checked}, ${PORT.core_git}; ядро пакета после этого менялось)` : `JS-порт ядра пакета (сверен с Python ${PORT.checked}, ядро ${PORT.core_git}, расхождение ≤ ${PORT.dv})`;
+    if (kind === 'short') return stale ? `упрощённое ядро (JS-порт от ${PORT.checked})` : `JS-порт ядра пакета (сверен с Python ${PORT.checked})`;
+    return stale ? `Песочница работает на упрощённом ядре: это JS-порт ядра пакета от ${PORT.checked} (${PORT.core_git}), а ядро пакета после этого менялось (прогоны комиссии посчитаны ядром ${stale}). Поведение песочницы может отличаться от пакета; числа пакета — в «Прогоне данных комиссии».`
+      : `Песочница работает на JS-порте ядра пакета (перенесён ${PORT.checked}, ядро ${PORT.core_git}; с Python-ядром совпадает до ${PORT.dv} на 15 сценариях и на записи комиссии с листом вагона).`;
+  }
+  function applyPort() {
+    const n = $('portNote'); if (n) n.textContent = portClaim('note');
+    const bs = document.querySelector('header .badge-sub');
+    if (bs && (window.__tvMode || 'sandbox') === 'sandbox') bs.textContent = portClaim('badge');
+  }
+  window.TV_PORT_CLAIM = portClaim; window.TV_PORT_APPLY = applyPort; window.TV_EST_PORT = PORT;
+  applyPort();
+
   // ---------- info modal ----------
   const INFO = {
-    model: ['Как устроена модель', 'Состояние из пяти величин: путь, скорость, возмущение (уклон, масса, ветер) и масштабы тяги и торможения. Прогноз строится по ручке через физику вагона: привод с запаздыванием, сопротивление движению, сила ограничена сцеплением μ.\nКоррекция по колёсам в сигма-точечном фильтре (UKF). Каждое показание оси проходит проверку правдоподобия: невязка и физический предел ускорения колеса. Отвергнутое показание состояние не меняет, поэтому буксующая ось не тянет оценку за собой. Крип колеса предсказывается и вычитается.\nМасштабы привода и возмущение подстраиваются только там, где они наблюдаемы, сцепление оценивается по признакам срыва. На остановке ошибка скорости обнуляется.\nПесочница работает на JS-порте ядра пакета (перенесён 25.09; с Python-ядром совпадает до 10⁻¹² м/с на 15 сценариях и на записи комиссии с листом вагона). Лист песочницы — по умолчанию: 4 оси по 2 датчика, паспортный привод; имитатор упрощён, поэтому числа песочницы не равны числам на данных, а σ ядра ещё не откалибрована. Числа на реальных записях — в режиме «Прогон данных комиссии»: там оценку считает сам пакет ROS 2.'],
+    model: ['Как устроена модель', 'Состояние из пяти величин: путь, скорость, возмущение (уклон, масса, ветер) и масштабы тяги и торможения. Прогноз строится по ручке через физику вагона: привод с запаздыванием, сопротивление движению, сила ограничена сцеплением μ.\nКоррекция по колёсам в сигма-точечном фильтре (UKF). Каждое показание оси проходит проверку правдоподобия: невязка и физический предел ускорения колеса. Отвергнутое показание состояние не меняет, поэтому буксующая ось не тянет оценку за собой. Крип колеса предсказывается и вычитается.\nМасштабы привода и возмущение подстраиваются только там, где они наблюдаемы, сцепление оценивается по признакам срыва. На остановке ошибка скорости обнуляется.\n{PORT} Лист песочницы — по умолчанию: 4 оси по 2 датчика, паспортный привод; имитатор упрощён, поэтому числа песочницы не равны числам на данных, а σ ядра ещё не откалибрована. Числа на реальных записях — в режиме «Прогон данных комиссии»: там оценку считает сам пакет ROS 2.'],
     ros: ['Пакет ROS 2', '']
   };
   const typed = $('typed'), cursorEl = $('cursor'), ghost = $('ghost'), modal = $('modal');
@@ -1136,7 +1163,8 @@ const TramPlant = (() => {
   let metTimer = 0;
   function openInfo(key) {
     current = key;
-    const [title, txt] = INFO[key];
+    const [title, txt0] = INFO[key];
+    const txt = txt0.replace('{PORT}', portClaim('model'));
     const ex = EXTRA[key];
     $('mCard').style.maxWidth = (ex ? ex[0] : 600) + 'px';
     $('mExtra').innerHTML = ex ? ex[1] : '';
@@ -2510,7 +2538,7 @@ const TramPlant = (() => {
         <span><span class="opacity-60">Сцепление μ, оценка:</span> ${est.mu.toFixed(3)}</span>
         <span><span class="opacity-60">Масса вагона:</span> ${mTrue.toFixed(1)} т</span>
       </div>
-      <div class="text-[11px] opacity-50 mt-3">Считается с начала сессии по живой поездке в песочнице. Ядро — JS-порт ядра пакета (сверен с Python 25.09), лист песочницы по умолчанию (4 оси, паспортный привод); σ ядра ещё не откалибрована, поэтому доля «в ±2σ» ниже цели 95 %. «Колесо» — среднее показаний всех датчиков (база по ТЗ). Имитатор — порт plant.py с противобуксовочной и противоюзной защитой и удержанием на подъёме. Числа на реальных записях — в режиме «Прогон данных комиссии».</div>`;
+      <div class="text-[11px] opacity-50 mt-3">Считается с начала сессии по живой поездке в песочнице. Ядро — ${portClaim('short')}, лист песочницы по умолчанию (4 оси, паспортный привод); σ ядра ещё не откалибрована, поэтому доля «в ±2σ» ниже цели 95 %. «Колесо» — среднее показаний всех датчиков (база по ТЗ). Имитатор — порт plant.py с противобуксовочной и противоюзной защитой и удержанием на подъёме. Числа на реальных записях — в режиме «Прогон данных комиссии».</div>`;
   }
 
   // ---------- ROS 2 live diagram and step-time benchmark ----------
@@ -2632,8 +2660,15 @@ const TramPlant = (() => {
   }
   // ---------- loop ----------
   let last = performance.now();
+  // Цикл: следующий кадр заказывается первым, исключение кадра пишется в консоль (один раз на
+  // текст) и не останавливает страницу.
+  const frameErr = new Set();
   function frame(t) {
-    if ((window.__tvMode || 'sandbox') !== 'sandbox') { last = t; requestAnimationFrame(frame); return; }   // другой режим: песочница на паузе
+    requestAnimationFrame(frame);
+    try { frameBody(t); } catch (e) { const k = String(e && e.message || e); if (!frameErr.has(k)) { frameErr.add(k); console.error('кадр песочницы:', e); } }
+  }
+  function frameBody(t) {
+    if ((window.__tvMode || 'sandbox') !== 'sandbox') { last = t; return; }   // другой режим: песочница на паузе
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     const inT = step(dt);
     sampleAcc += dt;
@@ -2648,7 +2683,6 @@ const TramPlant = (() => {
     drawChart(); drawStrip(); drawMap();
     if (current === 'ros') { bench(); drawRos(t); drawBench(); }
     if (current === 'replay') drawReplay();
-    requestAnimationFrame(frame);
   }
   resize();
   setMap(innerWidth >= 900);
@@ -2696,7 +2730,7 @@ const TramPlant = (() => {
     $('rvTitle').textContent = m === 'live' ? 'Живой ROS 2' : 'Прогон данных комиссии';
     $('runView').setAttribute('aria-label', $('rvTitle').textContent);
     const bs = document.querySelector('header .badge-sub');
-    if (bs) bs.textContent = m === 'sandbox' ? 'Песочница · JS-порт ядра, сверен 25.09' : m === 'live' ? 'Пакет ROS 2 через rosbridge' : 'Запись комиссии · оценку считает пакет';
+    if (bs) bs.textContent = m === 'sandbox' ? window.TV_PORT_CLAIM('badge') : m === 'live' ? 'Пакет ROS 2 через rosbridge' : 'Запись комиссии · оценку считает пакет';
     store.set('tv.mode', m);
     if (m === 'replay') { liveStop(); D = RP.data || null; enterReplay(); }
     else if (m === 'live') { RP.play = false; D = LV.data; enterLive(); }
@@ -2741,10 +2775,17 @@ const TramPlant = (() => {
     }
   }
   let INDEX = null;
+  // список прогонов грузится сразу: по нему же видно, тем ли ядром посчитаны прогоны,
+  // с которым сверен JS-порт песочницы (core_sha1 против TramEst.PORT)
+  const INDEX_P = loadScript('replays/index.js').then(() => window.TV_REPLAY_INDEX || [], () => []);
+  INDEX_P.then(idx => {
+    const P = window.TV_EST_PORT, e = P && idx.find(x => x.core_sha1 && x.core_sha1 !== P.core_sha1);
+    window.TV_PORT_STALE = e ? e.core_sha1 : null;
+    if (window.TV_PORT_APPLY) window.TV_PORT_APPLY();
+  });
   async function enterReplay() {
     if (!INDEX) {
-      try { await loadScript('replays/index.js'); INDEX = window.TV_REPLAY_INDEX || []; }
-      catch (_) { INDEX = []; }
+      INDEX = await INDEX_P;
       const sel = $('rvSel'); sel.innerHTML = '';
       INDEX.forEach(e => { const o = document.createElement('option'); o.value = e.key; o.textContent = `${e.run} · ${e.ru}`; sel.appendChild(o); });
       if (!INDEX.length) { $('rvNote').innerHTML = '<span class="rv-warn">Нет экспортированных прогонов: запустите <b>tools/export_replay.py</b> (см. README симулятора).</span>'; return; }
@@ -2770,11 +2811,13 @@ const TramPlant = (() => {
   }
   $('rvSel').addEventListener('change', e => selectReplay(e.target.value));
   function replayNote() {
-    const M = D.meta, S = D.summary, eval_ = /\/eval\//.test(M.sheet || '');
-    const sheetW = eval_ ? '' : ` <span class="rv-warn">Лист боевой: таблица привода подогнана по всем записям, включая эту; оценочный лист (только обучающие) — config/eval/, после слияния калибровки прогон перегенерировать.</span>`;
+    const M = D.meta, S = D.summary;
+    // пометка утечки пишется экспортёром (sheet_leak); у старых файлов — по пути листа
+    const leak = 'sheet_leak' in M ? M.sheet_leak : (/\/eval\//.test(M.sheet || '') ? null : 'лист не оценочный: подогнан по всем записям, включая эту');
+    const sheetW = leak ? ` <span class="rv-warn">${leak}. Оценочный лист (только обучающие) — config/eval/; когда он появится, прогон перегенерировать (tools/export_replay.py).</span>` : '';
     const inj = M.inject && M.inject.t0 != null ? ` Аномалия: <b>${M.inject.ru.toLowerCase()}</b>, с ${fmtT(M.inject.t0 - M.t0)}; внесена в записанные входы тележек (${M.inject.src}).` : '';
     $('rvNote').innerHTML = `Запись <b>${M.run}</b> (${fmtT(M.dur)}, ${(S.path_m / 1000).toFixed(2)} км) — ${M.split === 'holdout_scored' ? 'отложенная: в подборе карты и разбиения не участвовала' : 'обучающая'}. `
-      + `Оценку посчитал пакет ROS 2 офлайн той же связкой, что нода (Runner, лист ${M.sheet}, карта ${M.map || 'нет'}); сообщения в порядке записи, GNSS в оценщик — только первые 3 с, дальше он только эталон.${inj}${sheetW}`;
+      + `Оценку посчитал пакет ROS 2 офлайн той же связкой, что нода (Runner, лист ${M.sheet}${M.sheet_label ? ' — ' + M.sheet_label : ''}, карта ${M.map || 'нет'}); сообщения в порядке записи, GNSS в оценщик — только первые 3 с, дальше он только эталон.${inj}${sheetW}`;
     $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране — метры от первой точки GNSS master (x — восток, y — север). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
     $('rvSub').textContent = `экспорт ${M.made || ''}${M.git ? ', git ' + M.git : ''}`;
   }
@@ -3124,6 +3167,7 @@ const TramPlant = (() => {
     let ws;
     try { ws = new WebSocket(url); } catch (e) { LV.err = String(e.message || e); scheduleRetry(url); return; }
     LV.ws = ws;
+    try { LV.host = new URL(url).host; } catch (_) { LV.host = url; }   // поле адреса могут править при подключении
     ws.onopen = () => {
       LV.retry = 0; LV.lastMsg = performance.now();
       setLiveState('on', 'на связи, ждём данных');
@@ -3261,7 +3305,7 @@ const TramPlant = (() => {
         $('rvRates').textContent = `нода ${LV.nodeHz ? LV.nodeHz.toFixed(1) : '—'} Гц (frame_count) · на странице /result/velocity ${rv.toFixed(1)} Гц, тележки ${((LV.rates['/vehicle/front_bogie_velocity'] || 0)).toFixed(1)} Гц${LV.last.st ? ` · шаг ${f(LV.last.st.step_time_us / 1000, 2)} мс` : ''}`;
       }
       const silent = LV.ws && LV.ws.readyState === 1 && now - LV.lastMsg > 3000;
-      if (LV.ws && LV.ws.readyState === 1) setLiveState('on', silent ? 'на связи, но нода молчит' : `на связи · ${new URL($('rvUrl').value).host}`);
+      if (LV.ws && LV.ws.readyState === 1) setLiveState('on', silent ? 'на связи, но нода молчит' : `на связи · ${LV.host}`);
     }
     const over = $('rvOver');
     const noLink = !LV.ws || LV.ws.readyState !== 1, silent = !noLink && now - LV.lastMsg > 3000;
@@ -3272,7 +3316,12 @@ const TramPlant = (() => {
 
   // ---------------------------------------------------------------- цикл
   let last = performance.now();
+  const frameErr = new Set();
   function frame(now) {
+    requestAnimationFrame(frame);                     // следующий кадр — при любом исходе этого
+    try { frameBody(now); } catch (e) { const k = String(e && e.message || e); if (!frameErr.has(k)) { frameErr.add(k); console.error('кадр режима прогонов:', e); } }
+  }
+  function frameBody(now) {
     const dt = Math.min(0.25, (now - last) / 1000); last = now;
     if (mode !== 'sandbox') {
       if (mode === 'replay' && D && D.meta && RP.play) {
@@ -3287,12 +3336,13 @@ const TramPlant = (() => {
       drawMap();
       renderPanels(false);
     }
-    requestAnimationFrame(frame);
   }
   // значки режимов берутся у песочницы (одинаковые)
   window.__tvRun = {
     setMode, select: k => selectReplay(k), state: () => ({ mode, key: RP.key, t: RP.t, play: RP.play, n: D ? D.n : 0, live: LV.state, rates: LV.rates, nodeHz: LV.nodeHz, rows: LV.data ? LV.data.n : 0, pairsV: D ? D.pv.t.length : 0 }),
     metrics: () => D ? metricsAt(nowT()) : null, summary: () => D ? D.summary : null, seek: t => { RP.t = t; renderPanels(true); }, play: (on, sp) => { if (sp) RP.speed = sp; RP.play = on; syncPlay(); },
+    // для проверок живого режима: последние строки плоскости и ошибки в плане по парам с GNSS
+    liveTail: (n = 2000) => LV.data ? { x: LV.data.x.slice(-n), y: LV.data.y.slice(-n), h: LV.data.pp.h.slice(-n), host: LV.host || null, pill: $('rvLiveSt').textContent } : null,
   };
   const m0 = qs.get('mode') || store.get('tv.mode');
   requestAnimationFrame(frame);

@@ -8,8 +8,11 @@
 // контейнера выключена: любая внешняя загрузка (CDN, шрифты) — ошибка теста.
 // Проверяется: 0 JS-исключений и ошибок консоли во всех режимах; песочница
 // крутится; каждый экспортированный прогон грузится, проигрывается, и метрики
-// страницы в конце прогона совпадают с итогом экспортёра; живой режим без
-// моста показывает «нет связи». Скриншоты — в <out>.
+// страницы в конце прогона совпадают с итогом экспортёра; подпись JS-порта
+// следует отпечатку ядра прогонов; живой режим с имитатором rosbridge (ws в этом
+// же контейнере): правка поля адреса при подключении не останавливает страницу,
+// переход границы квадратов MGRS 37U CB | DB — без скачка в обоих соглашениях;
+// без моста — «нет связи». Скриншоты — в <out>.
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
@@ -115,6 +118,114 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await sleep(1200);
     await shot(page, 'replay_dark_desktop.png');
     await page.close();
+  }
+
+  // ---------------- подпись JS-порта: прогоны посчитаны другим ядром -> «упрощённое ядро»
+  {
+    const badge = p => p.evaluate(() => ({ badge: document.querySelector('header .badge-sub').textContent, note: document.getElementById('portNote').textContent }));
+    let page = await open('?mode=sandbox');
+    await sleep(2500);
+    const a = await badge(page);
+    const idxSha = await page.evaluate(() => (window.TV_REPLAY_INDEX || []).map(e => e.core_sha1));
+    const portSha = await page.evaluate(() => window.TV_EST_PORT.core_sha1);
+    const same = idxSha.every(s => !s || s === portSha);      // нет отпечатка (старый экспорт) — подпись не меняется
+    check('подпись порта по отпечатку ядра прогонов', same ? /сверен/.test(a.badge) && !/упрощ/.test(a.badge) : /упрощённое ядро/.test(a.badge), { port: portSha, replays: [...new Set(idxSha)], ...a });
+    await page.close();
+    // подмена отпечатка в списке прогонов (как после правки ядра без переноса порта)
+    page = await browser.newPage();
+    page.on('pageerror', e => report.errors.push({ query: 'port-stale', kind: 'pageerror', msg: String(e.message || e) }));
+    await page.evaluateOnNewDocument(() => {
+      let v; Object.defineProperty(window, 'TV_REPLAY_INDEX', { configurable: true, get: () => v, set: x => { v = x.map(e => ({ ...e, core_sha1: 'deadbeef0000' })); } });
+    });
+    await page.goto(URL0 + '?mode=sandbox', { waitUntil: 'load' });
+    await sleep(2500);
+    const b = await badge(page);
+    await page.click('[data-open="model"]'); await sleep(300);
+    const mtxt = await page.evaluate(() => document.getElementById('ghost').textContent);
+    await page.keyboard.press('Escape');
+    check('ядро изменилось после сверки -> «упрощённое ядро»', /упрощённое ядро/.test(b.badge) && /упрощённое ядро/.test(b.note) && /упрощённом ядре/.test(mtxt) && !/10⁻¹²/.test(mtxt), { ...b, model: mtxt.slice(0, 90) });
+    await page.close();
+  }
+
+  // ---------------- живой ROS 2 с имитатором rosbridge (ws на 127.0.0.1:9090 в этом же контейнере)
+  {
+    const { WebSocketServer } = require('ws');
+    // UTM (как на странице и в tools/export_replay.py): x — восток, y — север
+    function utmEN(lat, lon, zone) {
+      const a = 6378137, fl = 1 / 298.257223563, n = fl / (2 - fl), A = a / (1 + n) * (1 + n * n / 4 + n ** 4 / 64);
+      const al = [n / 2 - 2 * n * n / 3 + 5 * n ** 3 / 16 + 41 * n ** 4 / 180, 13 * n * n / 48 - 3 * n ** 3 / 5 + 557 * n ** 4 / 1440, 61 * n ** 3 / 240 - 103 * n ** 4 / 140, 49561 * n ** 4 / 161280];
+      const phi = lat * Math.PI / 180, dl = (lon - (zone * 6 - 183)) * Math.PI / 180, c = 2 * Math.sqrt(n) / (1 + n);
+      const t = Math.sinh(Math.atanh(Math.sin(phi)) - c * Math.atanh(c * Math.sin(phi)));
+      const xi = Math.atan(t / Math.cos(dl)), eta = Math.atanh(Math.sin(dl) / Math.sqrt(1 + t * t));
+      let E = eta, N = xi;
+      for (let j = 1; j <= 4; j++) { E += al[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta); N += al[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta); }
+      return [500000 + 0.9996 * A * E, 0.9996 * A * N];
+    }
+    const LAT = 55.79;
+    let lo = 37.3, hi = 37.5;                            // долгота, где E = 399 800 м (западнее границы 37U CB | DB)
+    for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (utmEN(LAT, mid, 37)[0] < 399800) lo = mid; else hi = mid; }
+    const LON0 = lo, DLON = 10 / (111320 * Math.cos(LAT * Math.PI / 180));   // ~10 м на восток за такт 0,1 с
+    const sent = { xmin: Infinity, xmax: -Infinity };
+    let scenario = 'basic';
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 9090 });
+    wss.on('connection', ws => {
+      let k = 0;
+      const iv = setInterval(() => {
+        const t = 1000 + 0.1 * k, hdr = { stamp: { sec: Math.floor(t), nanosec: Math.round((t % 1) * 1e9) }, frame_id: 'map' };
+        const pub = (topic, msg) => { try { ws.send(JSON.stringify({ op: 'publish', topic, msg })); } catch (_) {} };
+        pub('/result/velocity', { header: hdr, velocity: 10 });
+        pub('/tram/estimator_status', { header: hdr, mode: 0, v: 10, s: k, d: 0, k_traction: 1, k_brake: 1, mu: 0.2, sigma_v: 0.1, sigma_s: 1, wheel_healthy: [true, true], slip: false, ambiguous: false, n_accepted: 2, n_rejected: 0, valid: true, frame_count: 2 * k, step_time_us: 500 });
+        if (scenario !== 'basic') {
+          const lat = LAT, lon = LON0 + DLON * k, [E, N] = utmEN(lat, lon, 37);
+          // (а) перенос по точке (Autoware): координаты внутри квадрата 100 км; (б) непрерывно от 37UDB
+          const x = scenario === 'wrap' ? ((E % 1e5) + 1e5) % 1e5 : E - 400000, y = scenario === 'wrap' ? N % 1e5 : N - 6100000;
+          sent.xmin = Math.min(sent.xmin, x); sent.xmax = Math.max(sent.xmax, x);
+          pub('/result/position', { header: hdr, pose: { pose: { position: { x, y, z: 150 }, orientation: { x: 0, y: 0, z: 0, w: 1 } }, covariance: [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } });
+          pub('/sensing/gnss/master/fix', { header: hdr, latitude: lat, longitude: lon, altitude: 150, status: { status: 2, service: 1 } });
+        }
+        k++;
+      }, 100);
+      ws.on('close', () => clearInterval(iv));
+    });
+    await new Promise(r => wss.on('listening', r));
+    // правка поля адреса при подключении: страница не замирает (review: new URL в цикле кадра)
+    {
+      const page = await open('?mode=live&ros=ws://127.0.0.1:9090');
+      await sleep(3500);
+      const rows = () => page.evaluate(() => window.__tvRun.state().rows);
+      const r0 = await rows();
+      await page.evaluate(() => { const u = document.getElementById('rvUrl'); u.value = ''; u.dispatchEvent(new Event('input')); });
+      await sleep(2500);
+      const r1 = await rows();
+      await page.evaluate(() => { const u = document.getElementById('rvUrl'); u.value = 'ws://нед'; u.dispatchEvent(new Event('input')); });
+      await sleep(2500);
+      const r2 = await rows(), tail = await page.evaluate(() => window.__tvRun.liveTail(1));
+      await page.evaluate(() => window.__tvRun.setMode('replay'));
+      await page.waitForFunction(() => window.__tvRun.state().n > 0, { timeout: 30000 });
+      await page.evaluate(() => window.__tvRun.play(true, 60));
+      const t0 = await page.evaluate(() => window.__tvRun.state().t);
+      await sleep(2500);
+      const t1 = await page.evaluate(() => window.__tvRun.state().t);
+      check('живой режим: правка адреса при подключении не останавливает страницу', r1 > r0 + 10 && r2 > r1 + 10 && /на связи/.test(tail.pill) && t1 - t0 > 60,
+        { rows: [r0, r1, r2], pill: tail.pill, host: tail.host, replay_dt_x60: +(t1 - t0).toFixed(1) });
+      await page.close();
+    }
+    // переход границы квадратов 37U CB | DB (E = 400 км) в обоих соглашениях MGRS
+    for (const sc of ['wrap', 'grid']) {
+      scenario = sc; sent.xmin = Infinity; sent.xmax = -Infinity;
+      const page = await open('?mode=live&ros=ws://127.0.0.1:9090');
+      await sleep(6000);
+      const tl = await page.evaluate(() => window.__tvRun.liveTail(5000));
+      const xs = tl.x.filter(Number.isFinite), hs = tl.h.filter(Number.isFinite);
+      let jump = 0; for (let i = 1; i < xs.length; i++) jump = Math.max(jump, Math.abs(xs[i] - xs[i - 1]));
+      const hmax = hs.length ? Math.max(...hs) : NaN, span = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+      const crossed = sc === 'wrap' ? sent.xmax > 99000 && sent.xmin < 1000 : sent.xmin < 0 && sent.xmax > 0;
+      check(`живой режим: MGRS ${sc === 'wrap' ? 'с переносом по точке' : 'от квадрата 37UDB'} — переход E = 400 км без скачка`, crossed && xs.length > 20 && span > 200 && jump < 50 && hs.length > 20 && hmax < 0.5,
+        { sent_x: [+sent.xmin.toFixed(1), +sent.xmax.toFixed(1)], rows: xs.length, span_m: +span.toFixed(1), max_step_m: +jump.toFixed(2), pairs: hs.length, max_plan_err_m: +hmax.toFixed(3) });
+      if (sc === 'wrap') await shot(page, 'live_mgrs_crossing.png');
+      await page.close();
+    }
+    await new Promise(r => wss.close(r));
   }
 
   // ---------------- живой ROS 2 без моста: «нет связи», без исключений

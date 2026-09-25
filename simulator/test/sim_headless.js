@@ -2,7 +2,7 @@
 // (перенесено из tools/audit/sim_headless.js; добавлены проверки ложного
 // состояния S1 и новой метрики обнаружения срыва).
 //
-//   node simulator/test/sim_headless.js [minutes_of_free_run=10]   (SEED=n TRACE=1)
+//   node simulator/test/sim_headless.js [minutes_of_free_run=10]   (SEED=n TRACE=1 OUT_DIR=каталог)
 //
 // Встроенный скрипт страницы исполняется с заглушками DOM/Canvas/Audio,
 // кадры (requestAnimationFrame) подаются вручную с dt = 50 мс (как ограничено
@@ -16,6 +16,7 @@ const vm = require('vm');
 const ROOT = path.resolve(__dirname, '..', '..');
 const html = fs.readFileSync(process.env.SIM_HTML || path.join(ROOT, 'simulator', 'index.html'), 'utf8');
 const FREE_MIN = +(process.argv[2] || 10);
+const OUT_DIR = process.env.OUT_DIR || path.join(ROOT, 'out', 'sim_wp17');
 
 // ---------- fake DOM ----------
 const byId = new Map();
@@ -68,6 +69,7 @@ const docEl = makeEl('html', {});
 const document = {
   documentElement: docEl, hidden: false,
   getElementById: id => byId.get(id) || null,
+  querySelector: () => null,
   querySelectorAll(sel) {
     const m = /^\[([a-z-]+)\]$/.exec(sel); if (!m) throw new Error('unsupported selector ' + sel);
     return all.filter(e => m[1] in e.attrs);
@@ -82,8 +84,10 @@ const errors = [];
 let rs = +(process.env.SEED || 0) >>> 0;
 const seeded = () => { rs = (rs + 0x6D2B79F5) | 0; let t = Math.imul(rs ^ (rs >>> 15), 1 | rs); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const SMath = Object.create(Math); if (process.env.SEED) SMath.random = seeded;
+// console.error страницы — тоже ошибка прогона (цикл кадра ловит исключения и пишет их в консоль)
+const pageConsole = Object.assign(Object.create(console), { error: (...a) => { errors.push(['console.error', a.map(x => (x && x.stack) || String(x)).join(' ').split('\n').slice(0, 3).join(' | ')]); } });
 const sandbox = {
-  document, console, Math: SMath, JSON, Date, Array, Object, Number, String, Boolean, Symbol, Map, Set, Promise, Infinity, NaN,
+  document, console: pageConsole, Math: SMath, JSON, Date, Array, Object, Number, String, Boolean, Symbol, Map, Set, Promise, Infinity, NaN,
   Float32Array, Float64Array, Uint8ClampedArray, Int32Array, isFinite, isNaN, parseFloat, parseInt, Error,
   performance: { now: () => nowMs },
   requestAnimationFrame: f => { rafQ.push(f); return rafQ.length; },
@@ -182,13 +186,13 @@ const rows = S.COND.map(c => { const m = MET[c]; return m.t < 0.5 ? { cond: c, t
   max_model_kmh: +m.maxM.toFixed(2), seg_err_model_m: m.segM.length ? +(m.segM.reduce((a, b) => a + b, 0) / m.segM.length).toFixed(1) : null,
   seg_err_wheel_m: m.segB.length ? +(m.segB.reduce((a, b) => a + b, 0) / m.segB.length).toFixed(1) : null, in_2sigma_pct: +(100 * m.inInt / m.t).toFixed(1) }; });
 const sd = S.slipDelays.slice().sort((a, b) => a - b);
-if (process.env.REC_INPUTS) fs.writeFileSync(path.join(ROOT, 'out', 'sim_wp17', `sim_inputs_seed${process.env.SEED || 'rnd'}.json`), JSON.stringify(INPUTS));
-if (process.env.TRACE) fs.writeFileSync(path.join(ROOT, 'out', 'sim_wp17', `sim_trace_seed${process.env.SEED || 'rnd'}.json`), JSON.stringify(TRACE));
+if (process.env.REC_INPUTS) fs.writeFileSync(path.join(OUT_DIR, `sim_inputs_seed${process.env.SEED || 'rnd'}.json`), JSON.stringify(INPUTS));
+if (process.env.TRACE) fs.writeFileSync(path.join(OUT_DIR, `sim_trace_seed${process.env.SEED || 'rnd'}.json`), JSON.stringify(TRACE));
 const res = { wall_s: +wallS.toFixed(1), sim_time_s: +S.simT.toFixed(1), frames_errors: errors.length, errors: errors.slice(0, 20), nan_fields: [...nanSeen],
   slip_delay_ms_median: sd.length ? Math.round(sd[sd.length >> 1]) : null, slip_events: sd.length, slip_missed: S.slipMissed.n, slip_short: S.slipMissed.short,
   false_moving_s: +falseT.toFixed(1), false_moving_max_run_s: +falseMaxT.toFixed(1), false_confident_s: +confT.toFixed(1), false_confident_max_run_s: +confMaxT.toFixed(1), wheel_spin_at_standstill_max_kmh: +spinStillMax.toFixed(1),
   metrics: rows, timeline: log };
-const out = path.join(ROOT, 'out', 'sim_wp17', `sim_headless${process.env.OUTTAG ? '_' + process.env.OUTTAG : ''}${process.env.SEED ? '_seed' + process.env.SEED : ''}.json`);
+const out = path.join(OUT_DIR, `sim_headless${process.env.OUTTAG ? '_' + process.env.OUTTAG : ''}${process.env.SEED ? '_seed' + process.env.SEED : ''}.json`);
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, JSON.stringify(res, null, 1));
 console.log(`прогон: ${res.sim_time_s} с модели за ${res.wall_s} с, ошибок ${errors.length}, NaN: ${res.nan_fields.join(',') || 'нет'}`);
