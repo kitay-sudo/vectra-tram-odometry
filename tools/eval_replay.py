@@ -52,7 +52,19 @@ RUNNER_KW = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeo
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()[:16]
+    """Отпечаток файла; для .npz — по содержимому массивов (в zip-архиве
+    numpy есть время записи, и одинаковая карта давала бы разный хэш)."""
+    path = Path(path)
+    if path.suffix == ".npz":
+        h = hashlib.sha256()
+        with np.load(path) as z:
+            for k in sorted(z.files):
+                v = np.ascontiguousarray(z[k])
+                h.update(k.encode())
+                h.update(str(v.dtype).encode() + str(v.shape).encode())
+                h.update(v.tobytes())
+        return h.hexdigest()[:16]
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
 # ------------------------------------------------------------------ листы
@@ -251,6 +263,11 @@ def truncate(a, seconds):
     """Первые seconds с записи (для --quick)."""
     t0 = min(float(a[k][0, 0]) for k in ("front", "rear", "cmd") if len(a[k]))
     return {k: (v[v[:, 0] <= t0 + seconds] if len(v) else v) for k, v in a.items()}
+
+
+def cut_stamp(a, t_end):
+    """Только сообщения с header.stamp <= t_end (все топики)."""
+    return {k: (v[v[:, 1] <= t_end] if len(v) else v) for k, v in a.items()}
 
 
 KEYS = ("stamp", "v", "x", "y", "z", "sigma_v", "sigma_s", "mode", "valid", "slip", "ambiguous",

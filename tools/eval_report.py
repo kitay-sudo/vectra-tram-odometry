@@ -56,8 +56,10 @@ def g(d, *keys, default=None):
 
 
 def table(head, rows):
-    out = ["| " + " | ".join(head) + " |", "|" + "|".join("---" for _ in head) + "|"]
-    out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    def cell(c):
+        return str(c).replace("|", "\\|")         # «|Δv|» не должен ломать таблицу
+    out = ["| " + " | ".join(cell(h) for h in head) + " |", "|" + "|".join("---" for _ in head) + "|"]
+    out += ["| " + " | ".join(cell(c) for c in r) + " |" for r in rows]
     return "\n".join(out)
 
 
@@ -452,7 +454,11 @@ def render(result, timing, args, pics, root):
     A("")
     A(f"**Квадраты MGRS.** Пар, где оценка при «переносе по точке» попала бы в другой квадрат "
       f"100 км, чем эталон: модель {tm.get('sq_mismatch', 0)} из {tm.get('p_pairs', 0)}, база "
-      f"{tn.get('sq_mismatch', 0)}. «Взгляд судьи» (сырые x, y, z выхода против эталона MGRS "
+      f"{tn.get('sq_mismatch', 0)}. Если судья переносит по точке и наш выход — правильный MGRS с "
+      f"тем же переносом, средняя 3D модели была бы **{f(tm.get('wrap_3d_mean'))} м** вместо "
+      f"{f(tm.get('p3d_mean'))} м (база {f(tn.get('wrap_3d_mean'))} м): каждая такая пара у "
+      "границы E = 400 км стоит ~100 км. При непрерывных координатах от одного квадрата "
+      "(`37UDB`) ошибка равна непрерывной. «Взгляд судьи» (сырые x, y, z выхода против эталона MGRS "
       f"{'с переносом по точке' if not meta['judge_grid'] else 'от ' + meta['judge_grid']}): "
       f"средняя 3D **{f(tm.get('judge_raw_3d_mean'), 1)} м**, максимум {f(tm.get('judge_raw_3d_max'), 1)} м"
       + (" — выход Runner сейчас локальный (equirect от начала), а не MGRS: без перевода судья увидел "
@@ -525,15 +531,27 @@ def render(result, timing, args, pics, root):
     A("")
     gf = S.get("gnss_full")
     if gf:
-        a_, b_ = gf.get("model") or {}, gf.get("naive") or {}
-        A(table(["оценка", "MAE, м/с", "смещение", "3D ср., м", "3D конец ср., м", "3D макс, м"], [
-            ["модель", f(a_.get("v_mae"), 4), f(a_.get("v_bias"), 4, True), f(a_.get("p3d_mean"), 1),
-             f(a_.get("p3d_end_mean"), 1), f(a_.get("p3d_max"), 1)],
-            ["база", f(b_.get("v_mae"), 4), f(b_.get("v_bias"), 4, True), f(b_.get("p3d_mean"), 1),
-             f(b_.get("p3d_end_mean"), 1), f(b_.get("p3d_max"), 1)]]))
+        a_, b_ = gf.get("full") or {}, gf.get("gnss3") or {}
+        n = len(gf.get("runs", {}))
+        A(f"Первые {f(gf['span_s'] / 60, 0)} мин записи каждого из {n} прогонов, только модель (база "
+          "идёт через тот же Runner). README разрешает GNSS только для начальной выставки, значит "
+          "выход с GNSS весь прогон должен совпасть с выходом при GNSS 3 с: те же метки сетки, "
+          "те же скорость и положение.")
         A("")
-        A(f"Для сравнения, GNSS 3 с: модель 3D ср. {f(tm.get('p3d_mean'))} м. Если числа сильно "
-          "разные — GNSS после окна выставки влияет на выход (дефект C2, WP1).")
+        A(table(["GNSS в связку", "MAE, м/с", "3D ср., м"], [
+            ["весь прогон", f(a_.get("v_mae"), 4), f(a_.get("p3d_mean"), 1)],
+            ["первые 3 с", f(b_.get("v_mae"), 4), f(b_.get("p3d_mean"), 1)]]))
+        A("")
+        A(f"Совпали побитно (та же сетка, |Δv| ≤ 1e-9, |Δxyz| ≤ 1e-6): **{gf.get('identical_runs')} из {n}** "
+          f"прогонов; наибольшее |Δv| {f(gf.get('max_dv'), 3)} м/с, наибольшее |Δ положения| "
+          f"{f(gf.get('max_dpos'), 1)} м. Если не совпали — GNSS после окна влияет на выход "
+          "(дефект C2, WP1).")
+        A("")
+        rows = [[b, "да" if r["same_grid"] else f"нет ({r['n_out_full']} / {r['n_out_3s']})",
+                 f(r.get("max_dv"), 3), f(r.get("max_dpos"), 1), f(r.get("p3d_mean_full"), 1),
+                 f(r.get("p3d_mean_3s"), 1)] for b, r in gf.get("runs", {}).items()]
+        A(table(["прогон", "та же сетка", "макс |Δv|, м/с", "макс |Δ положения|, м", "3D ср. (весь)",
+                 "3D ср. (3 с)"], rows))
     else:
         A("Не считалось (`--gnss full` уже основной режим, `--no-gnss-full` или `--quick`).")
     A("")
@@ -548,7 +566,9 @@ def render(result, timing, args, pics, root):
       "ручка), и до конца остаётся ≥ 120 с. Окна метрик: «до» — 30 с перед аномалией, «во время» — "
       "окно оценки вида, «после» — 60 с после него. Восстановление — через сколько секунд после "
       f"конца аномалии скорость совпадает с чистым прогоном (|Δv| ≤ {f(0.1, 1)} м/с не меньше 3 с). "
-      "Δ конца — изменение ошибки вдоль пути в конце прогона против чистого прогона.")
+      "Прогон с инъекцией идёт до конца окна + 300 с; «Δ вдоль через 300 с» — остаточная "
+      "ошибка вдоль пути в этот момент минус ошибка чистого прогона (снимает ли её привязка к "
+      "остановке).")
     A("")
     A(table(["вид", "описание", "длит., с"],
             [[k, I.KINDS[k]["ru"], f(I.KINDS[k]["dur"], 1)] for k in result["kinds"]]))
@@ -570,13 +590,13 @@ def render(result, timing, args, pics, root):
                 f(g(e, "before", "v_mae"), 3), f(g(e, "during", "v_mae"), 3), f(g(e, "after", "v_mae"), 3),
                 f(g(e, "during", "along_end"), 1, True) + " (" + f(g(e, "during", "along_end_clean"), 1, True) + ")",
                 f(g(e, "after", "along_end"), 1, True),
-                f(e.get("d_along_end_run"), 1, True),
+                f(e.get("d_along_tail"), 1, True),
                 f(e.get("recovery_s"), 1) if e.get("recovery_s") is not None else ("—" if crash else "нет"),
                 ("**упала** " + f(crash.get("after_t0_s"), 2) + " с: " + crash["error"][:60]) if crash else flags,
                 pct(dur.get("cov2s"), 0) if name == "модель" and dur.get("cov2s") is not None else "",
             ])
     A(table(["вид · прогон", "оценка", "MAE до", "MAE во время", "MAE после",
-             "вдоль, конец окна (чисто)", "вдоль, после", "Δ конца прогона, м", "восст., с",
+             "вдоль, конец окна (чисто)", "вдоль, после", "Δ вдоль через 300 с, м", "восст., с",
              "флаги / падение", "±2σ во время"], rows))
     for x in result["inject"]:
         if x.get("skipped"):

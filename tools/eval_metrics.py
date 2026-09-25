@@ -321,6 +321,13 @@ def score_position(O, a, frame, judge_grid="", full=True):
         row["ref_squares"] = sorted({G.square_letters(e, n, frame.zone)
                                      for e, n in zip(Er[::50], Nr[::50])} |
                                     {G.square_letters(float(Er[-1]), float(Nr[-1]), frame.zone)})
+        # если выход — правильный MGRS с переносом по точке, а судья тоже переносит
+        # по точке: пары с другим квадратом дают ~100 км
+        wx_r, wy_r = G.wrap(Er, Nr)
+        wx_e, wy_e = G.wrap(Ee, Ne)
+        dw = np.sqrt((wx_e - wx_r) ** 2 + (wy_e - wy_r) ** 2 + (Xp[:, 2] - P[idx, 2]) ** 2)
+        row["wrap_3d_mean"] = _nanstat(np.mean, dw)
+        row["wrap_3d_max"] = _nanstat(np.max, dw)
         # сырые x, y, z выхода против эталона в соглашении судьи judge_grid
         if judge_grid:
             _, gE, gN = G.grid_origin(judge_grid)
@@ -358,9 +365,9 @@ def score_position(O, a, frame, judge_grid="", full=True):
 
 W_MEAN = ("v_mae", "v_bias", "cov2s_v", "cov1s_v", "p3d_mean", "p2d_mean", "pz_mean",
           "along_mean", "along_bias", "cross_mean", "cov2s_along", "v_pair_frac",
-          "judge_raw_3d_mean")
+          "judge_raw_3d_mean", "wrap_3d_mean")
 W_RMS = ("v_rmse", "p3d_rmse", "along_rmse")
-MAXES = ("v_max", "p3d_max", "along_max", "cross_max", "judge_raw_3d_max")
+MAXES = ("v_max", "p3d_max", "along_max", "cross_max", "judge_raw_3d_max", "wrap_3d_max")
 SUMS = ("v_pairs", "p_pairs", "sq_mismatch", "false_ss_n", "moving_n", "v_nan", "p_nan",
         "along_undef")
 

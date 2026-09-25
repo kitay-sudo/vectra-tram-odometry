@@ -57,6 +57,8 @@ QUICK_KINDS = ("both_zero", "dropout", "nan", "stamp_jump")
 VARIANTS = ("stubs:c_creep=0.02,c_creep_drag=0.002", "zero:c_creep=0,c_creep_drag=0")
 SENS_FRAMES = ("mgrs", "enu", "equirect")
 BEFORE_S, AFTER_S = 30.0, 60.0
+GNSS_FULL_S = 600.0                     # с записи: прогон «GNSS весь прогон» — первые 10 мин
+TAIL_S = 300.0                          # с: прогон с инъекцией идёт до конца окна + TAIL_S
 REC_TOL, REC_HOLD = 0.1, 3.0            # м/с, с: восстановление = |v − v_чисто| ≤ tol в течение hold
 
 
@@ -114,18 +116,55 @@ def build_train_map(out, train_ids, workers, log):
         sys.argv = argv
 
 
-def resolve_map(spec, cache, train_ids, workers, rebuild, log):
+MAP_SRC = ("analysis/build_map.py", "analysis/drive_model.json",
+           "ros2_ws/src/tram_state_estimator/tram_state_estimator/track_map.py",
+           "ros2_ws/src/tram_state_estimator/tram_state_estimator/runner.py",
+           "ros2_ws/src/tram_state_estimator/config/tram_calibration.json")
+# карта напарника analysis/cache/track_map_train.npz собрана кодом main 56933cc;
+# её содержимое совпадает с пересборкой (проверено 25.09, docs/EVAL.md)
+LEGACY_MAP_KEY = "bb9fbbdf"
+
+
+def map_key():
+    """Ключ карты оценки: хэш кода, от которого она зависит. После правок
+    build_map.py / track_map.py / runner.py карта пересобирается сама."""
+    h = hashlib.sha256()
+    for rel in MAP_SRC:
+        f = ROOT / rel
+        h.update(rel.encode())
+        h.update(f.read_bytes() if f.exists() else b"-")
+    return h.hexdigest()[:8]
+
+
+def _writable(d):
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        t = d / ".eval_write_test"
+        t.write_bytes(b"")
+        t.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def resolve_map(spec, cache, train_ids, workers, rebuild, log, out):
     if spec == "none":
         return None, "без карты (запасной режим map_file: \"\")", None
     if spec == "train":
-        f = cache / "track_map_train.npz"
-        if rebuild or not f.exists():
+        key = map_key()
+        name = f"track_map_train.{key}.npz"
+        cands = [cache / name, out / "maps" / name]
+        if key == LEGACY_MAP_KEY:
+            cands.append(cache / "track_map_train.npz")
+        f = next((c for c in cands if c.exists()), None)
+        if rebuild or f is None:
+            f = (cache if _writable(cache) else out / "maps") / name
+            f.parent.mkdir(parents=True, exist_ok=True)
             build_train_map(f, train_ids, workers, log)
-        return f, "оценочная: только обучающие прогоны (build_map.py train)", None
+        return f, f"оценочная: только обучающие прогоны (build_map.py train, ключ кода {key})", None
     if spec == "jury":
         f = R.CFG / "track_map.npz"
-        return f, "боевая config/track_map.npz (все данные)", \
-            "УТЕЧКА: боевая карта собрана по всем прогонам, включая отложенные"
+        return f, "боевая config/track_map.npz (все данные)",             "УТЕЧКА: боевая карта собрана по всем прогонам, включая отложенные"
     f = Path(spec)
     return f, str(spec), None
 
@@ -170,6 +209,8 @@ def run_task(task):
     cfg = task["cfg"]
     bag = task["bag"]
     a = _load_run(bag, cfg["quick_s"])
+    if task.get("limit_s"):
+        a = R.truncate(a, task["limit_s"])
     info = None
     if task.get("inject"):
         kind = task["inject"]
@@ -178,6 +219,8 @@ def run_task(task):
             return dict(task=task["id"], skipped=f"нет окна для {kind}")
         p0 = R.make_params(cfg["sheet"], cfg["overrides"])
         a, info = I.apply(a, kind, t0, dur, seed=I.seed_for(bag, kind), sigma_meas=p0.sigma_meas)
+        # дальше конца окна + TAIL_S не считаем: остаток прогона только стоит времени
+        a = R.cut_stamp(a, t0 + I.eval_window(kind) + TAIL_S)
     p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
     node = cfg["sheet"]["node"]
     mp = cfg["map_path"]
@@ -230,6 +273,7 @@ def run_task(task):
         if task.get("keep_samples"):
             e["samples"] = dict(v=s_v, p=s_p)
         if task.get("keep_series"):
+            e["xyz"] = O["XYZ"]
             e["series"] = _series(O)
             e["series"]["tp"] = s_p["tp"] if s_p else np.zeros(0)
             e["series"]["al"] = s_p.get("al", np.zeros(0)) if s_p else np.zeros(0)
@@ -313,15 +357,67 @@ def inject_metrics(res_inj, res_clean):
                     sv_at = Si["SV"][M.nearest(Si["T"], Si["tg"][m])[0]]
                     d[w]["cov2s"] = float(np.mean(np.abs(Si["ev"][m]) <= 2 * sv_at))
         d["recovery_s"] = _recovery(Si, Sc, t1)
-        ri, rc = ei["row"], ec["row"]
-        d["d_along_end_run"] = (ri.get("along_end", np.nan) - rc.get("along_end", np.nan)) \
-            if ei["crash"] is None else None
-        d["d_p3d_end_run"] = (ri.get("p3d_end", np.nan) - rc.get("p3d_end", np.nan)) \
-            if ei["crash"] is None else None
-        d["n_out"], d["n_out_clean"] = ei["n_out"], ec["n_out"]
+        # остаточная ошибка в конце хвоста (TAIL_S после окна) против чистого прогона
+        d["d_along_tail"] = d["d_3d_tail"] = None
+        if ei["crash"] is None and len(Si["tp"]) and len(Sc["tp"]):
+            jc, okc = M.nearest(Sc["tp"], Si["tp"][-1:], tol=0.051)
+            if okc[0]:
+                d["d_3d_tail"] = float(Si["d3"][-1] - Sc["d3"][jc[0]])
+            fa = np.flatnonzero(np.isfinite(Si["al"]))
+            if len(fa):
+                k = int(fa[-1])
+                jk, okk = M.nearest(Sc["tp"], Si["tp"][k:k + 1], tol=0.051)
+                if okk[0]:
+                    d["d_along_tail"] = float(Si["al"][k] - Sc["al"][jk[0]])
+        d["tail_s"] = TAIL_S
+        d["n_out"] = ei["n_out"]
         d["nan_out"] = int(np.sum(~np.isfinite(Si["V"])))
         out["est"][name] = d
     return out
+
+
+# ------------------------------------------------------------------ GNSS весь прогон против 3 с
+
+def gnss_full_compare(res, base, ids):
+    """Выход с GNSS весь прогон против выхода с GNSS 3 с на общем отрезке
+    (первые GNSS_FULL_S с записи): README разрешает GNSS только для выставки,
+    значит выходы должны совпасть. Плюс метрики обоих на этом отрезке."""
+    per, rows_f, rows_b = {}, [], []
+    for b in ids:
+        ef = res[("gnss_full", b)]["est"]["model"]
+        eb = base[b]["est"]["model"]
+        Sf, Sb = ef.get("series"), eb.get("series")
+        if not Sf or not Sb or not len(Sf["T"]):
+            continue
+        t_hi = float(Sf["T"][-1])
+        mb = Sb["T"] <= t_hi
+        j, ok = M.nearest(Sf["T"], Sb["T"][mb], tol=1e-6)
+        same_grid = bool(ok.all()) and int(mb.sum()) == len(Sf["T"])
+        dv = np.abs(Sf["V"][j[ok]] - Sb["V"][mb][ok])
+        XYZf = ef["xyz"]
+        XYZb = eb["xyz"][mb][ok]
+        dp = np.linalg.norm(XYZf[j[ok]] - XYZb, axis=1)
+        # метрики на общем отрезке: пары скорости и положения по меткам эталона
+        mg = Sb["tg"] <= t_hi
+        mpp = Sb["tp"] <= t_hi
+        rb = dict(v_pairs=int(mg.sum()), v_mae=float(np.mean(np.abs(Sb["ev"][mg]))) if mg.any() else None,
+                  p3d_mean=float(np.nanmean(Sb["d3"][mpp])) if mpp.any() else None)
+        rf = dict(v_pairs=ef["row"].get("v_pairs", 0), v_mae=ef["row"].get("v_mae"),
+                  p3d_mean=ef["row"].get("p3d_mean"), p3d_end=ef["row"].get("p3d_end"))
+        rows_b.append(rb)
+        rows_f.append(rf)
+        per[b] = dict(span_s=t_hi - float(Sf["T"][0]), same_grid=same_grid,
+                      n_out_full=int(len(Sf["T"])), n_out_3s=int(mb.sum()),
+                      max_dv=float(dv.max()) if len(dv) else None,
+                      max_dpos=float(np.nanmax(dp)) if len(dp) else None,
+                      v_mae_full=rf["v_mae"], v_mae_3s=rb["v_mae"],
+                      p3d_mean_full=rf["p3d_mean"], p3d_mean_3s=rb["p3d_mean"])
+    return dict(span_s=GNSS_FULL_S, runs=per, full=M.totals(rows_f), gnss3=M.totals(rows_b),
+                identical_runs=int(sum(1 for r in per.values()
+                                       if r["same_grid"] and (r["max_dv"] or 0) <= 1e-9
+                                       and (r["max_dpos"] or 0) <= 1e-6)),
+                max_dv=max((r["max_dv"] or 0 for r in per.values()), default=None),
+                max_dpos=max((r["max_dpos"] or 0 for r in per.values()), default=None))
 
 
 # ------------------------------------------------------------------ сборка результата
@@ -394,7 +490,8 @@ def evaluate(args, log):
     ids = list(QUICK_RUNS) if args.quick else (args.runs.split(",") if args.runs else list(holdout))
     workers = args.workers or max(1, effective_cpus())
     ensure_cache(ids, workers, log)
-    map_path, map_label, map_leak = resolve_map(args.map, cache, train, workers, args.rebuild_map, log)
+    map_path, map_label, map_leak = resolve_map(args.map, cache, train, workers, args.rebuild_map, log,
+                                             ROOT / args.out)
     sheet = R.resolve_sheet(args.sheet)
     overrides = R.parse_overrides(args.set)
     cfg = dict(sheet=sheet, overrides=overrides, map_path=str(map_path) if map_path else None,
@@ -423,8 +520,8 @@ def evaluate(args, log):
     # GNSS весь прогон (bag жюри с полным GNSS)
     if args.gnss != "full" and not args.no_gnss_full and not args.quick:
         for b in ids:
-            tasks.append(dict(id=("gnss_full", b), bag=b, cfg=cfg, gnss="full", naive=True,
-                              full=False))
+            tasks.append(dict(id=("gnss_full", b), bag=b, cfg=cfg, gnss="full", naive=False,
+                              full=False, keep_series=True, limit_s=GNSS_FULL_S))
     # инъекции
     inj_runs = [] if args.no_inject else (
         [ids[0]] if args.quick else [b for b in args.inject_runs.split(",") if b])
@@ -503,15 +600,12 @@ def evaluate(args, log):
         var_out.append(dict(v, totals=M.totals(rows)))
     report["variants"] = var_out
     if any(k[0] == "gnss_full" for k in res):
-        report["gnss_full"] = {e: M.totals([res[("gnss_full", b)]["est"][e]["row"] for b in ids])
-                               for e in ("model", "naive")}
-        report["gnss_full_runs"] = {b: {e: {k: res[("gnss_full", b)]["est"][e]["row"].get(k)
-                                            for k in ("v_mae", "p3d_mean", "p3d_end")}
-                                        for e in ("model", "naive")} for b in ids}
+        report["gnss_full"] = gnss_full_compare(res, base, ids)
+
     def _cr(c):
         return None if c is None else {k: v for k, v in c.items() if k != "stamp"}
     report["crashes"] = {b: {e: _cr(c) for e, c in cs.items()} for b, cs in report["crashes"].items()}
-    runs = {b: {e: dict(base[b]["est"][e]["row"], crash=_cr(base[b]["est"][e]["crash"]))
+    runs = {b:{e: dict(base[b]["est"][e]["row"], crash=_cr(base[b]["est"][e]["crash"]))
                 for e in base[b]["est"] if "row" in base[b]["est"][e]} for b in sorted(base)}
     inj = []
     for k, r in sorted(((k, r) for k, r in res.items() if k[0] == "inj"),
