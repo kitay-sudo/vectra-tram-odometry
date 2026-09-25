@@ -29,6 +29,7 @@
 
 from bisect import bisect_right
 from collections import deque
+from math import sqrt
 from dataclasses import dataclass, field, fields, replace
 import numpy as np
 
@@ -700,8 +701,7 @@ def position_sigma(sigma_s, ds, p=DEFAULT):
     точки привязки, ошибка масштаба колёс на пути ds после выставки или
     последней привязки к остановке. Привязка сбрасывает накопленную ошибку, а
     σ пути фильтра этого не знает."""
-    return float(np.sqrt(sigma_s * sigma_s + p.ss_map * p.ss_map
-                         + (p.ss_rel * ds) ** 2))
+    return sqrt(sigma_s * sigma_s + p.ss_map * p.ss_map + (p.ss_rel * ds) ** 2)
 
 
 # ------------------------------------------------------------------ фильтр
@@ -1382,13 +1382,15 @@ class Estimator:
         прогонов; внутренняя ковариация фильтра не меняется."""
         p = self.p
         v = float(self.x[IV])
-        a = ((body_force(u, v, self.x[IKT], self.x[IKB], self.mu, p)
-              - resistance(v, p)) / p.M_nom + float(self.x[ID]))
-        if v <= 0.0 and a < 0.0:
-            a = 0.0
+        a = 0.0
+        if p.sv_age:                # ускорение модели — как в выходе связки
+            a = ((body_force(u, v, self.x[IKT], self.x[IKB], self.mu, p)
+                  - resistance(v, p)) / p.M_nom + float(self.x[ID]))
+            if v <= 0.0 and a < 0.0:
+                a = 0.0
         floor = p.sv_floor_stand if self.mode == STANDSTILL else p.sv_floor
-        return float(np.sqrt((p.sv_gain * sv) ** 2 + floor * floor
-                             + (p.sv_age * a) ** 2 + (p.sv_rel * v) ** 2))
+        return sqrt((p.sv_gain * sv) ** 2 + floor * floor
+                    + (p.sv_age * a) ** 2 + (p.sv_rel * v) ** 2)
 
     def _finish(self, u, z, ok, acc, fresh):
         """Общая часть шага: параметры, границы, стоянка, режим, выход.

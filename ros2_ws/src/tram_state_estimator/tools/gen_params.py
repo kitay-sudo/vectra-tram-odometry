@@ -6,12 +6,20 @@
     python tools/gen_params.py
 
   * config/params.yaml            — лист имитатора (значения Params);
-  * config/tram.yaml              — лист вагона: Params + калибровка по данным
-                                    (config/tram_calibration.json);
+  * config/tram.yaml              — лист вагона ДЛЯ ЖЮРИ: Params + калибровка
+                                    по всем данным (config/tram_calibration.json);
+  * config/eval/tram.yaml         — лист вагона ДЛЯ ОЦЕНКИ: Params + калибровка
+                                    только по split train
+                                    (config/eval/tram_calibration.json);
   * MODEL.md (между маркерами)    — таблицы «Лист параметров».
 
+Калибровку (json) делают analysis/calib_drive.py, calib_sheet.py,
+calib_tune.py и calib_sigma.py (см. docs в их заголовках). Лист ноды — всегда
+производная калибровки: руками tram.yaml не правится.
+
 После правки значений или добавления параметра достаточно перезапустить
-скрипт; тест test_params_mirror_yaml следит, чтобы yaml не разошёлся с кодом.
+скрипт; тесты test_params_mirror_yaml и test_sheets.py следят, чтобы листы не
+разошлись с кодом и калибровкой.
 """
 
 import json
@@ -28,17 +36,44 @@ from tram_state_estimator.estimator_core import Params, DEFAULT  # noqa: E402
 
 BEGIN = "<!-- PARAMS:BEGIN -->"
 END = "<!-- PARAMS:END -->"
+# Параметры ноды tram_estimator вне ядра (Params): (имя, значение в YAML,
+# единицы, смысл). Значение — строка YAML как есть.
 TRAM_NODE_ONLY = [
-    ("wheel_timeout_s", 1.0, "с", "нет показаний тележек дольше — разомкнутый режим"),
-    ("handle_timeout_s", 0.5, "с", "нет ручки дольше — параметры не адаптируются"),
-    ("init_window_s", 3.0, "с", "окно начальной выставки по GNSS от первой точки"),
+    ("wheel_timeout_s", "1.0", "с", "нет показаний тележек дольше — разомкнутый режим"),
+    ("handle_timeout_s", "0.5", "с", "нет ручки дольше — параметры не адаптируются"),
+    ("init_window_s", "3.0", "с", "окно начальной выставки по GNSS от первой точки"),
     ("map_file", '"config/track_map.npz"', "—", "карта путей; пусто — без карты"),
-    ("origin_lat", ".nan", "°", "начало ENU; NaN — первая точка GNSS master"),
-    ("origin_lon", ".nan", "°", "начало ENU; NaN — первая точка GNSS master"),
-    ("origin_alt", ".nan", "м", "начало ENU; NaN — первая точка GNSS master"),
+    ("projection", '"mgrs"', "—",
+     "система выхода /result/position: mgrs (плоские MGRS, WGS84; так считает "
+     "судья по ответу организаторов 25.09) | utm (абсолютные UTM E/N) | enu "
+     "(касательная плоскость от первой точки master) | equirect (прежняя); "
+     "z — абсолютная высота"),
+    ("mgrs_grid", '""', "—",
+     "пусто — координаты внутри квадрата 100 км, где лежит точка (как Autoware); "
+     "код квадрата, например \"37UDB\", — непрерывно от этого квадрата. Линия "
+     "пересекает границу 37U CB | DB (E = 400 км): соглашение судьи ждём с картой"),
+    ("utm_zone", "0", "—", "зона UTM; 0 — по точке выставки (здесь 37)"),
+    ("origin_lat", ".nan", "°", "начало для projection enu; NaN — первая точка GNSS master"),
+    ("origin_lon", ".nan", "°", "начало для projection enu; NaN — первая точка GNSS master"),
+    ("origin_alt", ".nan", "м", "начало для projection enu; NaN — первая точка GNSS master"),
     ("frame_id", '"map"', "—", "система координат положения"),
     ("child_frame_id", '"base_link"', "—", "система вагона"),
 ]
+
+# Листы вагона: (калибровка, лист ноды, карта, заголовок).
+SHEETS = {
+    "jury": ("config/tram_calibration.json", "config/tram.yaml", None, [
+        "# Лист параметров ВАГОНА для ноды tram_estimator (контракт ТЗ). ЛИСТ ЖЮРИ:",
+        "# калибровка по ВСЕМ данным (train + holdout), уходит в пакет.",
+    ]),
+    "eval": ("config/eval/tram_calibration.json", "config/eval/tram.yaml", '""', [
+        "# Лист параметров ВАГОНА — ЛИСТ ОЦЕНКИ: калибровка только по split train",
+        "# (tools/split.json). По нему считаются все наши числа на holdout_scored.",
+        "# Карта здесь пустая: инструмент оценки подаёт карту, собранную только из",
+        "# обучающих прогонов (analysis/build_map.py train), параметром map_file.",
+        "# Жюри этот лист НЕ отдаётся.",
+    ]),
+}
 
 NODE_ONLY = [
     ("rate_hz", 100.0, "Гц", "частота цикла; из неё получается шаг фильтра dt"),
@@ -78,9 +113,9 @@ def groups():
     return order, table
 
 
-def tram_params():
+def tram_params(which="jury"):
     """Лист вагона: Params с подстановкой калибровки по данным."""
-    path = os.path.join(PKG, "config", "tram_calibration.json")
+    path = os.path.join(PKG, SHEETS[which][0])
     with open(path, encoding="utf-8") as fh:
         over = json.load(fh)["params"]
     return Params.from_dict(over)
@@ -104,26 +139,35 @@ def core_rows(p, skip_dt=True):
     return out
 
 
-def gen_tram_yaml():
-    p = tram_params()
-    out = [
-        "# Лист параметров ВАГОНА для ноды tram_estimator (контракт ТЗ).",
+def tram_yaml_text(which="jury"):
+    """Текст листа вагона: параметры ноды + Params с калибровкой."""
+    calib, _, map_file, head = SHEETS[which]
+    p = tram_params(which)
+    out = head + [
         "#",
         "# ФАЙЛ СГЕНЕРИРОВАН tools/gen_params.py: значения Params, заменённые",
-        "# калибровкой по данным (config/tram_calibration.json, её делает",
-        "# analysis/calib_sheet.py). Правьте калибровку или Params и перезапускайте.",
+        f"# калибровкой по данным ({calib}; её делают analysis/calib_*.py).",
+        "# Правьте калибровку или Params и перезапускайте; руками не править.",
         "",
         "/tram_state_estimator:",
         "  ros__parameters:",
     ]
     for name, val, unit, doc in TRAM_NODE_ONLY:
-        out.append(f"    {name}: {val if isinstance(val, str) else fmt(val)}"
-                   f"    # {unit} · {doc}")
+        if name == "map_file" and map_file is not None:
+            val = map_file
+        out.append(f"    {name}: {val}    # {unit} · {doc}")
     out += core_rows(p, skip_dt=False)
     out.append("")
-    path = os.path.join(PKG, "config", "tram.yaml")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(out))
+    return "\n".join(out)
+
+
+def gen_tram_yaml(which="jury"):
+    path = os.path.join(PKG, SHEETS[which][1])
+    if not os.path.exists(os.path.join(PKG, SHEETS[which][0])):
+        return None
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(tram_yaml_text(which))
     return path
 
 
@@ -203,5 +247,6 @@ def patch_model_md():
 
 if __name__ == "__main__":
     print("yaml :", gen_yaml())
-    print("tram :", gen_tram_yaml())
+    print("tram :", gen_tram_yaml("jury"))
+    print("eval :", gen_tram_yaml("eval") or "нет config/eval/tram_calibration.json")
     print("model:", patch_model_md() or "маркеры в MODEL.md не найдены")
