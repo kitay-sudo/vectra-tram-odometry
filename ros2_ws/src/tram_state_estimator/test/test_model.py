@@ -604,7 +604,8 @@ def test_step_time_within_budget():
 
 TRAM_NODE_ONLY = {"wheel_timeout_s", "handle_timeout_s", "init_window_s",
                   "map_file", "origin_lat", "origin_lon", "origin_alt",
-                  "frame_id", "child_frame_id"}
+                  "frame_id", "child_frame_id", "projection", "mgrs_grid",
+                  "utm_zone", "scale_adapt", "nomap_mode"}
 
 
 def _tram():
@@ -677,7 +678,9 @@ def test_agreeing_bogies_outweigh_wrong_handle():
 
 def test_position_follows_map_and_ignores_late_gnss():
     """Выставка по двум антеннам, движение по карте; GNSS после окна
-    выставки не используется."""
+    выставки не используется: поздняя точка не сдвигает ни выход, ни сетку.
+    Выход в прежней плоской системе (projection equirect), чтобы сверять с
+    координатами карты напрямую; MGRS — test_position.py."""
     from tram_state_estimator.runner import Runner
     from tram_state_estimator.track_map import TrackMap
     lat0, lon0 = 55.8, 37.4
@@ -691,15 +694,25 @@ def test_position_follows_map_and_ignores_late_gnss():
     lat = lat0 + np.degrees(P[:, 0] / 6378137.0)
     lon = lon0 + np.degrees(P[:, 1] / (6378137.0 * k))
     tm = TrackMap(lat, lon, np.zeros(len(P)), P[:, 2], np.ones(len(P)))
-    r = Runner(_tram(), track_map=tm)
+    r = Runner(_tram(), track_map=tm, projection="equirect")
     for t in np.arange(0, 2.0, 0.1):                 # выставка: стоим в (0, 0)
         r.on_fix(t, "master", lat0, lon0, 0.0)
         r.on_fix(t, "rover", lat0, lon0 + np.degrees(12.0 / (6378137.0 * k)), 0.0)
     v = 5.0
     outs = _feed(r, 80.0, lambda t: v if t > 2 else 0.0, lambda t: 0)
-    # поздний «GNSS» с другой точкой не должен сдвинуть оценку
-    r.on_fix(80.0, "master", lat0 + 0.01, lon0, 0.0)
+    # поздний «GNSS» с другой точкой: ни шага сетки, ни сдвига
+    t_grid = r.t
+    assert r.on_fix(80.0, "master", lat0 + 0.01, lon0, 0.0) == []
+    assert r.on_fix(80.01, "rover", lat0 + 0.01, lon0, 0.0) == []
+    assert r.t == t_grid
+    # поток продолжается: проверяем выход ПОСЛЕ поздней точки
+    for j in range(1, 60):
+        t = 80.0 + j / 9.4
+        outs += r.on_wheel(0, t, v * 3.6)
+        outs += r.on_wheel(1, t + 0.037, v * 3.6)
+        outs += r.on_handle(t + 0.02, 0)
     o = outs[-1]
+    assert o["stamp"] > 85.0
     s = v * (o["stamp"] - 2.0)                        # пройденный путь
     assert s > 300
     arc = 200 + np.pi / 2 * 50
