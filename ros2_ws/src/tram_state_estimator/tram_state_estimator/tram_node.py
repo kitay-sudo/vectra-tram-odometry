@@ -9,8 +9,11 @@
 Выходы:
     /result/velocity   tram_vehicle_msgs/VelocitySensor   скорость, м/с
     /result/position   nav_msgs/Odometry                  x, y, z, м: по умолчанию
-                       плоские координаты MGRS (x — восток, y — север в 100-км
-                       квадрате, z — абсолютная высота), см. параметр projection
+                       плоские координаты MGRS от угла квадрата 37UCB непрерывно
+                       (x — восток, y — север, z — высота уровня рельса) точки
+                       base_link (ось передней тележки); frame_id "map" — эта
+                       система, child_frame_id "base_link"; см. параметры
+                       projection, mgrs_grid, output_point
     /result/acceleration geometry_msgs/AccelStamped        ускорение, м/с²
     /tram/estimator_status tram_msgs/EstimatorStatus       состояние оценщика
 
@@ -164,12 +167,20 @@ class TramEstimatorNode(Node):
         P("frame_id", "map")
         P("child_frame_id", "base_link")
         # выходная система /result/position (docs/POSITION_FRAME.md):
-        # mgrs | utm | enu | equirect; mgrs_grid "" — каждая точка в своём
-        # 100-км квадрате, "37UDB" — непрерывно от угла этого квадрата
+        # mgrs | utm | enu | equirect; mgrs_grid "37UCB" — непрерывно от угла
+        # этого квадрата (так записана карта организаторов pathgraph: x
+        # переходит 100 000 на E = 400 км плавно), "" — каждая точка в своём
+        # 100-км квадрате (Autoware)
         P("projection", "mgrs")
-        P("mgrs_grid", "")
+        P("mgrs_grid", "37UCB")
         P("utm_zone", 0)                   # 0 — по точке выставки
-        P("mgrs_guard_m", 20.0)            # ближе к краю 100-км квадрата не публиковать (0 — выкл.)
+        P("mgrs_guard_m", 0.0)             # только при mgrs_grid "": не публиковать у края квадрата
+        # точка выхода: base_link (ось передней тележки, уровень рельса — как
+        # эталон судьи и pathgraph) | master (антенна); антенны в base_link, м
+        P("output_point", "base_link")
+        P("antenna_master_x", -9.873)
+        P("antenna_rover_x", 2.563)
+        P("antenna_z", 3.0)
         P("scale_adapt", True)             # онлайн-масштаб пути по остановкам
         P("nomap_mode", "hold")            # без карты: hold (стоять в якоре) | line
         P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе,
@@ -199,7 +210,11 @@ class TramEstimatorNode(Node):
                              keep_offset_xy=g("keep_offset_xy"),
                              keep_offset_z=g("keep_offset_z"),
                              keep_offset_max_status=g("keep_offset_max_status"),
-                             terminal_hold=g("terminal_hold"))
+                             terminal_hold=g("terminal_hold"),
+                             output_point=g("output_point"),
+                             antenna_master_x=g("antenna_master_x"),
+                             antenna_rover_x=g("antenna_rover_x"),
+                             antenna_z=g("antenna_z"))
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
         self._robust_setup()
@@ -230,8 +245,10 @@ class TramEstimatorNode(Node):
             f"лист: {self.sheet_src}; карта: {path or 'нет (map_file пуст)'}; "
             f"единицы {params.meas_units}; пульс {self.pulse_h:.1f} с; выход "
             f"{g('projection')}"
-            + (f" {g('mgrs_grid')}" if g("mgrs_grid") else
-               " (MGRS: каждая точка в своём 100-км квадрате)" if g("projection") == "mgrs" else ""))
+            + (f" от квадрата {g('mgrs_grid')} непрерывно" if g("mgrs_grid") else
+               " (MGRS: каждая точка в своём 100-км квадрате)" if g("projection") == "mgrs" else "")
+            + f"; точка {g('output_point')}"
+            + (f" (карта по {tmap.point})" if tmap is not None else ""))
 
     # ---------- устойчивость ----------
 

@@ -9,10 +9,12 @@
 
 Эталон скорости — |GNSS master/vel| по горизонтали (основной) и rover/vel
 (контрольный): «эталонной скорости нет, есть 4 источника» (организаторы,
-25.09). Эталон положения — GNSS master fix, переведённый в ту систему, в
-которой публикует Runner (MGRS, UTM, ENU или прежний equirect): система
-определяется по самому выходу (refgeo.detect), поэтому тест не зависит от
-значения параметра projection. Пары — по ближайшей метке выхода в пределах
+25.09). Эталон положения — точка base_link по tf антенн (организаторы, 25.09:
+base_link = master + 9,873/12,436 · (rover − master), z − 3,0; пары master и
+rover одной эпохи ±0,05 с), переведённая в ту систему, в которой публикует
+Runner (MGRS, UTM, ENU или прежний equirect): система определяется по самому
+выходу (refgeo.detect), поэтому тест не зависит от значения параметра
+projection. point="master" — прежний эталон (антенна master). Пары — по ближайшей метке выхода в пределах
 0,05 с, как у судьи. Положение сравнивается только у выходов, которые нода
 публикует в /result/position (pos_valid, как в tram_node.py); ошибка — без
 вычета скачка на границе 100-км квадратов MGRS (так её увидит судья).
@@ -70,7 +72,11 @@ POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("mgrs_grid", "mgrs_grid"), ("utm_zone", "utm_zone"),
                  ("mgrs_guard_m", "mgrs_guard_m"), ("scale_adapt", "scale_adapt"),
                  ("nomap_mode", "nomap_mode"), ("keep_offset_xy", "keep_offset_xy"),
-                 ("keep_offset_z", "keep_offset_z"))
+                 ("keep_offset_z", "keep_offset_z"), ("output_point", "output_point"),
+                 ("antenna_master_x", "antenna_master_x"),
+                 ("antenna_rover_x", "antenna_rover_x"), ("antenna_z", "antenna_z"))
+# tf антенн в base_link (организаторы 25.09); независимо от body.py пакета
+MASTER_X, ROVER_X, ANTENNA_Z = -9.873, 2.563, 3.0
 
 
 def _explicit(fn, name):
@@ -168,9 +174,35 @@ def _speed(T, V, g):
     return int(ok.sum()), e
 
 
-def metrics(outs, fx, frame=None):
+def reference(fx, point="base_link", origin=None):
+    """Эталон положения: (метки, {система: N×3}) — точка point вагона по GNSS.
+    base_link — по парам master+rover одной эпохи (±0,05 с) в каждой системе:
+    master + 9,873/12,436 · (rover − master), z − 3,0 (фиксы master без пары
+    не входят); master — сами фиксы master."""
+    m = fx["mfix"]
+    o = origin or tuple(m[0, 2:5])
+    if point == "master":
+        return m[:, 1], refgeo.frames(m[:, 2], m[:, 3], m[:, 4], origin=o)
+    r = fx["rfix"]
+    j, ok = _nearest(r[:, 1], m[:, 1])
+    fm = refgeo.frames(m[ok, 2], m[ok, 3], m[ok, 4], origin=o)
+    fr = refgeo.frames(r[j[ok], 2], r[j[ok], 3], r[j[ok], 4], origin=o)
+    f = -MASTER_X / (ROVER_X - MASTER_X)
+    out = {}
+    for name in fm:
+        if name not in fr:
+            continue
+        d = fr[name] - fm[name]
+        d[:, :2] -= np.round(d[:, :2] / 1e5) * 1e5      # пара по разные стороны границы квадратов
+        out[name] = fm[name] + f * d
+        out[name][:, 2] -= ANTENNA_Z
+    return m[ok, 1], out
+
+
+def metrics(outs, fx, frame=None, point="base_link"):
     """Метрики выхода. frame — система эталона положения (имя из refgeo.frames);
-    None — определить по самому выходу (refgeo.detect)."""
+    None — определить по самому выходу (refgeo.detect). point — точка
+    эталона: base_link (по умолчанию, как у судьи) или master."""
     T = np.array([o["stamp"] for o in outs])
     V = np.array([o["v"] for o in outs])
     X = np.array([[o["x"], o["y"], o["z"]] for o in outs])
@@ -193,6 +225,8 @@ def metrics(outs, fx, frame=None):
     # (s, 0, 0) до выставки.
     pub = [k for k, o in enumerate(outs) if o.get("pos_valid", True)]
     res["n_pos_published"] = len(pub)
+    # шагов без опубликованного положения после первого опубликованного
+    res["n_pos_gaps"] = (len(outs) - pub[0] - len(pub)) if pub else 0
     res["squares"] = refgeo.mgrs_squares(fx["mfix"][:, 2], fx["mfix"][:, 3])
     m = fx["mfix"]
     if len(pub) < 2:            # положения нет совсем (нет GNSS — нет якоря)
@@ -200,11 +234,12 @@ def metrics(outs, fx, frame=None):
         return _path(res, m)
     Tp, Xall = T[pub], X[pub]
     ready_all = np.array([bool(outs[k].get("pos_ready", True)) for k in pub])
-    j2, ok2 = _nearest(Tp, m[:, 1])
+    t_ref, fr_all = reference(fx, point)
+    j2, ok2 = _nearest(Tp, t_ref)
     if not ok2.any():
         res.update(p_frame=frame or "none", p_pairs=0)
         return _path(res, m)
-    fr = refgeo.frames(m[ok2, 2], m[ok2, 3], m[ok2, 4], origin=tuple(m[0, 2:5]))
+    fr = {k: v[ok2] for k, v in fr_all.items()}
     Xp, ready = Xall[j2[ok2]], ready_all[j2[ok2]]
     if frame is None:
         frame, _ = refgeo.detect(Xp, fr)

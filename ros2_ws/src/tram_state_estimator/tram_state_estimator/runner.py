@@ -14,8 +14,9 @@ GNSS используется ТОЛЬКО для начальной выста�
 только через выставку (docs/POSITION_FRAME.md).
 
 Положение считается во внутренней непрерывной системе (UTM со сдвигом в точку
-выставки, geodesy.Frame) и переводится в выходную (по умолчанию MGRS) только
-при выдаче.
+выставки, geodesy.Frame) и переводится в выходную (по умолчанию MGRS от
+квадрата 37UCB непрерывно, как карта организаторов) только при выдаче. Точка
+выхода — base_link (ось передней тележки, уровень рельса), не антенна.
 """
 
 import copy
@@ -25,6 +26,7 @@ import numpy as np
 
 from .estimator_core import (Estimator, IV, ID, IS, STANDSTILL, body_force,
                              position_sigma, resistance, sensor_to_speed)
+from .body import ANTENNA_Z, MASTER_X, OUTPUT_POINTS, ROVER_X, Body, point_name
 from .geodesy import Equirect, Frame, projection_name
 from .track_map import hold_mode
 
@@ -38,15 +40,27 @@ Enu = Equirect
 class Position:
     """Положение по пройденному пути колёс.
 
+    Точка выхода — output_point: "base_link" (по умолчанию; ось поворота
+    передней тележки на уровне рельса — так строит эталон судья и карта
+    организаторов pathgraph) или "master" (антенна, как до 26.09). Антенны в
+    base_link — antenna_master_x, antenna_rover_x, antenna_z (body.py).
+    Курсор по карте ведёт ту точку вагона, по траектории которой собрана
+    карта (TrackMap.point: base_link у карт с 26.09 и у pathgraph, master у
+    прежних); без карты — сразу точку выхода. В выход точка переносится вдоль
+    курса пути (body.Body.shift).
+
     Выставка (только в окне init_window от первой годной точки GNSS):
-      * якорь — среднее точек master окна, если вагон стоял (путь колёс за
-        окно < 0,3 м), иначе ПОСЛЕДНЯЯ точка master окна с путём колёс на её
-        метку (старт на ходу);
+      * якорь антенны — среднее точек master окна, если вагон стоял (путь
+        колёс за окно < 0,3 м), иначе ПОСЛЕДНЯЯ точка master окна с путём
+        колёс на её метку (старт на ходу);
       * курс — по парам master→rover одной эпохи (rover впереди); без rover —
         по смещению master за окно (> 5 м), иначе по карте в точке якоря;
         иначе курса нет, и выход стоит в точке якоря;
-      * нет master, есть rover — якорь по rover, сдвинутый назад по курсу на
-        базу ROVER_BASE (rover впереди master); без курса — точка rover;
+      * нет master, есть rover — якорь антенны по rover;
+      * якорь антенны -> ведомая точка: на ходу при паре master+rover у
+        последней точки — по паре (base_link = master + 9,873/12,436 ·
+        (rover − master)), иначе перенос вдоль курса; высота — минус
+        antenna_z (base_link — уровень рельса); без курса — только высота;
       * якорь и путь выставки s_ref пересчитываются только при точке, вошедшей
         в выставку; после окна GNSS не читается;
       * точка с меткой дальше MAX_SKEW от сетки ядра — сбой метки: не
@@ -66,15 +80,16 @@ class Position:
     SCALE_MIN_L = 100.0          # м: короче — отрезок не учитывается
     SCALE_INCONS = 0.012         # отрезки разошлись больше — подстройку выключить
     OFFSET_Z_MAX = 30.0          # м: больший сдвиг высоты GNSS − карта не переносить
-    ROVER_BASE = 12.42           # м: rover впереди master (по данным; tf обещан)
     MAX_SKEW = 30.0              # с: метка GNSS дальше от сетки ядра — сбой метки
     ROVER_ONLY_AFTER = 1.0       # с: rover без master дольше — выставка по rover
 
     def __init__(self, track_map=None, origin=None, init_window=3.0,
-                 projection="mgrs", mgrs_grid="", utm_zone=0, stop_dwell=8.0,
+                 projection="mgrs", mgrs_grid="37UCB", utm_zone=0, stop_dwell=8.0,
                  scale_adapt=True, nomap_mode="hold", keep_offset_xy=True,
-                 keep_offset_z=True, keep_offset_max_status=-1, mgrs_guard_m=20.0,
-                 terminal_hold="terminals"):
+                 keep_offset_z=True, keep_offset_max_status=-1, mgrs_guard_m=0.0,
+                 terminal_hold="terminals", output_point="base_link",
+                 antenna_master_x=MASTER_X, antenna_rover_x=ROVER_X,
+                 antenna_z=ANTENNA_Z):
         self.map = track_map
         if track_map is not None:
             track_map.terminal_hold = hold_mode(terminal_hold)
@@ -85,6 +100,11 @@ class Position:
         self.utm_zone = int(utm_zone or 0)
         if self.projection == "mgrs" and self.mgrs_grid:
             Frame(55.8, 39.0, 0.0, "mgrs", self.mgrs_grid)   # проверка кода сразу
+        # точка вагона на выходе и ведомая курсором (по ней собрана карта)
+        self.body = Body(antenna_master_x, antenna_rover_x, antenna_z)
+        self.output_point = point_name(output_point, OUTPUT_POINTS)
+        self.track_point = (point_name(getattr(track_map, "point", "master"))
+                            if track_map is not None else self.output_point)
         self.stop_dwell = float(stop_dwell)
         self.scale_adapt = bool(scale_adapt)
         if nomap_mode not in ("line", "hold"):
@@ -103,11 +123,11 @@ class Position:
         self.keep_offset_max_status = int(keep_offset_max_status)
         self.offset = (0.0, 0.0, 0.0)
         self.window_status = None       # медиана статуса точек окна
-        # MGRS с переносом по квадратам: ближе mgrs_guard_m к краю 100-км
-        # квадрата положение не публикуется (pos_valid = False): выход и эталон
-        # могли бы оказаться в разных квадратах (ошибка 100 км). 0 — выкл.
-        # 20 м выбрано на train (68 прогонов): при 5 м 49 таких отсчётов на 7
-        # прогонах, при 20 м — 0; цена — ~4,7 с без положения на пересечение
+        # Только для MGRS с переносом по квадратам (mgrs_grid ""): ближе
+        # mgrs_guard_m к краю 100-км квадрата положение не публикуется. По
+        # умолчанию выключено (0): судья считает от квадрата 37UCB непрерывно
+        # (карта организаторов, 26.09), и положение публикуется на каждом шаге.
+        # С фиксированным квадратом (mgrs_grid "37UCB") не действует вовсе.
         self.mgrs_guard_m = float(mgrs_guard_m)
         self.frame = None               # geodesy.Frame: с первой точки master
         self.fixed = False              # якорь есть (положение известно)
@@ -210,11 +230,13 @@ class Position:
         self._bound = False
 
     def _alt_fallback(self, lat, lon):
-        """Высота вместо NaN: карта у точки, иначе последняя годная, иначе 0."""
+        """Высота антенны вместо NaN: карта у точки (плюс высота антенны над
+        точкой карты: у карты base_link z — уровень рельса), иначе последняя
+        годная, иначе 0."""
         if self.map is not None:
             h = self.map.altitude_at(lat, lon)
             if h is not None:
-                return h
+                return h + self.body.antenna_z - self.body.z(self.track_point)
         return self._last_alt if self._last_alt is not None else 0.0
 
     def _project(self, rows):
@@ -238,12 +260,14 @@ class Position:
             return
         M = self._project(self._r if from_rover else self._m)
         pairs = np.zeros((0, 2))
+        pi = pj = np.zeros(0, int)
         if not from_rover and self._r:
             R = self._project(self._r)
             i, j = np.nonzero(np.abs(M[:, 0][:, None] - R[:, 0][None, :]) <= self.PAIR_TOL)
             d = R[j, 1:3] - M[i, 1:3]
             b = np.hypot(d[:, 0], d[:, 1])
-            pairs = d[(b >= self.BASE_MIN) & (b <= self.BASE_MAX)]
+            ok = (b >= self.BASE_MIN) & (b <= self.BASE_MAX)
+            pairs, pi, pj = d[ok], i[ok], j[ok]
         self._pairs = pairs
         k_last = int(np.argmax(M[:, 0]))
         moving = (M[:, 4].max() - M[:, 4].min()) > 0.3
@@ -272,10 +296,18 @@ class Position:
             self._bound = True
         if az is None and self.map is not None:
             az = self.map.heading_at(anchor[:2])
-        if from_rover and az is not None:
-            # rover впереди master на базу: якорь master — назад по курсу
-            anchor = (anchor[0] - self.ROVER_BASE * math.sin(az),
-                      anchor[1] - self.ROVER_BASE * math.cos(az), anchor[2])
+        # якорь антенны -> ведомая точка вагона (base_link у карт с 26.09):
+        # на ходу — по паре master+rover у последней точки окна (кузов жёсткий,
+        # base_link на отрезке антенн и на кривой), иначе перенос вдоль курса;
+        # по высоте — минус antenna_z (base_link — уровень рельса)
+        sel = np.flatnonzero(pi == k_last) if moving else np.zeros(0, int)
+        if len(sel):
+            q = sel[int(np.argmin(np.abs(R[pj[sel], 0] - M[k_last, 0])))]
+            anchor = self.body.from_pair(M[k_last, 1:4], R[pj[q], 1:4], self.track_point)
+        else:
+            anchor = self.body.shift(anchor, az, "rover" if from_rover else "master",
+                                     self.track_point)
+        anchor = tuple(float(a) for a in anchor)
         self.window_status = float(np.median(M[:, 5]))
         self.xyz0, self.s_ref, self.fixed = anchor, s_ref, True
         self._s = 0.0
@@ -378,6 +410,7 @@ class Position:
             x, y, z = self._internal(ds)
         c = self._cursor
         az = c["h"] if c is not None else (self.az if self.ready else None)
+        x, y, z = self._out_point((x, y, z), az)
         self.xyz_internal = (x, y, z)
         if self.near_square_edge(x, y):
             return None
@@ -385,9 +418,19 @@ class Position:
         yaw = self.frame.out_yaw(x, y, az) if az is not None else None
         return X, Y, Z, yaw
 
+    def _out_point(self, xyz, az):
+        """Ведомая точка (по ней собрана карта) -> точка выхода вдоль курса
+        пути az (карта base_link, выход master и наоборот)."""
+        if self.track_point == self.output_point:
+            return xyz
+        return self.body.shift(xyz, az, self.track_point, self.output_point)
+
     def xyz(self, ds):
         """Положение после пути ds от якоря в выходной системе (без привязок)."""
-        return self.frame.out(*self._internal(ds))
+        c = self._cursor
+        xyz = self._internal(ds)
+        az = c["h"] if c is not None else (self.az if self.ready else None)
+        return self.frame.out(*self._out_point(xyz, az))
 
 
 def _num(x):
@@ -486,7 +529,8 @@ class Runner:
                  **position_opts):
         """position_opts — параметры Position: init_window, projection,
         mgrs_grid, utm_zone, scale_adapt, nomap_mode, keep_offset_xy,
-        keep_offset_z, keep_offset_max_status, mgrs_guard_m, terminal_hold."""
+        keep_offset_z, keep_offset_max_status, mgrs_guard_m, terminal_hold,
+        output_point, antenna_master_x, antenna_rover_x, antenna_z."""
         self.p = params
         self.core = Estimator(params)
         self.nw = self.core.nw
