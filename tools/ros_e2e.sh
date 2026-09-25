@@ -26,6 +26,9 @@
 #   --cpus N        ограничение CPU контейнера (docker --cpus), напр. 2
 #   --timeout S     жёсткий лимит на одно проигрывание bag (сек, 0 — нет)
 #   --no-shutdown-test  не проверять останов ноды по SIGINT
+#   --node MODE     launch (по умолчанию) | run — `ros2 run` без --params-file
+#   --node-args ".." для --node run: аргументы после --ros-args (-p x:=1 ...;
+#                   @SHARE@ = share пакета, напр. --params-file @SHARE@/config/tram.yaml)
 #   --build         собрать пакеты из /repo/ros2_ws/src во временный ws
 #                   (иначе используется сборка образа /ws, если исходники совпадают)
 # Переменные: IMAGE (vectra/tram:dev), DATA_DIR (<repo>/data).
@@ -62,7 +65,7 @@ fi
 # ---------------- внутри контейнера ----------------
 [ "${1:-}" = "--inside" ] && shift
 BAGS=(); RATE=1.0; TOPICS=""; LATE=0; LOOP=0; PAUSE=""; GAP=2; TAG=e2e; OFFSET=""
-INJECT=""; TIMEOUT=0; SHUT=1; BUILD=0
+INJECT=""; TIMEOUT=0; SHUT=1; BUILD=0; NODE_MODE=launch; NODE_ARGS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --bag) BAGS+=("$2"); shift ;;
@@ -79,6 +82,8 @@ while [ $# -gt 0 ]; do
     --mem|--cpus) shift ;;
     --no-shutdown-test) SHUT=0 ;;
     --build) BUILD=1 ;;
+    --node) NODE_MODE="$2"; shift ;;
+    --node-args) NODE_ARGS="$2"; shift ;;
     *) echo "unknown option $1"; exit 2 ;;
   esac
   shift
@@ -118,7 +123,12 @@ PROBE=$!
 
 NODE=""
 start_node() {
-  ros2 launch tram_state_estimator tram.launch.py >"$OUT/node.log" 2>&1 &
+  if [ "$NODE_MODE" = "run" ]; then
+    SHARE=$(ros2 pkg prefix tram_state_estimator)/share/tram_state_estimator
+    ros2 run tram_state_estimator tram_estimator ${NODE_ARGS:+--ros-args ${NODE_ARGS//@SHARE@/$SHARE}} >"$OUT/node.log" 2>&1 &
+  else
+    ros2 launch tram_state_estimator tram.launch.py >"$OUT/node.log" 2>&1 &
+  fi
   NODE=$!
   for _ in $(seq 1 150); do
     grep -q "оценщик запущен" "$OUT/node.log" 2>/dev/null && break
