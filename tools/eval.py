@@ -197,7 +197,16 @@ def resolve_map(spec, cache, train_ids, workers, rebuild, log, sheet):
         f = R.CFG / "eval" / "track_map.npz"
         if not f.exists():
             sys.exit(f"--map eval: нет {f} (оценочная карта пакета появляется после WP10)")
-        return f, "оценочная карта пакета config/eval/track_map.npz (только train)", None
+        # множитель пути карты подогнан к масштабу колёс листа, по которому её
+        # строили: при другом meas_scale нужна карта train (строится сама)
+        with np.load(f, allow_pickle=False) as z:
+            ms_map = float(z["meas_scale"]) if "meas_scale" in z.files else float("nan")
+        ms_sheet = float(sheet["core"].get("meas_scale", float("nan"))) if sheet else float("nan")
+        if not abs(ms_map - ms_sheet) <= 1e-9:
+            log(f"ВНИМАНИЕ: карта config/eval/track_map.npz собрана при meas_scale {ms_map}, "
+                f"а у листа {ms_sheet}: для этого листа используйте --map train")
+        return f, ("оценочная карта пакета config/eval/track_map.npz (только train, "
+                   f"meas_scale {ms_map:.6f})"), None
     if spec == "jury":
         f = R.CFG / "track_map.npz"
         return (f, "боевая config/track_map.npz (все данные)",
@@ -784,10 +793,15 @@ def main():
     ap.add_argument("--set", default="",
                     help="переопределить поля листа: k=v,k=v; поля Params — ядру, остальное — "
                          "параметрам ноды (например mgrs_grid=37UDB, projection=utm)")
-    ap.add_argument("--map", default="train",
-                    help="train (по умолчанию: build_map по split train, строится сама) | eval "
-                         "(config/eval/track_map.npz пакета) | jury | none | путь .npz")
+    ap.add_argument("--map", default="eval",
+                    help="eval (по умолчанию: config/eval/track_map.npz пакета — карта ОЦЕНКИ, "
+                         "только split train, масштаб колёс листа ОЦЕНКИ) | train (build_map по "
+                         "split train с meas_scale оцениваемого листа, строится сама) | jury | "
+                         "none | путь .npz")
     ap.add_argument("--rebuild-map", action="store_true", help="пересобрать карту train")
+    ap.add_argument("--baseline", default=None,
+                    help="итоги прежней версии (summary.json) для раздела «До и после»; по "
+                         "умолчанию docs/data/eval_before/summary.json, если есть; none — без него")
     ap.add_argument("--gnss", default="3", help="секунд GNSS в связку (3) или full")
     ap.add_argument("--frame", default="mgrs", choices=M.FRAMES,
                     help="система эталона для ошибок положения (mgrs — как у судьи)")

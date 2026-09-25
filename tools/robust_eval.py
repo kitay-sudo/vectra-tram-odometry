@@ -60,7 +60,12 @@ V_STAND = 0.2
 SHIFTS = np.round(np.arange(-0.2, 0.2001, 0.005), 3)
 
 
-EVAL_DRAFT = OUT / "eval_draft_calibration.json"
+# после слияния calib — лист ОЦЕНКИ пакета (только split train); снимок
+# out/robust/eval_draft_calibration.json — только если листа ещё нет
+EVAL_DRAFT = (ROOT / "ros2_ws" / "src" / "tram_state_estimator" / "config" / "eval"
+              / "tram_calibration.json")
+if not EVAL_DRAFT.exists():
+    EVAL_DRAFT = OUT / "eval_draft_calibration.json"
 
 
 def params(sheet):

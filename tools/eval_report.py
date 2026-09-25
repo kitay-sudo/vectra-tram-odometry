@@ -30,6 +30,8 @@ SUB15_JSON = dict(v_mae=0.0489, v_bias=0.0130, cov2s_v=0.756, p3d_mean=5.04,
 # отпечаток кода пакета (tools/eval.src_digest), на котором считал аудит sub15:
 # main 56933cc / e74471f — runner.py, estimator_core.py, track_map.py до правок
 AUDIT_PKG_SHA = "5f634e9a5a63564d"
+# итоги версии «до» для раздела 0 (закоммичены: out/ не в git)
+BASELINE = "docs/data/eval_before/summary.json"
 KIND_SHORT = dict(front_zero="отказ передней (0)", rear_drop="отказ задней (30639)",
                   both_zero="обе = 0, 20 с", both_stuck="обе залипли, 20 с",
                   dropout="пропуск 2 с", gap_all="пропуск всех входов 2 с",
@@ -458,6 +460,98 @@ def completeness(t, crashes):
             + (f"; прогонов без выхода: {t.get('runs_empty')}" if t.get("runs_empty") else ""))
 
 
+def load_baseline(root, args):
+    """Итоги прежней версии для таблицы «до / после» (--baseline; по
+    умолчанию docs/data/eval_before/summary.json, если есть)."""
+    spec = getattr(args, "baseline", None)
+    if spec in ("", "none"):
+        return None, None
+    path = Path(spec) if spec else Path(root) / BASELINE
+    if not path.is_absolute():
+        path = Path(root) / path
+    if not path.exists():
+        return None, None
+    import json
+    B = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        rel = str(path)
+    return B, rel
+
+
+def before_after(S, B, rel):
+    """Таблица «до / после»: те же 15 прогонов, те же метрики."""
+    L = []
+    A = L.append
+    mb, ma = _tot(B, "all", "model"), _tot(S, "all", "model")
+    nb, na = _tot(B, "all", "naive"), _tot(S, "all", "naive")
+    bm = B["meta"]
+    A("## 0. До и после")
+    A("")
+    same = sorted(bm.get("runs", [])) == sorted(S["meta"]["runs"])
+    A(f"«До» — `{rel}`: {bm.get('label') or 'без подписи'}, код пакета sha "
+      f"`{bm.get('pkg_src_sha')}`, лист {bm['sheet']['label']}, карта {bm['map']['label']}"
+      + (f"; **{bm['sheet']['leak']}**" if bm["sheet"].get("leak") else "")
+      + ". «После» — этот прогон (шапка документа). Прогоны "
+      + ("те же." if same else "**другие** — сравнение неполное."))
+    A("")
+    rows = []
+
+    def row(name, key, nd=4, sign=False, pc=False, src="tot"):
+        def val(T):
+            x = T.get(key)
+            return pct(x) if pc else f(x, nd, sign)
+        rows.append([name, val(mb), val(ma), val(nb), val(na)])
+
+    row("скорость MAE, м/с", "v_mae")
+    row("скорость RMSE, м/с", "v_rmse")
+    row("скорость смещение, м/с", "v_bias", sign=True)
+    row("скорость макс |ошибка|, м/с", "v_max", 3)
+    row("±2σ скорости", "cov2s_v", pc=True)
+    for p in M.PHASES:
+        db, da = g(B, "pooled", "model", "by_phase", p), g(S, "pooled", "model", "by_phase", p)
+        eb, ea = g(B, "pooled", "naive", "by_phase", p), g(S, "pooled", "naive", "by_phase", p)
+        if not (db or da):
+            continue
+        for key, nm, nd, sg, pc in (("mae", "MAE", 4, False, False), ("bias", "смещение", 4, True, False),
+                                    ("cov2s", "±2σ", 1, False, True)):
+            def v(d):
+                x = (d or {}).get(key)
+                return pct(x) if pc else f(x, nd, sg)
+            rows.append([f"— {M.PHASES_RU[p]}: {nm}", v(db), v(da),
+                         "—" if pc else v(eb), "—" if pc else v(ea)])
+    row("положение ср. 3D, м", "p3d_mean", 2)
+    row("положение 3D RMSE, м", "p3d_rmse", 2)
+    row("положение 3D макс, м", "p3d_max", 1)
+    row("конец 3D ср., м", "p3d_end_mean", 1)
+    row("конец 3D медиана, м", "p3d_end_median", 2)
+    row("конец 3D макс, м", "p3d_end_max", 1)
+    row("дрейф 3D по концу, % медиана", "drift_pct_3d_median", 3)
+    row("дрейф 3D по концу, % ср.", "drift_pct_3d_mean", 3)
+    row("дрейф 3D по концу, % макс", "drift_pct_3d_max", 3)
+    row("вдоль пути ср. |ошибка|, м", "along_mean", 2)
+    row("вдоль пути RMSE, м", "along_rmse", 2)
+    row("вдоль пути макс, м", "along_max", 1)
+    row("поперёк ср., м", "cross_mean", 2)
+    row("поперёк макс, м", "cross_max", 1)
+    row("|вдоль| ≤ 2σ_s", "cov2s_along", pc=True)
+    row("пар в чужом 100-км квадрате (перенос)", "sq_mismatch", 0)
+    row("«взгляд судьи»: сырые x, y, z против MGRS, ср. 3D, м", "judge_raw_3d_mean", 1)
+    A(table(["метрика (15 holdout_scored)", "модель до", "модель после", "база до", "база после"], rows))
+    A("")
+    gb, ga = B.get("gnss_full") or {}, S.get("gnss_full") or {}
+    if gb or ga:
+        A(f"GNSS весь прогон (первые 5 мин): выход совпал с «GNSS 3 с» до — "
+          f"{gb.get('identical_runs', '—')} из {len(gb.get('runs', {}))}, после — "
+          f"{ga.get('identical_runs', '—')} из {len(ga.get('runs', {}))}.")
+        A("")
+    A("База «только колесо» — тот же Runner (выставка, карта, привязки) со средним свежих показаний "
+      "тележек вместо ядра; «до» и «после» у неё различаются только кодом связки и картой.")
+    A("")
+    return L
+
+
 def render(result, timing, args, pics, root):
     S = result["summary"]
     meta = S["meta"]
@@ -528,6 +622,9 @@ def render(result, timing, args, pics, root):
         bad = [f"{r['kind']} — {verdict(r)}" for r in summ0 if verdict(r) not in OK_VERDICTS]
         A("* **Инъекции:** " + ("; ".join(bad) if bad else "все виды в пределах нормы") + ".")
     A("")
+    B, rel = load_baseline(root, args)
+    if B is not None:
+        L += before_after(S, B, rel)
     A("## 1. Как запустить")
     A("")
     A("Одна команда в Docker (PowerShell, из корня репозитория; кэш строится из `data/` сам):")
@@ -545,8 +642,12 @@ def render(result, timing, args, pics, root):
          "об утечке; `jury` — боевой `config/tram.yaml` (не для отчёта); `json`; путь"],
         ["`--set k=v,...`", "—", "переопределить поля листа: поля `Params` — ядру, остальное — "
          "параметрам ноды (`--set mgrs_grid=37UDB`, `--set nomap_mode=line`)"],
-        ["`--map`", "`train`", "`train` — карта только по обучающим (`analysis/build_map.py`, строится "
-         "сама); `eval` — `config/eval/track_map.npz` пакета; `jury` — боевая; `none` — без карты; путь"],
+        ["`--map`", "`eval`", "`eval` — `config/eval/track_map.npz` пакета (карта ОЦЕНКИ: только train, "
+         "масштаб колёс листа оценки; при другом `meas_scale` листа — предупреждение); `train` — карта "
+         "только по обучающим с масштабом оцениваемого листа (`analysis/build_map.py`, строится сама); "
+         "`jury` — боевая; `none` — без карты; путь"],
+        ["`--baseline`", "`docs/data/eval_before/summary.json`", "итоги прежней версии для раздела 0 "
+         "«До и после»; `none` — без раздела"],
         ["`--gnss`", "`3`", "секунд GNSS в связку от первой записи master; `full` — весь прогон"],
         ["`--frame`", "`mgrs`", "система эталона: `mgrs` (судья), `enu`, `equirect`, `utm`"],
         ["`--runner-frame`", "`auto`", "система выхода Runner: `auto` — параметр ноды `projection` "
