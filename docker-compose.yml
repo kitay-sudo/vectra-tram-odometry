@@ -1,0 +1,137 @@
+# Vectra — резервная одометрия трамвая (ROS 2 Humble). Одна команда на всё:
+#
+#   docker compose up                    # живое демо: нода + bag + проба + мост + страница
+#   docker compose run --rm test         # colcon build + pytest (без сети)
+#   docker compose run --rm eval         # офлайн-оценка tools/eval.py (нужны данные)
+#   docker compose --profile server up -d   # публичный сервер: + обратный прокси :80/:443
+#
+# Настройки — в .env (шаблон .env.example): DATA_DIR, BAG, ROS_DOMAIN_ID,
+# PUBLIC_HOST, порты. Подробно: docs/JURY.md (§ Docker) и docs/DEMO.md.
+#
+# DDS между контейнерами: все ROS-сервисы в сети проекта (bridge) с
+# одинаковым ROS_DOMAIN_ID и ROS_LOCALHOST_ONLY=0 — discovery FastDDS по
+# multicast внутри этой сети. Проверено на Docker Desktop 28.3 (Windows 11):
+# см. docs/JURY.md, «Проверено». Сеть изолирована от хоста и чужих
+# контейнеров, поэтому соседние ROS-контейнеры с тем же ROS_DOMAIN_ID не мешают.
+
+name: vectra-tram
+
+x-ros: &ros
+  image: ${VECTRA_IMAGE:-vectra/tram:compose}
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  init: true
+  environment: &ros-env
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+    ROS_LOCALHOST_ONLY: "0"
+    RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    PYTHONUNBUFFERED: "1"
+    RCUTILS_LOGGING_BUFFERED_STREAM: "0"
+  volumes:
+    - ./:/repo:ro
+
+services:
+  # ---------------------------------------------------------------- демо (по умолчанию)
+  estimator:
+    <<: *ros
+    # только launch: он подставляет лист config/tram.yaml и карту (ros2 run
+    # без --params-file берёт умолчания — см. docs/JURY.md)
+    command: ros2 launch tram_state_estimator tram.launch.py
+    stop_signal: SIGINT
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  player:
+    <<: *ros
+    depends_on: [estimator]
+    environment:
+      <<: *ros-env
+      BAG: ${BAG:-30618_e9a34502}
+      PLAY_LOOP: ${PLAY_LOOP:-0}
+      PLAY_RATE: ${PLAY_RATE:-1.0}
+      PLAY_DELAY: ${PLAY_DELAY:-2}
+      WAIT_SUBSCRIBERS: ${WAIT_SUBSCRIBERS:-2}
+    volumes:
+      - ./:/repo:ro
+      - ${DATA_DIR:-./data}:/data:ro
+    command: bash /repo/docker/play.sh
+    stop_signal: SIGINT
+
+  probe:
+    <<: *ros
+    depends_on: [estimator]
+    # общее пространство PID с нодой: psutil видит процесс tram_estimator (CPU, RSS)
+    pid: "service:estimator"
+    environment:
+      <<: *ros-env
+      PROBE_IDLE: ${PROBE_IDLE:-20}
+      PROBE_REPORT_EVERY: ${PROBE_REPORT_EVERY:-30}
+    volumes:
+      - ./:/repo:ro
+      - ./out/probe:/out/probe
+    command: >-
+      bash -c 'python3 /repo/tools/ros_probe.py --out /out/probe/summary.json
+      --npz /out/probe/raw.npz --tag compose --idle "$$PROBE_IDLE"
+      --report-every "$$PROBE_REPORT_EVERY"'
+    stop_signal: SIGINT
+
+  bridge:
+    <<: *ros
+    # rosbridge v2 (JSON по websocket) для симулятора: ws://<хост>:9090
+    command: ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090
+    ports:
+      - "${BRIDGE_BIND:-127.0.0.1}:${BRIDGE_PORT:-9090}:9090"
+    stop_signal: SIGINT
+    restart: unless-stopped
+
+  web:
+    <<: *ros
+    # статическая страница симулятора; после сборки образа сеть не нужна
+    command: python3 -m http.server 8080 --bind 0.0.0.0 --directory /repo/simulator
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- публичный сервер
+  proxy:
+    profiles: [server]
+    image: ${PROXY_IMAGE:-nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10}
+    depends_on: [bridge]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      TLS_CERT: ${TLS_CERT:-/etc/nginx/certs/fullchain.pem}
+      TLS_KEY: ${TLS_KEY:-/etc/nginx/certs/privkey.pem}
+    volumes:
+      - ./docker/proxy/templates:/etc/nginx/templates:ro
+      - ./docker/proxy/40-vectra-tls.sh:/docker-entrypoint.d/40-vectra-tls.sh:ro
+      - ./simulator:/usr/share/nginx/html:ro
+      - ${TLS_DIR:-./docker/proxy/certs}:/etc/nginx/certs:ro
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- тесты и оценка
+  test:
+    <<: *ros
+    profiles: [test]
+    # без сети: заодно проверка, что colcon build и тесты не ходят в интернет
+    network_mode: none
+    environment:
+      <<: *ros-env
+      FAST: ${FAST:-0}
+    entrypoint: ["/entrypoint.sh", "bash", "/repo/docker/run_tests.sh"]
+    command: []
+
+  eval:
+    <<: *ros
+    profiles: [eval]
+    network_mode: none
+    volumes:
+      - ./:/repo
+      - ${DATA_DIR:-./data}:/repo/data:ro
+    working_dir: /repo
+    entrypoint: ["/entrypoint.sh", "bash", "/repo/docker/run_eval.sh"]
+    command: []
+
