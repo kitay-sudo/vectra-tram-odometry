@@ -5,10 +5,14 @@
         [--fixture test/data/e2e_*.npz --raw <out>/raw.npz --need-position]
 
 Критерии (TODO WP9): >= 19 Гц по меткам и стенным часам; in2out p99 < 100 мс в
-установившемся режиме; >= 95 % узлов сетки; 0 NaN; frame_id map/base_link; нода
-жива; останов по SIGINT. С --fixture — положение против GNSS фикстуры в системе
-выхода (refgeo); с --need-position оно обязательно: выставка прошла и средняя 3D
-< 10 м (сценарий «GNSS только первые секунды»).
+установившемся режиме; >= 95 % узлов сетки; /result/position — не меньше 95 %
+узлов сетки и не больше, чем /result/velocity (до якоря нода положение не
+публикует); 0 NaN; frame_id map/base_link; нода жива; останов по SIGINT. С
+--fixture — положение против GNSS фикстуры в системе выхода (refgeo): ошибка
+без вычета скачка на границе 100-км квадратов MGRS, как у судьи (развёрнутая —
+справочно); в системе "mgrs" выход и эталон должны быть в одном квадрате
+(фикстура целиком в 37UCB). С --need-position положение обязательно: выставка
+прошла и средняя 3D < 10 м (сценарий «GNSS только первые секунды»).
 
 С --bag-meta (metadata.yaml bag, проигранного целиком) проверяется и обвязка:
 получила ли проба все входы bag. Если проба потеряла начало bag (гонка
@@ -44,10 +48,13 @@ def position(raw, fixture):
     if not ok.any():
         return {"aligned": aligned, "pairs": 0}
     fr = refgeo.frames(m[ok, 2], m[ok, 3], m[ok, 4], origin=tuple(m[0, 2:5]))
-    frame, d3 = refgeo.detect(X[j[ok]], fr)
+    frame, _ = refgeo.detect(X[j[ok]], fr)
+    d3, d3u, mism = refgeo.errors(X[j[ok]], fr[frame], frame)
     return {"aligned": aligned, "frame": frame, "pairs": int(ok.sum()),
             "mean_m": round(float(d3.mean()), 2), "max_m": round(float(d3.max()), 2),
-            "end_m": round(float(d3[-1]), 2)}
+            "end_m": round(float(d3[-1]), 2),
+            "mean_m_unwrapped": round(float(d3u.mean()), 2), "square_mismatch": mism,
+            "squares": refgeo.mgrs_squares(m[:, 2], m[:, 3])}
 
 
 PROBE_KEYS = {"/vehicle/front_bogie_velocity": "front", "/vehicle/rear_bogie_velocity": "rear",
@@ -87,7 +94,9 @@ def main():
     rows = [
         ("выходов /result/velocity от узлов сетки", f"{o.get('count')}/{exp}",
          exp > 0 and o.get("count", 0) >= 0.95 * exp),
-        ("/result/position столько же", f"{p.get('count')}", p.get("count") == o.get("count")),
+        ("/result/position >= 95 % узлов сетки и <= /result/velocity",
+         f"{p.get('count')}/{exp} (скорость {o.get('count')})",
+         exp > 0 and 0.95 * exp <= (p.get("count") or 0) <= (o.get("count") or 0)),
         ("частота по меткам >= 19 Гц", f"{o.get('rate_stamp_hz')}", (o.get("rate_stamp_hz") or 0) >= 19),
         ("частота по стенным часам >= 19 Гц", f"{o.get('rate_wall_hz')}", (o.get("rate_wall_hz") or 0) >= 19),
         ("in2out p99 < 100 мс (без первых 2 с)",
@@ -107,6 +116,11 @@ def main():
         ok = pos["aligned"] and pos.get("pairs", 0) > 0 and pos.get("mean_m", 1e9) < 10.0
         if a.need_position:
             rows.append(("выставка прошла, ср. 3D < 10 м против GNSS фикстуры", val, ok))
+        if pos.get("frame") == "mgrs" and len(pos.get("squares", [])) == 1:
+            # кусок в одном квадрате: пара в разных квадратах — ошибка ~100 км у судьи
+            rows.append(("MGRS: выход и эталон в одном 100-км квадрате",
+                         f"пар в разных квадратах {pos['square_mismatch']} из {pos['pairs']}",
+                         pos["square_mismatch"] == 0))
     info = [("in2out p99 с учётом старта (справочно)", f"p99 {al.get('p99')} / max {al.get('max')}"),
             ("трассировки при останове (справочно, WP3)", str(a.trace)),
             ("CPU ноды, % ядра", str(R.get("node_process", {}).get("cpu_pct_1core"))),

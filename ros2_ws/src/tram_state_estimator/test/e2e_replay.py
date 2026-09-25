@@ -13,7 +13,9 @@
 которой публикует Runner (MGRS, UTM, ENU или прежний equirect): система
 определяется по самому выходу (refgeo.detect), поэтому тест не зависит от
 значения параметра projection. Пары — по ближайшей метке выхода в пределах
-0,05 с, как у судьи.
+0,05 с, как у судьи. Положение сравнивается только у выходов, которые нода
+публикует в /result/position (pos_valid, как в tram_node.py); ошибка — без
+вычета скачка на границе 100-км квадратов MGRS (так её увидит судья).
 """
 
 import hashlib
@@ -61,6 +63,35 @@ def _accepts(fn, name):
         p.kind is p.VAR_KEYWORD for p in sig.parameters.values())
 
 
+# Параметры положения: (ключ листа / ноды, аргумент Runner/Position). Ключи
+# листа — как в tram_node.py; передаются, только если есть в листе или в
+# переопределениях и Runner их принимает (у ветки без потока position — нет).
+POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
+                 ("mgrs_grid", "mgrs_grid"), ("utm_zone", "utm_zone"),
+                 ("mgrs_guard_m", "mgrs_guard_m"), ("scale_adapt", "scale_adapt"),
+                 ("nomap_mode", "nomap_mode"), ("keep_offset_xy", "keep_offset_xy"),
+                 ("keep_offset_z", "keep_offset_z"))
+
+
+def _explicit(fn, name):
+    try:
+        return name in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def runner_accepts(name):
+    """Принимает ли Runner параметр name: явно в __init__ или через **kwargs,
+    которые уходят в Position (поток position: Runner(..., **position_opts))."""
+    from tram_state_estimator import runner as R
+    init = R.Runner.__init__
+    if _explicit(init, name):
+        return True
+    pos = getattr(R, "Position", None)
+    return (_accepts(init, name) and pos is not None
+            and _explicit(pos.__init__, name))
+
+
 def make_runner(use_map=True, **over):
     """Runner как в ноде. over — параметры ноды поверх листа (например
     projection="utm"); передаются, только если Runner их принимает."""
@@ -76,10 +107,11 @@ def make_runner(use_map=True, **over):
     kw = dict(track_map=tmap,
               wheel_timeout=node.get("wheel_timeout_s", 1.0),
               handle_timeout=node.get("handle_timeout_s", 0.5))
-    # параметры, которых у Runner может ещё не быть (потоки position/robust)
-    for key, arg in (("init_window_s", "init_window"), ("projection", "projection"),
-                     ("mgrs_grid", "mgrs_grid"), ("utm_zone", "utm_zone")):
-        if key in node and _accepts(Runner.__init__, arg):
+    o = tuple(node.get(k, math.nan) for k in ("origin_lat", "origin_lon", "origin_alt"))
+    if all(isinstance(v, (int, float)) and math.isfinite(v) for v in o):
+        kw["origin"] = o
+    for key, arg in POSITION_OPTS:
+        if key in node and runner_accepts(arg):
             kw[arg] = node[key]
     r = Runner(params, **kw)
     pos = getattr(r, "pos", None)
@@ -102,21 +134,25 @@ def events(fx, gnss="window", init_s=3.0):
         for key, ant in (("mfix", "master"), ("rfix", "rover")):
             for row in fx[key]:
                 if row[0] <= t_end:
-                    ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4])))
+                    st = int(row[5]) if len(row) > 5 else 0
+                    ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4], st)))
     ev.sort(key=lambda e: (e[0], e[1], str(e[2])))
     return ev
 
 
 def replay(fx, use_map=True, gnss="window", **over):
     r, node = make_runner(use_map, **over)
+    status_ok = _explicit(r.on_fix, "status")      # NavSatFix.status, как в ноде
     outs = []
     for _tb, kind, i, th, val in events(fx, gnss, node.get("init_window_s", 3.0)):
         if kind == 0:
             outs += r.on_wheel(i, th, val)
         elif kind == 1:
             outs += r.on_handle(th, val)
+        elif status_ok:
+            outs += r.on_fix(th, i, *val[:3], status=val[3])
         else:
-            outs += r.on_fix(th, i, *val)
+            outs += r.on_fix(th, i, *val[:3])
     return outs
 
 
@@ -151,33 +187,43 @@ def metrics(outs, fx, frame=None):
     if "rvel" in fx:
         n, e = _speed(T, V, fx["rvel"])
         res.update(v_pairs_rover=n, v_mae_rover=float(np.abs(e).mean()))
-    # положение: эталон в системе выхода (определяется по выходу)
+    # Положение — только выходы, которые нода публикует в /result/position:
+    # tram_node.py не публикует выход с pos_valid=False (нет якоря — нет
+    # положения). У Runner без этого поля публикуется всё, включая заглушку
+    # (s, 0, 0) до выставки.
+    pub = [k for k, o in enumerate(outs) if o.get("pos_valid", True)]
+    res["n_pos_published"] = len(pub)
+    res["squares"] = refgeo.mgrs_squares(fx["mfix"][:, 2], fx["mfix"][:, 3])
     m = fx["mfix"]
-    j2, ok2 = _nearest(T, m[:, 1])
+    if len(pub) < 2:            # положения нет совсем (нет GNSS — нет якоря)
+        res.update(p_frame=frame or "none", p_pairs=0)
+        return _path(res, m)
+    Tp, Xall = T[pub], X[pub]
+    ready_all = np.array([bool(outs[k].get("pos_ready", True)) for k in pub])
+    j2, ok2 = _nearest(Tp, m[:, 1])
+    if not ok2.any():
+        res.update(p_frame=frame or "none", p_pairs=0)
+        return _path(res, m)
     fr = refgeo.frames(m[ok2, 2], m[ok2, 3], m[ok2, 4], origin=tuple(m[0, 2:5]))
-    Xp = X[j2[ok2]]
-    ready = np.array([bool(o.get("pos_ready", True)) for o in outs])[j2[ok2]]
+    Xp, ready = Xall[j2[ok2]], ready_all[j2[ok2]]
     if frame is None:
-        frame, d3 = refgeo.detect(Xp, fr)
-    else:
-        d3 = refgeo.err3d(Xp, fr[frame], wrap=(frame == "mgrs"))
+        frame, _ = refgeo.detect(Xp, fr)
+    # основная ошибка — как у судьи, без развёртки; развёрнутая — справочно
+    d3, d3u, mism = refgeo.errors(Xp, fr[frame], frame)
     d = Xp - fr[frame]
-    if frame == "mgrs":
-        # выход и эталон по разные стороны границы 100-км квадрата
-        near = (np.abs(d[:, :2]) > refgeo.MGRS_SQUARE / 2) & (np.abs(d[:, :2]) < 1.5 * refgeo.MGRS_SQUARE)
-        res["p_square_mismatch"] = int(near.any(1).sum())
-        d = refgeo.unwrap_square(d)
-    # Все пары, как у судьи, включая выходы до выставки: до неё нода публикует
-    # заглушку, и в абсолютной системе (MGRS, UTM) одна такая пара — ~100 км ошибки.
     res.update(p_frame=frame, p_pairs=int(ok2.sum()), p_mean3d=float(d3.mean()),
                p_max3d=float(d3.max()), p_end3d=float(d3[-1]),
                p_median3d=float(np.median(d3)),
+               p_mean3d_unwrapped=float(d3u.mean()), p_square_mismatch=mism,
                p_pairs_unaligned=int((~ready).sum()),
                p_max3d_unaligned=float(d3[~ready].max()) if (~ready).any() else 0.0,
                p_mean3d_aligned=float(d3[ready].mean()) if ready.any() else float("nan"),
                p_mean_xy=float(np.hypot(d[:, 0], d[:, 1]).mean()),
-               p_mean_dz=float(np.abs(d[:, 2]).mean()),
-               squares=refgeo.mgrs_squares(m[:, 2], m[:, 3]))
+               p_mean_dz=float(np.abs(d[:, 2]).mean()))
+    return _path(res, m)
+
+
+def _path(res, m):
     enu = refgeo.enu(m[:, 2], m[:, 3], m[:, 4], *m[0, 2:5])
     res["path_m"] = float(np.sum(np.linalg.norm(np.diff(enu[:, :2], axis=0), axis=1)))
     return res

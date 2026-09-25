@@ -194,34 +194,62 @@ def grid_candidates(lat, lon):
     return sorted(out)
 
 
-def unwrap_square(d):
-    """Разность x/y в соглашении «квадрат каждой точки»: если выход и эталон
-    по разные стороны границы 100-км квадрата, разность около ±100 км —
-    снимаем её. Другие большие разности (другая система) не трогаем."""
+EDGE_M = 1000.0      # м: «у края квадрата» для развёртки (unwrap_square)
+
+
+def unwrap_square(d, ref, edge=EDGE_M):
+    """Разность выход − эталон в системе "mgrs" (квадрат каждой точки) с
+    ВЫЧЕТОМ скачка на границе квадратов — только справочно: судья, если у него
+    то же соглашение, увидит полную разность (~100 км), поэтому основная метрика
+    везде — ошибка без развёртки (err3d(wrap=False)).
+
+    Снимается ±100 км только по оси x (наша линия пересекает лишь границу по
+    easting, UTM E = 400 км) и только там, где эталон ближе edge к краю
+    квадрата, а выход после вычета тоже в пределах 2·edge от эталона (то есть
+    оба у границы, по разные стороны). Прочие большие разности — честная ошибка
+    или другая система — не трогаются."""
     d = np.array(d, float, copy=True)
-    xy = d[..., :2]
-    near = (np.abs(xy) > MGRS_SQUARE / 2) & (np.abs(xy) < 1.5 * MGRS_SQUARE)
-    xy[near] -= np.sign(xy[near]) * MGRS_SQUARE
+    rx = np.mod(np.asarray(ref, float)[..., 0], MGRS_SQUARE)
+    dx = d[..., 0]
+    shift = np.sign(dx) * MGRS_SQUARE
+    near = ((np.abs(dx) > MGRS_SQUARE / 2) & (np.abs(dx) < 1.5 * MGRS_SQUARE)
+            & ((rx < edge) | (rx > MGRS_SQUARE - edge))
+            & (np.abs(dx - shift) < 2.0 * edge))
+    dx[near] -= shift[near]
     return d
 
 
 def err3d(X, ref, wrap=False):
-    """Евклидова ошибка по строкам. wrap — снять скачок ±100 км на границе
-    квадрата (unwrap_square) для системы "mgrs"."""
+    """Евклидова ошибка по строкам — так считает судья. wrap=True — справочная
+    ошибка с вычетом скачка на границе квадратов (unwrap_square), только для
+    системы "mgrs"."""
     d = np.asarray(X, float) - np.asarray(ref, float)
     if wrap:
-        d = unwrap_square(d)
+        d = unwrap_square(d, ref)
     return np.linalg.norm(d, axis=1)
 
 
+def errors(X, ref, frame):
+    """(ошибка как у судьи, справочная с развёрткой, число пар в разных
+    100-км квадратах). Для систем, кроме "mgrs", вторая равна первой, третья 0."""
+    raw = err3d(X, ref)
+    if frame != "mgrs":
+        return raw, raw, 0
+    unw = err3d(X, ref, wrap=True)
+    return raw, unw, int((raw - unw > 1.0).sum())
+
+
 def detect(X, fr):
-    """Система, в которой выход X (N×3) ближе всего к эталону: (имя, ошибки N).
-    fr — словарь frames() на тех же N точках. Выбор — по медиане ошибки:
-    единичные выбросы (например, выход до выставки) не меняют ответ; при
-    равенстве остаётся первая система в порядке frames()."""
+    """Система, в которой выход X (N×3) ближе всего к эталону: (имя, ошибки N
+    без развёртки — как у судьи). fr — словарь frames() на тех же N точках.
+    Выбор — по медиане ошибки (для "mgrs" — с развёрткой у границы квадратов,
+    чтобы единичные пары по разные стороны границы не меняли ответ): выбросы
+    вроде выхода до выставки не влияют; при равенстве остаётся первая система
+    в порядке frames()."""
     best = None
     for name, ref in fr.items():
         e = err3d(X, ref, wrap=(name == "mgrs"))
         if best is None or np.median(e) < np.median(best[1]) - 1e-9:
             best = (name, e)
-    return best
+    name = best[0]
+    return name, err3d(X, fr[name])

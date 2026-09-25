@@ -9,6 +9,8 @@
 Пороги — санитарные (TODO WP9): MAE скорости < 0,08 м/с, средняя 3D < 10 м,
 20 Гц, ни одного NaN. Положение сравнивается в той системе, в которой
 публикует Runner (refgeo.detect): тест не зависит от параметра projection.
+В пары идут только выходы, которые нода публикует в /result/position
+(pos_valid), ошибка — без вычета скачка на границе квадратов MGRS, как у судьи.
 Это не отчётные числа точности: лист и карта здесь боевые (config/, построены
 по всем данным, этот прогон в них входит). Отчётные числа считает
 tools/eval.py на оценочных листе и карте.
@@ -37,8 +39,7 @@ def run_map(fx):
 
 
 def _has_projection_param():
-    from tram_state_estimator.runner import Runner
-    return E._accepts(Runner.__init__, "projection")
+    return E.runner_accepts("projection")
 
 
 def test_fixture_is_holdout_slice(fx):
@@ -73,6 +74,26 @@ def test_refgeo_self_check(fx):
     assert np.allclose(x_wrap - x_db, 100000.0)
 
 
+def test_refgeo_error_is_judge_like():
+    """Основная ошибка — полная разность, как у судьи; скачок ±100 км на
+    границе квадратов вычитается только в справочной ошибке, только по x и
+    только когда оба — выход и эталон — у края квадрата."""
+    ref = np.array([[99999.0, 84941.0, 174.0],     # эталон у границы, квадрат CB
+                    [99007.7, 84941.4, 174.2],     # эталон в 1 км от границы
+                    [50000.0, 84941.0, 174.0]])
+    X = np.array([[1.0, 84941.0, 174.0],           # выход по ту сторону границы (DB)
+                  [0.0, 0.0, 0.0],                 # заглушка до выставки
+                  [50000.0, 24941.0, 174.0]])      # ошибка 60 км по y
+    raw, unw, mism = refgeo.errors(X, ref, "mgrs")
+    assert raw[0] == pytest.approx(99998.0) and unw[0] == pytest.approx(2.0)
+    assert raw[1] == pytest.approx(130452.0, abs=1.0)   # 3D, не 15 км
+    assert unw[1] > 80000.0                              # y не разворачивается
+    assert raw[2] == pytest.approx(60000.0) and unw[2] == pytest.approx(60000.0)
+    assert mism == 2
+    name, d3 = refgeo.detect(X[:1], {"mgrs": ref[:1]})
+    assert name == "mgrs" and d3[0] == pytest.approx(99998.0)   # detect -> без развёртки
+
+
 def test_rate_20hz_monotonic_stamps(run_map):
     outs, m = run_map
     assert m["rate_hz"] == pytest.approx(RATE_HZ, abs=0.1)
@@ -95,21 +116,28 @@ def test_speed_mae(run_map):
     assert m["v_mae_rover"] < MAE_MAX, m      # контрольный источник: rover/vel
 
 
-def test_position_mean_3d(run_map):
+def test_position_mean_3d(run_map, fx):
     outs, m = run_map
     assert m["p_pairs"] > 1500
     assert m["p_mean3d"] < MEAN3D_MAX, m
     assert outs[-1]["pos_ready"], "выставка по GNSS не прошла"
+    # положение публикуется почти на каждом шаге после первой точки master
+    t0 = fx["mfix"][0, 1]
+    after = [o for o in outs if o["stamp"] > t0 + 1.0]
+    assert sum(bool(o.get("pos_valid", True)) for o in after) >= 0.95 * len(after)
+    # фикстура целиком в 37UCB: выход и эталон в одном 100-км квадрате
+    assert m["squares"] == ["37UCB"]
+    assert m["p_square_mismatch"] == 0, m
 
 
 def test_no_placeholder_position_in_reference_pairs(run_map):
-    """Каждое положение, которое судья сопоставит с GNSS (±0,05 с), —
-    правдоподобное. До выставки Runner публикует заглушку (s, 0, 0). В
-    относительной системе это рядом с началом, а в абсолютной (MGRS, UTM) —
-    за 100+ км от эталона: на этой фикстуре первая точка master (метка 853,60)
-    попадает на выход 853,598 до выставки, и одна такая пара добавляет ~70 м к
-    средней 3D за 3 мин. Нужно не публиковать положение до выставки или
-    публиковать первую точку master."""
+    """Каждое ОПУБЛИКОВАННОЕ положение, которое судья сопоставит с GNSS
+    (±0,05 с), — правдоподобное. Прежний Runner до выставки публиковал
+    заглушку (s, 0, 0): в относительной системе это рядом с началом, а в
+    абсолютной MGRS — 130 км от эталона (на этой фикстуре первая точка master,
+    метка 853,60, попадает на выход 853,598 до выставки; одна такая пара из
+    1824 добавляет к средней 3D за 3 мин 71,5 м). Поток position: без якоря
+    pos_valid=False, и нода /result/position не публикует."""
     outs, m = run_map
     assert m["p_max3d"] < 100.0, (
         f"пар с выходами до выставки: {m['p_pairs_unaligned']}, их макс. ошибка "
@@ -156,22 +184,50 @@ def test_projection_switch(fx, over, expect, xr):
     assert m["nonfinite"] == 0
 
 
-def test_map_free_fallback_keeps_working(fx, run_map):
-    """map_file: "" — положение без карты (по прямой вдоль начального курса).
-    Скорость от карты не зависит; длина пройденного пути совпадает с GNSS."""
-    outs = E.replay(fx, use_map=False, gnss="window")
+def test_map_free_fallback_line(fx, run_map):
+    """map_file: "" и nomap_mode "line" (у Runner без параметра nomap_mode —
+    единственный режим): положение по прямой вдоль начального курса. Скорость
+    от карты не зависит; длина пройденного пути совпадает с GNSS."""
+    over = {"nomap_mode": "line"} if E.runner_accepts("nomap_mode") else {}
+    outs = E.replay(fx, use_map=False, gnss="window", **over)
     m = E.metrics(outs, fx)
     assert m["nonfinite"] == 0
     assert m["rate_hz"] == pytest.approx(RATE_HZ, abs=0.1)
     assert m["v_mae"] == pytest.approx(run_map[1]["v_mae"], abs=1e-9)
-    X = np.array([[o["x"], o["y"]] for o in outs if o.get("pos_ready")])    # после выставки
+    X = np.array([[o["x"], o["y"]] for o in outs
+                  if o.get("pos_ready") and o.get("pos_valid", True)])   # после выставки
     path = float(np.sum(np.linalg.norm(np.diff(X, axis=0), axis=1)))
     assert path == pytest.approx(m["path_m"], rel=0.03), (path, m["path_m"])
 
 
-@pytest.mark.xfail(reason="C2: GNSS после окна выставки двигает положение "
-                          "(runner.py Runner.on_fix). Снимается WP1 (поток position); "
-                          "после слияния убрать xfail", strict=False)
+def test_map_free_fallback_default(fx, run_map):
+    """map_file: "" с режимом по умолчанию. У потока position это "hold":
+    после окна выставки положение стоит в якоре. Проверка: выходы конечны,
+    20 Гц, положение публикуется, после окна не меняется, якорь — у GNSS окна."""
+    if not E.runner_accepts("nomap_mode"):
+        pytest.skip("режима nomap_mode нет (без потока position): проверен test_map_free_fallback_line")
+    outs = E.replay(fx, use_map=False, gnss="window")
+    m = E.metrics(outs, fx)
+    _, node = E.sheet()
+    assert m["nonfinite"] == 0
+    assert m["rate_hz"] == pytest.approx(RATE_HZ, abs=0.1)
+    assert m["v_mae"] == pytest.approx(run_map[1]["v_mae"], abs=1e-9)
+    assert m["p_pairs"] > 1500, m                    # положение публикуется
+    t_end = fx["mfix"][0, 1] + node.get("init_window_s", 3.0) + 0.5
+    X = np.array([[o["x"], o["y"], o["z"]] for o in outs
+                  if o.get("pos_valid", True) and o.get("pos_ready") and o["stamp"] > t_end])
+    assert len(X) > 1500
+    assert np.ptp(X, axis=0).max() < 1e-6, "без карты (hold) положение стоит в якоре"
+    w = fx["mfix"][fx["mfix"][:, 1] <= t_end]        # точки master окна выставки
+    fr = refgeo.frames(w[:, 2], w[:, 3], w[:, 4], origin=tuple(fx["mfix"][0, 2:5]))
+    assert np.linalg.norm(fr[m["p_frame"]] - X[-1], axis=1).min() < 5.0, m
+
+
+@pytest.mark.xfail(condition=not E.runner_accepts("projection"),
+                   reason="C2: GNSS после окна выставки двигает положение "
+                          "(runner.py Runner.on_fix). Исправлено в потоке position "
+                          "(WP1): с ним маркер не действует, тест обязан пройти",
+                   strict=True)
 def test_gnss_whole_slice_does_not_change_position(fx, run_map):
     """GNSS идёт весь кусок (как в демо и, возможно, у жюри): после окна
     выставки он не должен влиять ни на что."""

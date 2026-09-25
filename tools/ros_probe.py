@@ -450,20 +450,29 @@ def analyse(pr, a):
                 continue
             lat0, lon0, alt0 = F[i0, 1:4]
             if refgeo is not None:
-                # система выхода ноды (MGRS / UTM / ENU / equirect) — по самому выходу
+                # система выхода ноды (MGRS / UTM / ENU / equirect) — по самому
+                # выходу; ошибка — без вычета скачка на границе 100-км квадратов
+                # MGRS, как у судьи; развёрнутая — справочно
                 fr = refgeo.frames(F[ok, 1], F[ok, 2], F[ok, 3], origin=(lat0, lon0, alt0))
-                frame, d3 = refgeo.detect(X[j[ok]], fr)
+                frame, _ = refgeo.detect(X[j[ok]], fr)
+                d3, d3u, mism = refgeo.errors(X[j[ok]], fr[frame], frame)
             else:
                 k = math.cos(math.radians(lat0))
                 ref = np.c_[np.radians(F[:, 2] - lon0) * R_EARTH * k,
                             np.radians(F[:, 1] - lat0) * R_EARTH, F[:, 3] - alt0]
                 frame, d3 = "equirect", np.linalg.norm(X[j[ok]] - ref[ok], axis=1)
+                d3u, mism = d3, 0
             acc[f"pos_{oname}"] = {"frame": frame, "pairs": int(ok.sum()),
                                   "mean_m": round(float(d3.mean()), 2),
                                   "max_m": round(float(d3.max()), 2),
-                                  "end_m": round(float(d3[-1]), 2)}
+                                  "end_m": round(float(d3[-1]), 2),
+                                  "mean_m_unwrapped": round(float(d3u.mean()), 2),
+                                  "square_mismatch": int(mism)}
         acc["note"] = ("санити-проверка по GNSS master из bag в системе выхода ноды "
-                       "(определяется по выходу); для относительных систем начало — первый "
+                       "(определяется по выходу); mean_m/max_m/end_m — ошибка как у судьи, "
+                       "без вычета скачка на границе 100-км квадратов MGRS; mean_m_unwrapped — "
+                       "с вычетом (справочно); square_mismatch — пар по разные стороны "
+                       "границы квадратов; для относительных систем начало — первый "
                        "master fix, принятый нодой: probe_first_fix верен, если нода запущена до bag")
     R["accuracy_sanity_vs_bag_gnss"] = acc
     return R
