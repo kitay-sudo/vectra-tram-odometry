@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # run_tests.sh — сборка пакетов и тесты (compose: сервис test; CI; любой Humble).
 #
-#   docker compose run --rm test                  # colcon build + весь pytest
+#   docker compose run --rm test                  # colcon build + pytest (кроме маркера timing)
 #   docker compose run --rm test -k e2e           # аргументы уходят в pytest
 #   FAST=1 docker compose run --rm test           # без 4 самых долгих тестов (маркер slow)
+#   docker compose run --rm test -m timing        # только timing (в compose по умолчанию NO_TIMING=1)
 #   NO_TIMING=1 ...                               # без тестов на время шага (маркер timing)
 #   SRC=$PWD/ros2_ws/src bash docker/run_tests.sh # вне Docker (CI): исходники из рабочего дерева
 #   SKIP_BUILD=1 ...                              # не пересобирать, если /tmp/ws уже есть

@@ -132,7 +132,9 @@ def _speed(T, V, g):
     return int(ok.sum()), e
 
 
-def metrics(outs, fx):
+def metrics(outs, fx, frame=None):
+    """Метрики выхода. frame — система эталона положения (имя из refgeo.frames);
+    None — определить по самому выходу (refgeo.detect)."""
     T = np.array([o["stamp"] for o in outs])
     V = np.array([o["v"] for o in outs])
     X = np.array([[o["x"], o["y"], o["z"]] for o in outs])
@@ -154,14 +156,25 @@ def metrics(outs, fx):
     j2, ok2 = _nearest(T, m[:, 1])
     fr = refgeo.frames(m[ok2, 2], m[ok2, 3], m[ok2, 4], origin=tuple(m[0, 2:5]))
     Xp = X[j2[ok2]]
-    frame, d3 = refgeo.detect(Xp, fr)
+    ready = np.array([bool(o.get("pos_ready", True)) for o in outs])[j2[ok2]]
+    if frame is None:
+        frame, d3 = refgeo.detect(Xp, fr)
+    else:
+        d3 = refgeo.err3d(Xp, fr[frame], wrap=(frame == "mgrs"))
     d = Xp - fr[frame]
-    # выход и эталон по разные стороны границы 100-км квадрата (только "mgrs")
-    res["p_square_mismatch"] = int((np.abs(d[:, :2]) > refgeo.MGRS_SQUARE / 2).any(1).sum())
     if frame == "mgrs":
-        d[:, :2] = (d[:, :2] + refgeo.MGRS_SQUARE / 2) % refgeo.MGRS_SQUARE - refgeo.MGRS_SQUARE / 2
+        # выход и эталон по разные стороны границы 100-км квадрата
+        near = (np.abs(d[:, :2]) > refgeo.MGRS_SQUARE / 2) & (np.abs(d[:, :2]) < 1.5 * refgeo.MGRS_SQUARE)
+        res["p_square_mismatch"] = int(near.any(1).sum())
+        d = refgeo.unwrap_square(d)
+    # Все пары, как у судьи, включая выходы до выставки: до неё нода публикует
+    # заглушку, и в абсолютной системе (MGRS, UTM) одна такая пара — ~100 км ошибки.
     res.update(p_frame=frame, p_pairs=int(ok2.sum()), p_mean3d=float(d3.mean()),
                p_max3d=float(d3.max()), p_end3d=float(d3[-1]),
+               p_median3d=float(np.median(d3)),
+               p_pairs_unaligned=int((~ready).sum()),
+               p_max3d_unaligned=float(d3[~ready].max()) if (~ready).any() else 0.0,
+               p_mean3d_aligned=float(d3[ready].mean()) if ready.any() else float("nan"),
                p_mean_xy=float(np.hypot(d[:, 0], d[:, 1]).mean()),
                p_mean_dz=float(np.abs(d[:, 2]).mean()),
                squares=refgeo.mgrs_squares(m[:, 2], m[:, 3]))

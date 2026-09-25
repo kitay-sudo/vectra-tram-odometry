@@ -130,7 +130,9 @@ services:
     environment:
       <<: *ros-env
       FAST: ${FAST:-0}
-      NO_TIMING: ${NO_TIMING:-0}
+      # проверки времени шага по стенным часам (маркер timing) «мигают» под
+      # нагрузкой CPU — по умолчанию не входят; отдельно: run --rm test -m timing
+      NO_TIMING: ${NO_TIMING:-1}
     entrypoint: ["/entrypoint.sh", "bash", "/repo/docker/run_tests.sh"]
     command: []
 

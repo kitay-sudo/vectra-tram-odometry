@@ -194,22 +194,34 @@ def grid_candidates(lat, lon):
     return sorted(out)
 
 
+def unwrap_square(d):
+    """Разность x/y в соглашении «квадрат каждой точки»: если выход и эталон
+    по разные стороны границы 100-км квадрата, разность около ±100 км —
+    снимаем её. Другие большие разности (другая система) не трогаем."""
+    d = np.array(d, float, copy=True)
+    xy = d[..., :2]
+    near = (np.abs(xy) > MGRS_SQUARE / 2) & (np.abs(xy) < 1.5 * MGRS_SQUARE)
+    xy[near] -= np.sign(xy[near]) * MGRS_SQUARE
+    return d
+
+
 def err3d(X, ref, wrap=False):
-    """Евклидова ошибка по строкам. wrap — разность x/y по модулю 100 км
-    (выход и эталон в соглашении «квадрат каждой точки» могут оказаться по
-    разные стороны границы квадрата)."""
+    """Евклидова ошибка по строкам. wrap — снять скачок ±100 км на границе
+    квадрата (unwrap_square) для системы "mgrs"."""
     d = np.asarray(X, float) - np.asarray(ref, float)
     if wrap:
-        d[:, :2] = (d[:, :2] + MGRS_SQUARE / 2) % MGRS_SQUARE - MGRS_SQUARE / 2
+        d = unwrap_square(d)
     return np.linalg.norm(d, axis=1)
 
 
 def detect(X, fr):
     """Система, в которой выход X (N×3) ближе всего к эталону: (имя, ошибки N).
-    fr — словарь frames() на тех же N точках."""
+    fr — словарь frames() на тех же N точках. Выбор — по медиане ошибки:
+    единичные выбросы (например, выход до выставки) не меняют ответ; при
+    равенстве остаётся первая система в порядке frames()."""
     best = None
     for name, ref in fr.items():
         e = err3d(X, ref, wrap=(name == "mgrs"))
-        if best is None or e.mean() < best[1].mean():
+        if best is None or np.median(e) < np.median(best[1]) - 1e-9:
             best = (name, e)
     return best

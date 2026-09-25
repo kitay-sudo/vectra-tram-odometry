@@ -102,6 +102,20 @@ def test_position_mean_3d(run_map):
     assert outs[-1]["pos_ready"], "выставка по GNSS не прошла"
 
 
+def test_no_placeholder_position_in_reference_pairs(run_map):
+    """Каждое положение, которое судья сопоставит с GNSS (±0,05 с), —
+    правдоподобное. До выставки Runner публикует заглушку (s, 0, 0). В
+    относительной системе это рядом с началом, а в абсолютной (MGRS, UTM) —
+    за 100+ км от эталона: на этой фикстуре первая точка master (метка 853,60)
+    попадает на выход 853,598 до выставки, и одна такая пара добавляет ~70 м к
+    средней 3D за 3 мин. Нужно не публиковать положение до выставки или
+    публиковать первую точку master."""
+    outs, m = run_map
+    assert m["p_max3d"] < 100.0, (
+        f"пар с выходами до выставки: {m['p_pairs_unaligned']}, их макс. ошибка "
+        f"{m['p_max3d_unaligned']:.0f} м в системе {m['p_frame']}", m)
+
+
 def test_output_frame_is_mgrs_by_default(run_map):
     """Организаторы 25.09: «плоские координаты именно в MGRS». По умолчанию
     нода публикует абсолютные MGRS: x — easting, y — northing, z — высота."""
@@ -116,21 +130,29 @@ def test_output_frame_is_mgrs_by_default(run_map):
     assert np.all(z > 100.0), "z — абсолютная высота (здесь около 150 м)"
 
 
-@pytest.mark.parametrize("over,expect", [
-    ({"projection": "mgrs", "mgrs_grid": ""}, ("mgrs", "mgrs:37UCB")),
-    ({"projection": "mgrs", "mgrs_grid": "37UDB"}, ("mgrs:37UDB",)),
-    ({"projection": "utm"}, ("utm",)),
-    ({"projection": "enu"}, ("enu",)),
+# Кусок фикстуры целиком западнее границы квадратов (UTM E 399,0…399,6 км):
+# по диапазону x видно, какое соглашение реально применила нода.
+@pytest.mark.parametrize("over,expect,xr", [
+    ({"projection": "mgrs", "mgrs_grid": ""}, ("mgrs", "mgrs:37UCB"), (99000.0, 100000.0)),
+    ({"projection": "mgrs", "mgrs_grid": "37UDB"}, ("mgrs:37UDB",), (-1100.0, 0.0)),
+    ({"projection": "utm"}, ("utm",), (398000.0, 401000.0)),
+    ({"projection": "enu"}, ("enu",), (-100.0, 1000.0)),
 ], ids=["mgrs-wrap", "mgrs-37UDB", "utm", "enu"])
-def test_projection_switch(fx, over, expect):
+def test_projection_switch(fx, over, expect, xr):
     """Параметр projection/mgrs_grid переключает систему без правки кода; в
-    каждой системе точность та же. Эталон — независимая refgeo."""
+    каждой системе точность та же. Эталон — независимая refgeo. Средняя 3D —
+    по выходам после выставки (заглушку до неё ловит отдельный тест)."""
     if not _has_projection_param():
         pytest.xfail("параметра projection у Runner ещё нет (поток position, WP10)")
     outs = E.replay(fx, use_map=True, gnss="window", **over)
-    m = E.metrics(outs, fx)
-    assert m["p_frame"] in expect, m
-    assert m["p_mean3d"] < MEAN3D_MAX, m
+    m = E.metrics(outs, fx, frame=expect[0])        # эталон в заказанной системе
+    auto = E.metrics(outs, fx)                        # система, ближайшая к выходу
+    assert m["p_mean3d_aligned"] < MEAN3D_MAX, m
+    # enu и equirect на куске 0,7 км расходятся меньше метра: достаточно, чтобы
+    # заказанная система была не хуже лучшей больше чем на 0,5 м
+    assert auto["p_frame"] in expect or m["p_mean3d_aligned"] - auto["p_mean3d_aligned"] < 0.5, (m, auto)
+    x = np.array([o["x"] for o in outs if o.get("pos_ready")])
+    assert len(x) and xr[0] < x.min() and x.max() < xr[1], (over, x.min(), x.max())
     assert m["nonfinite"] == 0
 
 
@@ -142,7 +164,7 @@ def test_map_free_fallback_keeps_working(fx, run_map):
     assert m["nonfinite"] == 0
     assert m["rate_hz"] == pytest.approx(RATE_HZ, abs=0.1)
     assert m["v_mae"] == pytest.approx(run_map[1]["v_mae"], abs=1e-9)
-    X = np.array([[o["x"], o["y"]] for o in outs])
+    X = np.array([[o["x"], o["y"]] for o in outs if o.get("pos_ready")])    # после выставки
     path = float(np.sum(np.linalg.norm(np.diff(X, axis=0), axis=1)))
     assert path == pytest.approx(m["path_m"], rel=0.03), (path, m["path_m"])
 
