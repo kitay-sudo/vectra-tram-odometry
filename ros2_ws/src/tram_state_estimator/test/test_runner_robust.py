@@ -222,8 +222,11 @@ def test_bad_stamp_first_message_is_dropped(clean, stamp):
     assert same(outs, ref)
 
 
-@pytest.mark.parametrize("jump", [3600.0, -3600.0, 86400.0, 1e5, -T0 + 1.0])
+@pytest.mark.parametrize("jump", [2.0, 5.0, 9.0, 3600.0, -3600.0, 86400.0, 1e5,
+                                  -T0 + 1.0])
 def test_single_stamp_outlier_is_ignored(clean, jump):
+    """Одиночный выброс метки (и вперёд на 2–10 с: в данных разрыв между
+    входами не больше 1,06 с) не двигает сетку и не пишется в t_notch."""
     ev, ref = clean
     k = next(i for i, e in enumerate(ev) if e[0] > 20)
     t, m, a = ev[k]
@@ -232,10 +235,34 @@ def test_single_stamp_outlier_is_ignored(clean, jump):
     t_call = time.perf_counter()
     outs, most = run(r, ev[:k] + [bad] + ev[k:])
     assert time.perf_counter() - t_call < 60
-    assert r.resets == 0 and r.rejected_stamps == 1
-    assert r.t_notch < T0 + 100                 # выброс не записан
+    assert r.resets == 0 and r.gaps == 0 and r.rejected_stamps == 1
+    assert r.t_notch < T0 + 60                  # выброс не записан
     assert same(outs, ref)
     assert most <= 20
+
+
+@pytest.mark.parametrize("jump", [5.0, 3600.0, -3600.0])
+def test_bogie_pair_with_glitched_clock_is_not_a_new_run(clean, jump):
+    """Обе тележки подряд с одной и той же битой меткой (одни часы): это не
+    новый прогон — подтверждения от другого входа нет. Раньше второе
+    сообщение подтверждало разрыв, и выставка терялась до конца bag."""
+    ev, ref = clean
+    k = next(i for i in range(len(ev) - 1) if ev[i][0] > 20
+             and ev[i][1] == "on_wheel" and ev[i + 1][1] == "on_wheel")
+    ev2 = list(ev)
+    for j in (k, k + 1):
+        t, m, a = ev2[j]
+        ev2[j] = (t, m, (a[0], a[1] + jump, a[2]))
+    r = Runner(P)
+    outs, _ = run(r, ev2)
+    assert r.resets == 0 and r.gaps == 0 and r.rejected_stamps == 2
+    assert r.pos.ready and finite(outs)
+    # два показания тележек потеряны: выход близок к чистому, положение то же
+    T, Tr = arr(outs, "stamp"), arr(ref, "stamp")
+    assert np.array_equal(T, Tr)
+    assert np.abs(arr(outs, "v") - arr(ref, "v")).max() < 0.05
+    dxy = np.hypot(arr(outs, "x") - arr(ref, "x"), arr(outs, "y") - arr(ref, "y"))
+    assert dxy.max() < 0.5
 
 
 def test_start_burst_going_back_2_7s_does_not_reset():
@@ -247,11 +274,40 @@ def test_start_burst_going_back_2_7s_does_not_reset():
     assert r.resets == 0 and finite(outs)
 
 
+def test_start_burst_going_forward_is_accepted_at_once():
+    """Хвост буфера вразнобой (DATA п. 7): первым может прийти старое
+    сообщение, а следующие — на 2–6 с новее. В первые SETTLE_S прогона
+    такой скачок вперёд не откладывается и не считается провалом."""
+    ev = stream(30.0)
+    head = [(0.0, "on_wheel", (1, T0 - 5.5, 0.0)), (0.0, "on_handle", (T0 - 5.4, 0))]
+    r = Runner(P)
+    outs, most = run(r, head + ev)
+    assert r.resets == 0 and r.gaps == 0 and r.rejected_stamps == 0
+    assert finite(outs) and most <= Runner.MAX_STEPS
+    assert outs[0]["stamp"] < T0 - 5.3
+
+
 def _bag2(shift, **kw):
     """Второй прогон: метки сдвинуты на shift, выставка в другом месте."""
     return stream(40.0, t0=T0 + shift,
                   gnss_kw=dict(lat0=LAT0 + 0.01, lon0=LON0 - 0.02,
                                az=math.radians(200.0)), **kw)
+
+
+def like_fresh(out, ref):
+    """Выход после сброса = выход новой связки на том же потоке: метки,
+    скорость, путь — все; положение — с момента, когда новая выставка
+    готова (до неё у сброшенной связки запасная выставка прошлого прогона,
+    у новой — относительная одометрия)."""
+    keys = ("stamp", "v", "s", "sigma_v")
+    if len(out) != len(ref) or not all(a[k] == b[k] for a, b in zip(out, ref)
+                                       for k in keys):
+        return False
+    k = next(i for i, o in enumerate(ref) if o["pos_ready"])
+    pos = ("x", "y", "z")
+    return (all(a[c] == b[c] for a, b in zip(out[k:], ref[k:]) for c in pos)
+            and all(o["pos_fallback"] and o["pos_ready"] for o in out[:k])
+            and not any(o["pos_fallback"] for o in out[k:]))
 
 
 @pytest.mark.parametrize("shift", [-139.0, 86400.0, -16 * 86400.0, 3600.0])
@@ -264,15 +320,18 @@ def test_second_bag_resets_and_realigns_like_a_fresh_runner(clean, shift):
     t_call = time.perf_counter()
     out2, most = run(r, ev2)
     assert time.perf_counter() - t_call < 60
-    assert r.resets == 1 and "разрыв" in r.reset_reason
+    assert r.resets == 1 and r.gaps == 0 and "разрыв" in r.reset_reason
     assert most <= Runner.MAX_STEPS
-    # первое сообщение нового прогона — кандидат разрыва, дальше как новая связка
-    fresh = Runner(P)
-    ref2, _ = run(fresh, ev2[1:])
-    assert same(out2, ref2) and len(out2) > 700
-    assert r.pos.ready and r.pos.init_window == 3.0
+    # отложенные первые сообщения нового прогона исполнены: ни одно не
+    # потеряно, дальше — в точности новая связка
+    ref2, _ = run(Runner(P), ev2)
+    assert like_fresh(out2, ref2) and len(out2) > 700
+    assert r.pos.ready and r.pos.init_window == 3.0 and r._pos_prev is None
+    assert r.rejected_stamps == 0
     T = arr(out2, "stamp")
     assert T.min() >= T0 + shift and np.all(np.diff(T) > 0)
+    # до выставки нового прогона — запасная: конец первого прогона
+    assert math.hypot(out2[0]["x"] - out1[-1]["x"], out2[0]["y"] - out1[-1]["y"]) < 1.0
 
 
 def test_loop_replay_of_same_bag(clean):
@@ -281,18 +340,101 @@ def test_loop_replay_of_same_bag(clean):
     r = Runner(P)
     run(r, ev)
     again, _ = run(r, ev)
-    ref2, _ = run(Runner(P), ev[1:])
-    assert r.resets == 1 and same(again, ref2)
+    assert r.resets == 1 and like_fresh(again, ref)
 
 
-def test_bounded_work_per_call_and_skipped_steps():
-    """Не больше MAX_STEPS шагов за вызов, даже при мелком шаге сетки."""
+def _xy_err(outs, ref, shift=0.0):
+    """|xy − чистый прогон| на общих узлах (метки выхода сдвинуты на shift)."""
+    cx = {round(o["stamp"] - T0, 3): (o["x"], o["y"]) for o in ref}
+    d = [(o["stamp"] - shift - T0, math.hypot(o["x"] - cx[k][0], o["y"] - cx[k][1]))
+         for o in outs for k in [round(o["stamp"] - shift - T0, 3)] if k in cx]
+    return np.array(d)
+
+
+@pytest.mark.parametrize("gap", [8.0, 12.0, 15.0])
+def test_input_gap_inside_run_keeps_state(clean, gap):
+    """Провал всех входов на ходу (10 м/с) дольше 10 с: метки после провала
+    идут дальше. Это не новый прогон: ни сброса, ни потери выставки; сетка
+    догоняет провал прогнозом модели (как main), не больше MAX_STEPS за вызов.
+    Раньше 12 с давали сброс и ошибку положения ~2 км на реальном bag."""
+    ev, ref = clean
+    ev2 = [e for e in ev if not (e[1] != "on_fix" and 17.0 <= e[0] < 17.0 + gap)]
+    r = Runner(P)
+    outs, most = run(r, ev2)
+    assert r.resets == 0 and r.gaps == 1         # > FWD_JUMP_S: подтверждён
+    assert r.rejected_stamps == 0 and most <= Runner.MAX_STEPS
+    T = arr(outs, "stamp")
+    assert np.allclose(np.diff(T), P.dt, rtol=0, atol=1e-6) and len(outs) == len(ref)
+    assert all(o["pos_ready"] and not o["pos_fallback"] for o in outs[100:])
+    d = _xy_err(outs, ref)
+    # разомкнутый прогноз на выбеге с ручкой 0: вагон на рельсах, ошибка
+    # только вдоль пути — отставание выбега от 10 м/с за время провала
+    assert d[:, 1].max() < 4.0 * gap
+    assert np.abs(verr(outs, t_from=17.0 + gap + 5.0)).max() < 0.3
+
+
+@pytest.mark.parametrize("jump", [-100.0, 3600.0])
+def test_clock_jump_inside_run_keeps_alignment(clean, jump):
+    """Часы всех входов скачком уходят на −100 с или +1 ч посреди прогона и
+    дальше идут так (перезапуск часов). Подтверждённый разрыв — сброс, но
+    GNSS нового прогона нет (у жюри он только в первые секунды): положение
+    идёт по запасной выставке прошлого прогона. Раньше: x = s, y = 0 до конца
+    (ошибка сотни метров — километры)."""
+    ev, ref = clean
+    ev2 = [(t, m, ((a[0], a[1] + jump, a[2]) if m == "on_wheel" else
+                   (a[0] + jump,) + a[1:])) if t >= 25.0 else (t, m, a)
+           for t, m, a in ev]
+    r = Runner(P)
+    outs, most = run(r, ev2)
+    assert r.resets == 1 and r.gaps == 0 and most <= Runner.MAX_STEPS
+    assert finite(outs) and not r.pos.ready and r._pos_prev is not None
+    after = [o for o in outs if abs(o["stamp"] - T0 - 25.0 - jump) < 30.0]
+    assert after and all(o["pos_ready"] and o["pos_fallback"] for o in after)
+    d = _xy_err(after, ref, shift=jump)
+    # ядро после сброса начинает с v = 0 и за ~1 с догоняет 10 м/с
+    assert len(d) > 300 and d[:, 1].max() < 15.0 and d[-1, 1] < 15.0
+    assert np.abs(verr(after, t0=T0 + jump, t_from=28.0)).max() < 0.3
+
+
+def test_single_input_new_base_needs_more_messages():
+    """Остался один вход (только тележки, без ручки и GNSS): новая база
+    подтверждается CONFIRM_SOLO сообщениями; сбой пары тележек — нет."""
+    ev = stream(30.0, handle=False, with_gnss=False)
+    r = Runner(P)
+    run(r, ev)
+    again, _ = run(r, ev)
+    assert r.resets == 1 and r.rejected_stamps == 0
+    ref, _ = run(Runner(P), ev)
+    assert [o["stamp"] for o in again] == [o["stamp"] for o in ref]
+    assert [o["v"] for o in again] == [o["v"] for o in ref]
+
+
+def test_bounded_work_per_call_and_catch_up():
+    """Не больше MAX_STEPS шагов за вызов, даже при мелком шаге сетки:
+    подтверждённый провал 9,9 с (990 узлов при dt = 10 мс) догоняется
+    следующими вызовами, узлы не пропускаются."""
     p = replace(P, dt=0.01)
-    r = Runner(p)
-    r.on_handle(T0, 0)
-    out = r.on_handle(T0 + 9.9, 0)            # 990 узлов при dt = 10 мс
-    assert len(out) == Runner.MAX_STEPS and r.skipped_steps == 790
-    assert r.resets == 0
+    for settle in (0.0, 12.0):      # старт прогона (без подтверждения) и после
+        r = Runner(p)
+        pre = []
+        for k in range(int(settle / 0.05) + 1):
+            pre += r.on_handle(T0 + 0.05 * k, 0)
+        t1 = T0 + settle
+        outs, sizes = [], []
+        for k in range(12):
+            ts = t1 + 9.9 + 0.01 * k
+            o = r.on_handle(ts, 0) if k % 2 else r.on_wheel(k % 4 // 2, ts, 0.0)
+            sizes.append(len(o))
+            outs += o
+        assert max(sizes) == Runner.MAX_STEPS, sizes
+        assert r.resets == 0 and r.skipped_steps == 0
+        assert r.gaps == (1 if settle else 0)
+        if settle:                  # кандидаты ждут подтверждения от 2 входов
+            assert sizes[:2] == [0, 0]
+        T = arr(pre + outs, "stamp")
+        assert np.allclose(np.diff(T), 0.01, rtol=0, atol=1e-6)
+        assert T[-1] == pytest.approx(t1 + 10.01, abs=0.011)
+        assert not r.backlog()
 
 
 def test_duplicates_and_swapped_neighbours():
