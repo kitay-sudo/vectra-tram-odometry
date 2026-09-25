@@ -5,7 +5,8 @@
 # проверки ROS-контейнер останавливается и запускается снова (обрыв и переподключение).
 #
 #   bash simulator/test/live_test.sh [bag=30618_e9a34502]      (Git Bash / Linux, из корня)
-# Переменные: DATA_DIR (<repo>/data), OUT (<repo>/out/sim_wp17/live)
+# Переменные: DATA_DIR (<repo>/data), OUT (<repo>/out/sim_wp17/live), ROSBRIDGE_OPEN=1 — мост без
+# ограничений (контроль: проверка «мост только для чтения» тогда должна упасть)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 ROOT="$(cd "$(dirname "$0")/../.." && (pwd -W 2>/dev/null || pwd))"
@@ -19,7 +20,7 @@ docker network create "$NET" >/dev/null
 trap 'docker rm -f "$ROSC" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true' EXIT
 start_ros() {
   docker run -d --rm --name "$ROSC" --network "$NET" --network-alias sim-ros --cpus 2 \
-    -e BAG="$BAG" -e ROS_DOMAIN_ID="$((RANDOM % 90 + 110))" \
+    -e BAG="$BAG" -e ROSBRIDGE_OPEN="${ROSBRIDGE_OPEN:-0}" -e ROS_DOMAIN_ID="$((RANDOM % 90 + 110))" \
     -v "$ROOT:/repo:ro" -v "$DATA_DIR:/data:ro" vectra/tram:dev \
     bash /repo/simulator/deploy/live_demo.sh >/dev/null
 }

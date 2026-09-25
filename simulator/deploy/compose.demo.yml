@@ -7,7 +7,9 @@
 #
 # Без домена (ноутбук, локальная сеть): DOMAIN=:80, страница http://<хост>/?mode=live.
 # Нужен образ vectra/tram:dev (docker build -t vectra/tram:dev -f docker/Dockerfile .).
-# rosbridge наружу не публикуется: доступ только через /ros веб-сервера.
+# rosbridge наружу не публикуется: доступ только через /ros веб-сервера, и мост только для
+# чтения (live_demo.sh: подписка на топики страницы, публикация и сервисы ноды закрыты);
+# ROSBRIDGE_OPEN=1 — без ограничений (только для отладки).
 name: tram-demo
 services:
   tram-live:
@@ -19,6 +21,7 @@ services:
       PORT: "9090"
       ADDRESS: "0.0.0.0"
       ROS_LOCALHOST_ONLY: "1"
+      ROSBRIDGE_OPEN: ${ROSBRIDGE_OPEN:-0}
     volumes:
       - ../..:/repo:ro
       - ${DATA_DIR:-../../data}:/data:ro

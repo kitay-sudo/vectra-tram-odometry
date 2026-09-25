@@ -1008,7 +1008,7 @@ def main():
             map=_rel(map_path) if map_path else None,
             map_sha1=sha1(map_path) if map_path else None,
             core_sha1=csha, split="holdout_scored" if holdout else "train",
-            git=git_rev(), made=time.strftime("%Y-%m-%d %H:%M"),
+            git=git_rev(), made=time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
             gnss_in_runner="первые 3 с по времени записи (analysis/evaluate.events)")
         key = f"{args.run}_{kind}"
         path, nraw, ngz = write_js(doc, key)

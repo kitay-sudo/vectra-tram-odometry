@@ -3138,6 +3138,7 @@ const TramPlant = (() => {
     el.lastElementChild.textContent = txt;
     $('rvConn').textContent = LV.want ? 'Отключить' : 'Подключить';
     $('rvConn').setAttribute('aria-pressed', LV.want);
+    liveOver(performance.now());
   }
   function enterLive() {
     if (!LV.data) { LV.data = emptyData(); LV.data.live = true; D = LV.data; }
@@ -3307,11 +3308,17 @@ const TramPlant = (() => {
       const silent = LV.ws && LV.ws.readyState === 1 && now - LV.lastMsg > 3000;
       if (LV.ws && LV.ws.readyState === 1) setLiveState('on', silent ? 'на связи, но нода молчит' : `на связи · ${LV.host}`);
     }
+    liveOver(now);
+    if (LV.want) liveRow();
+  }
+  // плашка поверх графиков: обновляется и в кадре, и сразу при смене состояния связи
+  // (иначе между обрывом и следующим кадром плашка и надпись расходились)
+  function liveOver(now) {
+    if (mode !== 'live') return;
     const over = $('rvOver');
     const noLink = !LV.ws || LV.ws.readyState !== 1, silent = !noLink && now - LV.lastMsg > 3000;
     over.hidden = !(noLink || silent);
     over.textContent = noLink ? (LV.want ? 'нет связи с ROS 2' : 'не подключено к rosbridge') : 'нет данных: нода или запись молчит';
-    if (LV.want) liveRow();
   }
 
   // ---------------------------------------------------------------- цикл
@@ -3339,7 +3346,7 @@ const TramPlant = (() => {
   }
   // значки режимов берутся у песочницы (одинаковые)
   window.__tvRun = {
-    setMode, select: k => selectReplay(k), state: () => ({ mode, key: RP.key, t: RP.t, play: RP.play, n: D ? D.n : 0, live: LV.state, rates: LV.rates, nodeHz: LV.nodeHz, rows: LV.data ? LV.data.n : 0, pairsV: D ? D.pv.t.length : 0 }),
+    setMode, select: k => selectReplay(k), state: () => ({ mode, key: RP.key, t: RP.t, play: RP.play, n: D ? D.n : 0, live: LV.state, rates: LV.rates, nodeHz: LV.nodeHz, rows: LV.data ? LV.data.n : 0, pairsV: D ? D.pv.t.length : 0, fc: LV.last && LV.last.st ? LV.last.st.frame_count : null }),
     metrics: () => D ? metricsAt(nowT()) : null, summary: () => D ? D.summary : null, seek: t => { RP.t = t; renderPanels(true); }, play: (on, sp) => { if (sp) RP.speed = sp; RP.play = on; syncPlay(); },
     // для проверок живого режима: последние строки плоскости и ошибки в плане по парам с GNSS
     liveTail: (n = 2000) => LV.data ? { x: LV.data.x.slice(-n), y: LV.data.y.slice(-n), h: LV.data.pp.h.slice(-n), host: LV.host || null, pill: $('rvLiveSt').textContent } : null,
