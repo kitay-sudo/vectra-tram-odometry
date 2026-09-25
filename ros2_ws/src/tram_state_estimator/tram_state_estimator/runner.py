@@ -15,7 +15,7 @@ import math
 import numpy as np
 
 from .estimator_core import (Estimator, IV, ID, IS, STANDSTILL, body_force,
-                             resistance)
+                             position_sigma, resistance)
 
 R_EARTH = 6378137.0
 
@@ -130,6 +130,8 @@ class Runner:
         self.wheel_timeout = wheel_timeout
         self.handle_timeout = handle_timeout
         self.last = None
+        self._anchors = 0               # привязок к остановкам учтено в σ
+        self._s_fix = -np.inf           # путь ядра при последней привязке
 
     # ---------- входы: каждый возвращает список новых выходов ----------
 
@@ -189,6 +191,12 @@ class Runner:
             if self._dwell >= self.stop_dwell > self._dwell - self.p.dt:
                 self.pos.on_stop(s - self.s0)
                 x, y, z = self.pos.xyz(s - self.s0)
+            if self.pos.anchors != self._anchors:
+                self._anchors, self._s_fix = self.pos.anchors, s
+            # σ положения: путь после выставки или последней привязки
+            ds_fix = s - max(self.s0, self._s_fix)
+            o["sigma_s"] = position_sigma(o["sigma_s"], ds_fix, c.p)
+            o["ds_fix"] = ds_fix
         else:
             # выставки ещё не было (GNSS нет): относительная одометрия по x
             x, y, z = s, 0.0, 0.0
