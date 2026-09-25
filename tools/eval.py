@@ -8,20 +8,23 @@
      train), если её нет;
   3. прогоняет отложенные прогоны tools/split.json:holdout_scored через связку
      Runner так же, как нода (tools/eval_replay.py): GNSS только первые 3 с
-     (--gnss full — весь прогон, как bag жюри с полным GNSS);
+     (--gnss full — весь прогон, как bag жюри с полным GNSS); отдельно —
+     проверка «GNSS весь прогон» на 5 прогонах (первые 5 мин);
   4. считает метрики ТЗ против GNSS: скорость (master — основной эталон,
      rover — дополнительный) RMSE/MAE/смещение, по фазам, ±2σ, ложные стоянки;
-     положение в системе судьи MGRS (x — восток, y — север, z — высота):
-     3D, вдоль/поперёк пути, дрейф % по концу прогона; квадраты 100 км;
+     положение в системе судьи MGRS (x — восток, y — север, z — высота),
+     только опубликованное (pos_valid): 3D, вдоль/поперёк пути, дрейф % по
+     концу прогона; квадраты 100 км и матрица соглашений на границе;
   5. рядом — причинная база «только колесо» на той же машинерии карты;
   6. инъекции аномалий (tools/inject.py) в реальные отложенные прогоны:
      до / во время / после, восстановление, флаги;
   7. графики docs/img/eval_*.png;
   8. out/eval/*.json и docs/EVAL.md (tools/eval_report.py).
+Варианты листа (заглушки крипа / нули) — только с --variants.
 
 Запуск (PowerShell, из корня worktree):
-  docker run --rm --cpus 4 -v ${PWD}:/repo -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro `
-      -w /repo vectra/tram:dev python3 tools/eval.py
+  docker run --rm --cpus 2 -v ${PWD}:/repo -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro `
+      -w /repo vectra/tram:dev python3 tools/eval.py --label "<версия>"
   ... python3 tools/eval.py --quick --check-determinism     # CI: 2 коротких прогона, дважды
 Ключи — python3 tools/eval.py --help и docs/EVAL.md, раздел «Как запустить».
 """
@@ -58,9 +61,12 @@ QUICK_KINDS = ("both_zero", "dropout", "nan", "stamp_jump")
 VARIANTS = ("stubs:c_creep=0.02,c_creep_drag=0.002", "zero:c_creep=0,c_creep_drag=0")
 SENS_FRAMES = ("mgrs", "enu", "equirect")
 BEFORE_S, AFTER_S = 30.0, 60.0
-GNSS_FULL_S = 600.0                     # с записи: прогон «GNSS весь прогон» — первые 10 мин
+GNSS_FULL_S = 300.0                     # с записи: прогон «GNSS весь прогон» — первые 5 мин
+GNSS_FULL_EVERY = 3                     # по умолчанию каждый 3-й отложенный (5 из 15)
 TAIL_S = 300.0                          # с: прогон с инъекцией идёт до конца окна + TAIL_S
+SNAP_MARGIN_S = 5.0                     # с: копия чистой связки — за BEFORE_S + это до аномалии
 REC_TOL, REC_HOLD = 0.1, 3.0            # м/с, с: восстановление = |v − v_чисто| ≤ tol в течение hold
+PROBE_GLOB = "out/realtime/**/summary.json,out/ros_e2e/*/summary.json"
 
 
 # ------------------------------------------------------------------ подготовка
@@ -96,41 +102,65 @@ def ensure_cache(ids, workers, log):
     return missing
 
 
-def build_train_map(out, train_ids, workers, log):
-    """Карта оценки: analysis/build_map.py train (список train — из
-    analysis/drive_model.json, он совпадает с tools/split.json:train)."""
-    dm_path = ROOT / "analysis" / "drive_model.json"
-    dm = json.loads(dm_path.read_text(encoding="utf-8"))
-    if sorted(dm["train"]) != sorted(train_ids):
-        sys.exit("build_map.py берёт train из analysis/drive_model.json, а он не совпадает "
-                 "с tools/split.json:train — карта оценки была бы не той")
+BUILD_MAP = ROOT / "analysis" / "build_map.py"
+
+
+def build_map_cli():
+    """Интерфейс analysis/build_map.py: "argparse" (после WP10: --set/--split/
+    --out/--calib) или "legacy" (код до правок: `build_map.py train <out>`)."""
+    src = BUILD_MAP.read_text(encoding="utf-8") if BUILD_MAP.exists() else ""
+    return "argparse" if '"--set"' in src and '"--calib"' in src else "legacy"
+
+
+def build_train_map(out, train_ids, workers, log, sheet):
+    """Карта оценки только по обучающим прогонам tools/split.json:train.
+    argparse: `build_map.py --set train --split tools/split.json --out F
+    --calib <лист оценки как json>` — множитель пути считается с meas_scale
+    того же листа, что оценивается. legacy: `build_map.py train F` (список
+    train — из analysis/drive_model.json, он должен совпасть со split)."""
     ensure_cache(train_ids, workers, log)
-    if not (bagio.CACHE.parent / "drive_model.json").exists():   # build_map ищет его рядом с кэшем
-        shutil.copy(dm_path, bagio.CACHE.parent / "drive_model.json")
     import build_map
     argv = sys.argv
-    sys.argv = ["build_map.py", "train", str(out)]
+    if build_map_cli() == "argparse":
+        calib = out.with_name(out.stem + ".calib.json")
+        calib.write_text(json.dumps({"params": sheet["core"], "_source": sheet["path"]},
+                                    ensure_ascii=False, indent=1), encoding="utf-8")
+        sys.argv = ["build_map.py", "--set", "train", "--split", str(SPLIT), "--out", str(out),
+                    "--calib", str(calib)]
+    else:
+        dm_path = ROOT / "analysis" / "drive_model.json"
+        dm = json.loads(dm_path.read_text(encoding="utf-8"))
+        if sorted(dm["train"]) != sorted(train_ids):
+            sys.exit("build_map.py берёт train из analysis/drive_model.json, а он не совпадает "
+                     "с tools/split.json:train — карта оценки была бы не той")
+        if not (bagio.CACHE.parent / "drive_model.json").exists():   # build_map ищет его рядом с кэшем
+            shutil.copy(dm_path, bagio.CACHE.parent / "drive_model.json")
+        sys.argv = ["build_map.py", "train", str(out)]
     try:
-        log(f"карта: строю по {len(train_ids)} обучающим прогонам -> {out}")
+        log(f"карта: строю по {len(train_ids)} обучающим прогонам -> {out} ({' '.join(sys.argv[1:])})")
         build_map.main()
     finally:
         sys.argv = argv
 
 
-MAP_SRC = ("analysis/build_map.py", "analysis/drive_model.json",
+MAP_SRC = ("analysis/build_map.py", "analysis/drive_model.json", "tools/split.json",
            "ros2_ws/src/tram_state_estimator/tram_state_estimator/track_map.py",
            "ros2_ws/src/tram_state_estimator/tram_state_estimator/runner.py",
+           "ros2_ws/src/tram_state_estimator/tram_state_estimator/geodesy.py",
            "ros2_ws/src/tram_state_estimator/config/tram_calibration.json")
 
 
-def map_key():
-    """Ключ карты оценки: хэш кода, от которого она зависит. После правок
-    build_map.py / track_map.py / runner.py карта пересобирается сама."""
+def map_key(sheet=None):
+    """Ключ карты оценки: хэш кода, от которого она зависит (и листа, если
+    build_map берёт meas_scale из него). После правок build_map.py /
+    track_map.py / runner.py / geodesy.py карта пересобирается сама."""
     h = hashlib.sha256()
     for rel in MAP_SRC:
         f = ROOT / rel
         h.update(rel.encode())
         h.update(f.read_bytes() if f.exists() else b"-")
+    if sheet is not None and build_map_cli() == "argparse":
+        h.update(json.dumps(sheet["core"], sort_keys=True).encode())
     return h.hexdigest()[:8]
 
 
@@ -145,11 +175,11 @@ def _writable(d):
         return False
 
 
-def resolve_map(spec, cache, train_ids, workers, rebuild, log, out):
+def resolve_map(spec, cache, train_ids, workers, rebuild, log, sheet):
     if spec == "none":
         return None, "без карты (запасной режим map_file: \"\")", None
     if spec == "train":
-        key = map_key()
+        key = map_key(sheet)
         name = f"track_map_train.{key}.npz"
         # карта напарника analysis/cache/track_map_train.npz не используется: она собрана
         # на другой платформе и отличается множителем пути в 16-м знаке (числа — в 6-м)
@@ -158,11 +188,19 @@ def resolve_map(spec, cache, train_ids, workers, rebuild, log, out):
         if rebuild or f is None:
             f = (cache if _writable(cache) else MAPS_DIR) / name
             f.parent.mkdir(parents=True, exist_ok=True)
-            build_train_map(f, train_ids, workers, log)
-        return f, f"оценочная: только обучающие прогоны (build_map.py train, ключ кода {key})", None
+            build_train_map(f, train_ids, workers, log, sheet)
+        how = ("build_map.py --set train, meas_scale листа оценки" if build_map_cli() == "argparse"
+               else "build_map.py train")
+        return f, f"оценочная: только обучающие прогоны ({how}, ключ {key})", None
+    if spec == "eval":
+        f = R.CFG / "eval" / "track_map.npz"
+        if not f.exists():
+            sys.exit(f"--map eval: нет {f} (оценочная карта пакета появляется после WP10)")
+        return f, "оценочная карта пакета config/eval/track_map.npz (только train)", None
     if spec == "jury":
         f = R.CFG / "track_map.npz"
-        return f, "боевая config/track_map.npz (все данные)",             "УТЕЧКА: боевая карта собрана по всем прогонам, включая отложенные"
+        return (f, "боевая config/track_map.npz (все данные)",
+                "УТЕЧКА: боевая карта собрана по всем прогонам, включая отложенные")
     f = Path(spec)
     return f, str(spec), None
 
@@ -185,8 +223,10 @@ def _load_run(bag, quick_s):
 
 
 def _geo(O, r, a, cfg, zone):
-    """Выход Runner'а -> (lat, lon, alt) по его системе координат."""
-    fr, grid, note = R.detect_frame(cfg["sheet"]["node"], cfg["runner_frame"], O["XYZ"])
+    """Выход Runner'а -> (lat, lon, alt) по его системе координат. Только
+    для опубликованных положений (PV); остальные строки — NaN."""
+    PV = M.published(O)
+    fr, grid, note = R.detect_frame(cfg["sheet"]["node"], cfg["runner_frame"], O["XYZ"][PV])
     if cfg.get("runner_grid") is not None:
         grid = cfg["runner_grid"]
     origin = R.runner_origin(r) if r is not None else None
@@ -194,51 +234,137 @@ def _geo(O, r, a, cfg, zone):
         origin = R.first_master(a)
         if fr in ("equirect", "enu"):
             note.append("начало Runner'а не найдено, беру первую точку master")
-    return R.to_geo(O["XYZ"], fr, grid, origin, zone), dict(frame=fr, grid=grid, note=note)
+    n = len(O["T"])
+    geo = [np.full(n, np.nan) for _ in range(3)]
+    if PV.any():
+        for g_, v in zip(geo, R.to_geo(O["XYZ"][PV], fr, grid, origin, zone)):
+            g_[PV] = v
+    return tuple(geo), dict(frame=fr, grid=grid, note=note)
 
 
-def _series(O, keys=("T", "V", "SV", "VALID", "SLIP", "AMB", "MODE", "STALE")):
+def _series(O, keys=("T", "V", "SV", "VALID", "SLIP", "AMB", "MODE", "STALE", "PV")):
     return {k: O[k] for k in keys}
 
 
+def _runners(cfg, p, naive):
+    node = cfg["sheet"]["node"]
+    mp = cfg["map_path"]
+    model, unused = R.make_runner(p, node, _map(mp))
+    runners = [model]
+    if naive:
+        runners.append(R.make_naive(p, node, _map(mp)))
+    return runners, unused
+
+
+def _t_first(a):
+    return min(float(a[k][0, 1]) for k in ("front", "rear", "cmd") if len(a[k]))
+
+
 def run_task(task):
-    """Один прогон (чистый, вариант листа, GNSS весь прогон или инъекция)."""
+    """Один прогон (чистый, вариант листа или GNSS весь прогон)."""
     t_wall = time.perf_counter()
     cfg = task["cfg"]
     bag = task["bag"]
     a = _load_run(bag, cfg["quick_s"])
     if task.get("limit_s"):
         a = R.truncate(a, task["limit_s"])
-    info = None
-    if task.get("inject"):
-        kind = task["inject"]
+    p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
+    runners, unused = _runners(cfg, p, task.get("naive", True))
+    evs = R.events(a, task.get("gnss", cfg["gnss"]))
+    outs = R.replay(evs, runners, cfg["sheet"]["node"])
+    res = dict(task=task["id"], bag=bag, vehicle=bag.split("_")[0], inject=None, t_first=_t_first(a),
+               wall_s=0.0, n_events=len(evs), node_params_unused=unused,
+               glue=_glue_info(runners[0], cfg), est={})
+    _score(res, task, cfg, p, a, runners, outs)
+    res["wall_s"] = time.perf_counter() - t_wall
+    return res
+
+
+def _run_any(task):
+    return run_inject_bag(task) if task["id"][0] == "injbag" else run_task(task)
+
+
+def _glue_info(r, cfg):
+    gl = R.Glue(r, cfg["sheet"]["node"])
+    return dict(fix_status=gl.fix_status, start_sort_s=gl.sort_s,
+                runner_kwargs=R.runner_arg_names())
+
+
+def run_inject_bag(task):
+    """Все инъекции одного прогона. Чистая связка (модель и база) идёт один
+    раз; перед каждой аномалией (за BEFORE_S + SNAP_MARGIN_S) снимается её
+    копия, и дальше копия получает поток с инъекцией. Начало потока с
+    инъекцией до этого момента совпадает с чистым (проверяется; иначе —
+    прогон с нуля), поэтому результат тот же, что у прогона с нуля."""
+    cfg = task["cfg"]
+    bag = task["bag"]
+    a = _load_run(bag, cfg["quick_s"])
+    p = R.make_params(cfg["sheet"], cfg["overrides"])
+    gnss = cfg["gnss"]
+    plan = []
+    out = []
+    for kind in task["kinds"]:
         t0, dur = I.choose_window(a, kind)
         if t0 is None:
-            return dict(task=task["id"], skipped=f"нет окна для {kind}")
-        p0 = R.make_params(cfg["sheet"], cfg["overrides"])
-        a, info = I.apply(a, kind, t0, dur, seed=I.seed_for(bag, kind), sigma_meas=p0.sigma_meas)
+            out.append(dict(task=("inj", kind, bag), skipped=f"нет окна для {kind}"))
+            continue
+        plan.append((t0 - BEFORE_S - SNAP_MARGIN_S, kind, t0, dur))
+    plan.sort(key=lambda x: (x[0], task["kinds"].index(x[1])))
+    clean = R.events(a, gnss)
+    runners, unused = _runners(cfg, p, True)
+    rp = R.Replay(runners, cfg["sheet"]["node"])
+    pos = 0
+    for t_snap, kind, t0, dur in plan:
+        t_wall = time.perf_counter()
+        # шум задан абсолютно (σ = 5 × 0,05 м/с), от листа не зависит
+        b, info = I.apply(a, kind, t0, dur, seed=I.seed_for(bag, kind))
         # дальше конца окна + TAIL_S не считаем: остаток прогона только стоит времени
-        a = R.cut_stamp(a, t0 + I.eval_window(kind) + TAIL_S)
-    p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
-    node = cfg["sheet"]["node"]
-    mp = cfg["map_path"]
-    model, unused = R.make_runner(p, node, _map(mp))
-    runners = [model]
-    if task.get("naive", True):
-        runners.append(R.make_naive(p, node, _map(mp)))
-    evs = R.events(a, task.get("gnss", cfg["gnss"]))
-    outs = R.replay(evs, runners)
-    wall = time.perf_counter() - t_wall
+        b = R.cut_stamp(b, t0 + I.eval_window(kind) + TAIL_S)
+        evs = R.events(b, gnss)
+        while pos < len(clean) and clean[pos][0] < t_snap:
+            rp.feed(clean[pos:pos + 1])
+            pos += 1
+        n_pre = int(np.searchsorted(np.array([e[0] for e in evs]), t_snap, side="left"))
+        same = n_pre == pos and all(_ev_eq(x, y) for x, y in zip(evs[:pos], clean[:pos]))
+        if same:
+            fk = rp.fork()
+            outs = fk.feed(evs[pos:]).finish()
+            rs = [gl.r for gl in fk.glues]
+        else:                                   # начало разошлось: честно с нуля
+            rs, _ = _runners(cfg, p, True)
+            outs = R.replay(evs, rs, cfg["sheet"]["node"])
+        res = dict(task=("inj", kind, bag), bag=bag, vehicle=bag.split("_")[0], inject=info,
+                   t_first=_t_first(b), wall_s=0.0, n_events=len(evs) - (pos if same else 0),
+                   node_params_unused=unused, snapshot=bool(same), est={})
+        _score(res, dict(keep_series=True), cfg, p, b, rs, outs)
+        res["wall_s"] = time.perf_counter() - t_wall
+        out.append(res)
+    return out
+
+
+def _same(u, v):
+    if isinstance(u, tuple) or isinstance(v, tuple):
+        return (isinstance(u, tuple) and isinstance(v, tuple) and len(u) == len(v)
+                and all(_same(p, q) for p, q in zip(u, v)))
+    if isinstance(u, float) and isinstance(v, float):
+        return u == v or (math.isnan(u) and math.isnan(v))
+    return u == v
+
+
+def _ev_eq(x, y):
+    """Равенство событий (tb, вид, индекс, th, значение) с учётом NaN."""
+    return _same(tuple(x), tuple(y))
+
+
+def _score(res, task, cfg, p, a, runners, outs):
+    """Метрики выхода связок (модель, база) против эталона прогона a."""
     origin = R.first_master(a)
-    t_first = min(float(a[k][0, 1]) for k in ("front", "rear", "cmd") if len(a[k]))
-    res = dict(task=task["id"], bag=bag, vehicle=bag.split("_")[0], inject=info, t_first=t_first,
-               wall_s=wall, n_events=len(evs), node_params_unused=unused, est={})
     for name, r, (O, crash) in zip(("model", "naive"), runners, outs):
         if crash is not None:
-            crash = dict(crash, after_start_s=crash["stamp"] - t_first)
+            crash = dict(crash, after_start_s=crash["stamp"] - res["t_first"])
         e = dict(crash=crash, n_out=int(len(O["T"])))
         if origin is None or len(O["T"]) < 2:
-            e["row"] = dict(n_out=int(len(O["T"])))
+            e["row"] = dict(n_out=int(len(O["T"])), v_pairs=0)
             res["est"][name] = e
             continue
         frame = M.Frame(cfg["frame"], origin)
@@ -250,10 +376,13 @@ def run_task(task):
         row_r, _ = M.score_speed(O, a, "rover", p.v_standstill, p.meas_scale)
         row.update({f"rover_{k}": v for k, v in row_r.items()
                     if k in ("v_pairs", "v_rmse", "v_mae", "v_bias", "v_max")})
-        rowp, s_p = M.score_position(O, a, frame, cfg["judge_grid"], full=task.get("full", True))
+        rowp, s_p = M.score_position(O, a, frame, cfg["judge_grid"], full=task.get("full", True),
+                                     boundary_grid=cfg["judge_grid"] or M.BOUNDARY_GRID)
         row.update(rowp)
         row["n_out"] = int(len(O["T"]))
         row["rate_hz"] = float(len(O["T"]) / max(O["T"][-1] - O["T"][0], 1e-9))
+        PVs = M.published(O)
+        row["rate_pos_hz"] = float(PVs.sum() / max(O["T"][-1] - O["T"][0], 1e-9))
         if not naive:
             row["frac_valid"] = float(O["VALID"].mean())
             row["frac_slip"] = float(O["SLIP"].mean())
@@ -271,7 +400,7 @@ def run_task(task):
         if task.get("keep_samples"):
             e["samples"] = dict(v=s_v, p=s_p)
         if task.get("keep_series"):
-            e["xyz"] = O["XYZ"]
+            e["xyz"] = np.where(PVs[:, None], O["XYZ"], np.nan)     # неопубликованное — NaN
             e["series"] = _series(O)
             e["series"]["tp"] = s_p["tp"] if s_p else np.zeros(0)
             e["series"]["al"] = s_p.get("al", np.zeros(0)) if s_p else np.zeros(0)
@@ -382,6 +511,8 @@ def gnss_full_compare(res, base, ids):
     значит выходы должны совпасть. Плюс метрики обоих на этом отрезке."""
     per, rows_f, rows_b = {}, [], []
     for b in ids:
+        if ("gnss_full", b) not in res:
+            continue
         ef = res[("gnss_full", b)]["est"]["model"]
         eb = base[b]["est"]["model"]
         Sf, Sb = ef.get("series"), eb.get("series")
@@ -392,9 +523,12 @@ def gnss_full_compare(res, base, ids):
         j, ok = M.nearest(Sf["T"], Sb["T"][mb], tol=1e-6)
         same_grid = bool(ok.all()) and int(mb.sum()) == len(Sf["T"])
         dv = np.abs(Sf["V"][j[ok]] - Sb["V"][mb][ok])
+        same_pv = bool(np.array_equal(Sf["PV"][j[ok]], Sb["PV"][mb][ok]))
+        same_grid = same_grid and same_pv
         XYZf = ef["xyz"]
         XYZb = eb["xyz"][mb][ok]
         dp = np.linalg.norm(XYZf[j[ok]] - XYZb, axis=1)
+        dp = dp[np.isfinite(dp)]                # неопубликованное — совпадение по same_pv
         # метрики на общем отрезке: пары скорости и положения по меткам эталона
         mg = Sb["tg"] <= t_hi
         mpp = Sb["tp"] <= t_hi
@@ -404,10 +538,10 @@ def gnss_full_compare(res, base, ids):
                   p3d_mean=ef["row"].get("p3d_mean"), p3d_end=ef["row"].get("p3d_end"))
         rows_b.append(rb)
         rows_f.append(rf)
-        per[b] = dict(span_s=t_hi - float(Sf["T"][0]), same_grid=same_grid,
+        per[b] = dict(span_s=t_hi - float(Sf["T"][0]), same_grid=same_grid, same_pv=same_pv,
                       n_out_full=int(len(Sf["T"])), n_out_3s=int(mb.sum()),
                       max_dv=float(dv.max()) if len(dv) else None,
-                      max_dpos=float(np.nanmax(dp)) if len(dp) else None,
+                      max_dpos=float(np.max(dp)) if len(dp) else None,
                       v_mae_full=rf["v_mae"], v_mae_3s=rb["v_mae"],
                       p3d_mean_full=rf["p3d_mean"], p3d_mean_3s=rb["p3d_mean"])
     return dict(span_s=GNSS_FULL_S, runs=per, full=M.totals(rows_f), gnss3=M.totals(rows_b),
@@ -488,22 +622,24 @@ def evaluate(args, log):
     ids = list(QUICK_RUNS) if args.quick else (args.runs.split(",") if args.runs else list(holdout))
     workers = args.workers or max(1, effective_cpus())
     ensure_cache(ids, workers, log)
-    map_path, map_label, map_leak = resolve_map(args.map, cache, train, workers, args.rebuild_map, log,
-                                             ROOT / args.out)
     sheet = R.resolve_sheet(args.sheet)
     overrides = R.parse_overrides(args.set)
-    cfg = dict(sheet=sheet, overrides=overrides, map_path=str(map_path) if map_path else None,
+    core_ov, node_ov = R.split_overrides(overrides)
+    sheet["node"].update(node_ov)                  # --set mgrs_grid=37UDB и т. п. — параметры ноды
+    map_path, map_label, map_leak = resolve_map(args.map, cache, train, workers, args.rebuild_map, log,
+                                                sheet)
+    cfg = dict(sheet=sheet, overrides=core_ov, map_path=str(map_path) if map_path else None,
                gnss=args.gnss, frame=args.frame, runner_frame=args.runner_frame,
                runner_grid=args.runner_grid, judge_grid=args.judge_grid,
                quick_s=QUICK_S if args.quick else 0.0)
-    base_p = R.make_params(sheet, overrides)
+    base_p = R.make_params(sheet, core_ov)
     tasks = []
     for b in ids:
         tasks.append(dict(id=("base", b), bag=b, cfg=cfg, naive=True, keep_samples=True,
                           keep_series=True, sens=True))
-    # варианты листа: заглушки крипа против подогнанных / нулевых
+    # варианты листа: заглушки крипа против подогнанных / нулевых (только с --variants)
     variants = []
-    if not args.no_variants and not args.quick:
+    if args.variants and not args.quick:
         for spec in VARIANTS:
             name, ov = spec.split(":", 1)
             ovd = dict(overrides)
@@ -515,12 +651,18 @@ def evaluate(args, log):
             for b in ids:
                 tasks.append(dict(id=("var", name, b), bag=b, cfg=cfg, overrides=ovd, naive=False,
                                   full=False))
-    # GNSS весь прогон (bag жюри с полным GNSS)
+    # GNSS весь прогон (bag жюри с полным GNSS): первые GNSS_FULL_S с, подмножество
+    gf_ids = []
     if args.gnss != "full" and not args.no_gnss_full and not args.quick:
-        for b in ids:
+        gf_ids = (list(ids) if args.gnss_full_runs == "all" else
+                  [b for b in args.gnss_full_runs.split(",") if b] if args.gnss_full_runs else
+                  list(ids[::GNSS_FULL_EVERY]))
+        for b in gf_ids:
+            if b not in ids:
+                sys.exit(f"--gnss-full-runs: {b} не в наборе прогонов")
             tasks.append(dict(id=("gnss_full", b), bag=b, cfg=cfg, gnss="full", naive=False,
                               full=False, keep_series=True, limit_s=GNSS_FULL_S))
-    # инъекции
+    # инъекции: одна задача на прогон (общее чистое начало, копия связки перед аномалией)
     inj_runs = [] if args.no_inject else (
         [ids[0]] if args.quick else [b for b in args.inject_runs.split(",") if b])
     kinds = list(QUICK_KINDS) if args.quick else (
@@ -529,22 +671,29 @@ def evaluate(args, log):
         if b not in ids:
             ensure_cache([b], workers, log)
             tasks.append(dict(id=("base", b), bag=b, cfg=cfg, naive=True, keep_series=True))
-        for k in kinds:
-            tasks.append(dict(id=("inj", k, b), bag=b, cfg=cfg, inject=k, naive=True,
-                              keep_series=True))
+        tasks.append(dict(id=("injbag", b), bag=b, cfg=cfg, kinds=kinds))
     # длинные — первыми, чтобы процессы кончили вместе
-    order = sorted(range(len(tasks)), key=lambda i: (tasks[i]["id"][0] != "inj", i))
+    order = sorted(range(len(tasks)), key=lambda i: (tasks[i]["id"][0] != "injbag", i))
     log(f"задач {len(tasks)}: прогонов {len(ids)}, вариантов {len([v for v in variants if not v['same_as_base']])}, "
-        f"инъекций {len(inj_runs) * len(kinds)}; процессов {workers}")
+        f"GNSS весь прогон {len(gf_ids)}, инъекций {len(inj_runs) * len(kinds)}; процессов {workers}")
     t0 = time.perf_counter()
     res = {}
     with ProcessPoolExecutor(workers) as ex:
-        for i, r in zip(order, ex.map(run_task, [tasks[i] for i in order])):
-            res[tasks[i]["id"]] = r
+        for i, r in zip(order, ex.map(_run_any, [tasks[i] for i in order])):
+            if tasks[i]["id"][0] == "injbag":
+                for x in r:
+                    res[x["task"]] = x
+            else:
+                res[tasks[i]["id"]] = r
     wall = time.perf_counter() - t0
     log(f"прогоны готовы за {wall:.0f} с")
 
     base = {k[1]: v for k, v in res.items() if k[0] == "base"}
+    unused = sorted({u for r in base.values() for u in r.get("node_params_unused", [])})
+    if unused:
+        log(f"ВНИМАНИЕ: параметры ноды не дошли до Runner: {unused} — связка eval_replay "
+            "отстала от tram_node.py, числа могут не совпадать с нодой")
+    glue = next((r.get("glue") for r in base.values() if r.get("glue")), {})
     report = dict(meta=dict(
         label=args.label, sheet={k: sheet[k] for k in ("label", "path", "kind", "sha", "leak")},
         overrides=overrides, map=dict(label=map_label, file=(Path(map_path).relative_to(ROOT).as_posix()
@@ -552,14 +701,18 @@ def evaluate(args, log):
                                                              else (str(map_path) if map_path else None)),
                                       sha=R.sha(map_path) if map_path else None, leak=map_leak),
         gnss=args.gnss, frame=args.frame, frame_ru=M.FRAMES_RU[args.frame],
-        runner_frame=args.runner_frame, judge_grid=args.judge_grid, quick=args.quick,
+        runner_frame=args.runner_frame, runner_grid=args.runner_grid, judge_grid=args.judge_grid,
+        boundary_grid=args.judge_grid or M.BOUNDARY_GRID, quick=args.quick,
         runs=ids, kinds=kinds, split=SPLIT.relative_to(ROOT).as_posix(), pkg_src_sha=src_digest(),
         tol_s=M.TOL, v_stand_gnss=M.V_STAND_GNSS, v_false_ss=M.V_FALSE_SS,
         params=dict(dt=base_p.dt, q_v=base_p.q_v, c_creep=base_p.c_creep,
                     c_creep_drag=base_p.c_creep_drag, meas_scale=base_p.meas_scale,
                     delay_drive=base_p.delay_drive, tau_drive=base_p.tau_drive),
-        node_params=sheet["node"],
-        node_params_unused=sorted({u for r in base.values() for u in r.get("node_params_unused", [])}),
+        node_params=sheet["node"], node_declared=sheet.get("node_declared", []),
+        node_params_unused=unused, glue=glue, build_map_cli=build_map_cli(),
+        gnss_full_runs=gf_ids, gnss_full_s=GNSS_FULL_S, variants_on=bool(args.variants),
+        inject_snapshot=sorted({str(r.get("snapshot")) for k, r in res.items()
+                                if k[0] == "inj" and not r.get("skipped")}),
         runner_frames=sorted({json.dumps(r["est"]["model"].get("runner_frame"), ensure_ascii=False,
                                          sort_keys=True) for r in base.values()
                               if "model" in r["est"]}),
@@ -627,8 +780,12 @@ def main():
     ap.add_argument("--sheet", default="eval",
                     help="eval (по умолчанию: config/eval/tram_eval.yaml | tram.yaml | "
                          "tram_calibration.json, иначе json с пометкой об утечке) | jury | json | путь")
-    ap.add_argument("--set", default="", help="переопределить поля листа: k=v,k=v")
-    ap.add_argument("--map", default="train", help="train (по умолчанию) | jury | none | путь .npz")
+    ap.add_argument("--set", default="",
+                    help="переопределить поля листа: k=v,k=v; поля Params — ядру, остальное — "
+                         "параметрам ноды (например mgrs_grid=37UDB, projection=utm)")
+    ap.add_argument("--map", default="train",
+                    help="train (по умолчанию: build_map по split train, строится сама) | eval "
+                         "(config/eval/track_map.npz пакета) | jury | none | путь .npz")
     ap.add_argument("--rebuild-map", action="store_true", help="пересобрать карту train")
     ap.add_argument("--gnss", default="3", help="секунд GNSS в связку (3) или full")
     ap.add_argument("--frame", default="mgrs", choices=M.FRAMES,
@@ -637,8 +794,9 @@ def main():
                     help="система выхода Runner'а: auto — по параметру листа projection, "
                          "иначе equirect (код до правок), с проверкой по величине")
     ap.add_argument("--runner-grid", default=None,
-                    help="квадрат MGRS выхода Runner'а (\"\" — перенос по точке); "
-                         "по умолчанию — параметр листа mgrs_grid")
+                    help="как ЧИТАТЬ выход Runner'а в MGRS (\"\" — перенос по точке, 37UDB — "
+                         "непрерывно от квадрата); по умолчанию — параметр ноды mgrs_grid. Runner "
+                         "этот ключ не настраивает: чтобы Runner выдавал 37UDB, --set mgrs_grid=37UDB")
     ap.add_argument("--judge-grid", default="",
                     help="соглашение судьи на границе квадратов: \"\" — перенос по точке, "
                          "или код квадрата (37UDB) — непрерывно от него")
@@ -646,8 +804,13 @@ def main():
     ap.add_argument("--inject-runs", default=",".join(INJECT_RUNS))
     ap.add_argument("--inject-kinds", default="", help="виды инъекций (по умолчанию все)")
     ap.add_argument("--no-inject", action="store_true")
-    ap.add_argument("--no-variants", action="store_true")
+    ap.add_argument("--variants", action="store_true",
+                    help="варианты листа: заглушки крипа / нули (+15 прогонов модели, ~+5 мин)")
+    ap.add_argument("--no-variants", action="store_true", help="(по умолчанию; оставлен для совместимости)")
     ap.add_argument("--no-gnss-full", action="store_true")
+    ap.add_argument("--gnss-full-runs", default="",
+                    help=f"прогоны для проверки «GNSS весь прогон» (первые {GNSS_FULL_S:.0f} с): "
+                         f"по умолчанию каждый {GNSS_FULL_EVERY}-й отложенный; all — все; или список")
     ap.add_argument("--quick", action="store_true",
                     help=f"CI: прогоны {','.join(QUICK_RUNS)}, первые {QUICK_S:.0f} с, "
                          f"инъекции {','.join(QUICK_KINDS)}")
@@ -658,8 +821,9 @@ def main():
     ap.add_argument("--label", default="", help="подпись версии в EVAL.md (например «до правок»)")
     ap.add_argument("--no-doc", action="store_true", help="не писать docs/EVAL.md и графики")
     ap.add_argument("--doc", default="docs/EVAL.md")
-    ap.add_argument("--probe-glob", default="out/realtime/**/summary.json,out/ros_e2e/*/summary.json",
-                    help="сводки tools/ros_probe.py для раздела «Реальное время»")
+    ap.add_argument("--probe-glob", default=PROBE_GLOB,
+                    help="сводки tools/ros_probe.py для раздела «Реальное время» (строки "
+                         "сохраняются в timing.json, --render-only берёт их оттуда, если файлов нет)")
     ap.add_argument("--render-only", action="store_true",
                     help="только пересобрать docs/EVAL.md и графики из готовых out/eval/*.json "
                          "и plotdata.npz (без прогонов)")
@@ -715,6 +879,8 @@ def main():
     timing["sha256"] = digests
     if check is not None:
         timing["determinism"] = check
+    import eval_report
+    timing["realtime"] = eval_report.probe_rows(ROOT, args.probe_glob)
     (out / "timing.json").write_text(dumps(timing), encoding="utf-8")
     s = result["summary"]["totals"]["all"]
     m, n = s["model"], s["naive"]
@@ -724,13 +890,14 @@ def main():
     log(f"база:   v MAE {n['v_mae']:.4f} RMSE {n['v_rmse']:.4f} смещение {n['v_bias']:+.4f}; "
         f"3D ср. {n['p3d_mean']:.2f} м")
     if not args.no_doc:
-        import eval_report
         # документ — из тех же округлённых JSON, что и --render-only: байты совпадают
         shown = dict(summary=json.loads(files["summary.json"]), runs=json.loads(files["runs.json"]),
                      inject=json.loads(files["inject.json"]), kinds=result["kinds"])
-        eval_report.write(shown, timing, base, res, args, ROOT, out)
+        eval_report.write(shown, json.loads(dumps(timing)), base, res, args, ROOT, out)
         log(f"записано {args.doc} и docs/img/eval_*.png")
     log(f"готово за {time.perf_counter() - t_start:.0f} с; JSON в {out.relative_to(ROOT)}")
+    timing["wall_with_doc_s"] = round(time.perf_counter() - t_start, 1)
+    (out / "timing.json").write_text(dumps(timing), encoding="utf-8")
     if check is not None and not check["identical"]:
         sys.exit(2)
 

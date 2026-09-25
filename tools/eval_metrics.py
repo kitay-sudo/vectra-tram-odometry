@@ -95,8 +95,16 @@ def phases(a, tg, vg):
                     np.where(n_h > 0, 1, np.where(n_h < 0, 3, 2))).astype(np.int8)
 
 
+def _rows(x, ncol):
+    """Массив прогона как (n, ≥ncol); пустой или неполный — (0, ncol)."""
+    x = np.asarray(x, float)
+    if x.ndim != 2 or x.shape[1] < ncol:
+        return np.zeros((0, ncol))
+    return x
+
+
 def speed_ref(a, which="master"):
-    g = a["mvel" if which == "master" else "rvel"]
+    g = _rows(a["mvel" if which == "master" else "rvel"], 4)
     if len(g) == 0:
         return np.zeros(0), np.zeros(0)
     return g[:, 1], np.hypot(g[:, 2], g[:, 3])
@@ -238,15 +246,16 @@ def score_speed(O, a, which="master", v_standstill=0.3, meas_scale=1.0):
     Возвращает (row, samples)."""
     T, V = O["T"], O["V"]
     tg, vg = speed_ref(a, which)
-    row = dict(v_ref=int(len(tg)))
+    row = dict(v_ref=int(len(tg)), v_out_nan=int(np.sum(~np.isfinite(V))))
     if not len(tg):
-        return dict(v_ref=0, v_pairs=0), None
+        return dict(row, v_pairs=0), None
     j, ok = nearest(T, tg)
     ev_all = np.full(len(tg), np.nan)
     ev_all[ok] = V[j[ok]] - vg[ok]
     fin = np.isfinite(ev_all)
     ev = ev_all[fin]
     jj = j[fin]
+    # v_nan: эталон нашёл выход в пределах 0,05 с, но скорость в нём не число
     row.update(v_pairs=int(fin.sum()), v_pair_frac=float(fin.mean()),
                v_unpaired=int(len(tg) - ok.sum()), v_nan=int(ok.sum() - fin.sum()))
     vs = vstats(ev)
@@ -276,22 +285,50 @@ def score_speed(O, a, which="master", v_standstill=0.3, meas_scale=1.0):
 def reference_geo(a):
     """Эталон положения: метки и (lat, lon, alt) master fix (как в core_metrics:
     без фильтрации по status; неконечные строки отброшены)."""
-    m = a["mfix"]
+    m = _rows(a["mfix"], 5)
     m = m[np.isfinite(m[:, 2]) & np.isfinite(m[:, 3]) & np.isfinite(m[:, 4])]
     return m[:, 1], m[:, 2], m[:, 3], m[:, 4]
 
 
-def score_position(O, a, frame, judge_grid="", full=True):
+BOUNDARY_GRID = "37UDB"     # «непрерывно от квадрата» для матрицы соглашений на границе
+
+
+def _conv(E, N, conv):
+    """Плоские координаты MGRS по соглашению conv: "" — перенос по точке,
+    код квадрата — непрерывно от его юго-западного угла."""
+    if not conv:
+        return G.wrap(E, N)
+    _, gE, gN = G.grid_origin(conv)
+    return np.asarray(E, float) - gE, np.asarray(N, float) - gN
+
+
+def published(O):
+    """Строки выхода, у которых положение опубликовано (нода после WP10 не
+    публикует /result/position при pos_valid = False) и конечно."""
+    n = len(O["T"])
+    PV = O.get("PV")
+    if PV is None:
+        PV = np.isfinite(O["XYZ"]).all(axis=1) if n else np.zeros(0, bool)
+    return np.asarray(PV, bool)
+
+
+def score_position(O, a, frame, judge_grid="", full=True, boundary_grid=BOUNDARY_GRID):
     """Положение оценки против master fix. O["GEO"] — (lat, lon, alt) выхода
     (переведённые из системы Runner'а), O["XYZ"] — сырые x, y, z выхода (для
-    «взгляда судьи»). frame — Frame. Возвращает (row, samples)."""
-    T = O["T"]
+    «взгляда судьи»), O["PV"] — положение опубликовано. Фикс сопоставляется
+    с ближайшим ОПУБЛИКОВАННЫМ положением в пределах 0,05 с; без него фикс
+    непарный (p_unpaired). frame — Frame. Возвращает (row, samples)."""
+    PV = published(O)
+    T = O["T"][PV]
     tr, la, lo, al = reference_geo(a)
-    row = {}
+    row = dict(p_ref=int(len(tr)), p_out=int(len(O["T"])),
+               p_out_invalid=int((~O.get("POSV", PV)).sum()) if len(O["T"]) else 0,
+               p_nan=int((O.get("POSV", PV) & ~PV).sum()) if len(O["T"]) else 0)
     if len(tr) < 2 or not len(T):
-        return dict(p_pairs=0), None
+        return dict(row, p_pairs=0, p_unpaired=int(len(tr)), p_pair_frac=0.0), None
     P = frame.fwd(la, lo, al)
-    lat_e, lon_e, alt_e = O["GEO"]
+    lat_e, lon_e, alt_e = (np.asarray(g_, float)[PV] for g_ in O["GEO"])
+    XYZ_raw = O["XYZ"][PV]
     X = frame.fwd(lat_e, lon_e, alt_e)
     j2, ok2 = nearest(T, tr)
     idx = np.flatnonzero(ok2)
@@ -301,7 +338,8 @@ def score_position(O, a, frame, judge_grid="", full=True):
     d2 = np.linalg.norm(Xp[:, :2] - P[idx, :2], axis=1)
     dz = Xp[:, 2] - P[idx, 2]
     row["p_pairs"] = int(np.isfinite(d3).sum())
-    row["p_nan"] = int((~np.isfinite(d3)).sum())
+    row["p_unpaired"] = int(len(tr) - row["p_pairs"])
+    row["p_pair_frac"] = float(row["p_pairs"] / len(tr))
     row["p3d_mean"] = _nanstat(np.mean, d3)
     row["p3d_rmse"] = float(np.sqrt(_nanstat(np.mean, d3 ** 2)))
     row["p3d_max"] = _nanstat(np.max, d3)
@@ -310,7 +348,7 @@ def score_position(O, a, frame, judge_grid="", full=True):
     row["pz_mean"] = _nanstat(np.mean, np.abs(dz))
     s = dict(d3=d3, d2=d2, tp=tr[idx])
     # «взгляд судьи»: квадраты 100 км MGRS при переносе по точке
-    if frame.name == "mgrs":
+    if frame.name == "mgrs" and len(idx):
         Er, Nr = frame.utm(la[idx], lo[idx])
         Ee, Ne = frame.utm(lat_e[jp], lon_e[jp])
         fe = np.isfinite(Ee) & np.isfinite(Ne)
@@ -321,23 +359,31 @@ def score_position(O, a, frame, judge_grid="", full=True):
         row["ref_squares"] = sorted({G.square_letters(e, n, frame.zone)
                                      for e, n in zip(Er[::50], Nr[::50])} |
                                     {G.square_letters(float(Er[-1]), float(Nr[-1]), frame.zone)})
+        # матрица соглашений на границе квадратов: наш выход (перенос по точке
+        # или непрерывно от boundary_grid) × эталон судьи (то же); координаты
+        # выхода — непрерывная оценка, переведённая по нашему соглашению
+        dzp = Xp[:, 2] - P[idx, 2]
+        for on, oc in (("wrap", ""), ("grid", boundary_grid)):
+            xo, yo = _conv(Ee, Ne, oc)
+            for jn, jc in (("wrap", ""), ("grid", boundary_grid)):
+                xj, yj = _conv(Er, Nr, jc)
+                dd = np.sqrt((xo - xj) ** 2 + (yo - yj) ** 2 + dzp ** 2)
+                row[f"bx_{on}_{jn}_3d_mean"] = _nanstat(np.mean, dd)
+                row[f"bx_{on}_{jn}_km"] = int(np.sum(dd > 1000.0))
         # если выход — правильный MGRS с переносом по точке, а судья тоже переносит
         # по точке: пары с другим квадратом дают ~100 км
         wx_r, wy_r = G.wrap(Er, Nr)
         wx_e, wy_e = G.wrap(Ee, Ne)
-        dw = np.sqrt((wx_e - wx_r) ** 2 + (wy_e - wy_r) ** 2 + (Xp[:, 2] - P[idx, 2]) ** 2)
+        dw = np.sqrt((wx_e - wx_r) ** 2 + (wy_e - wy_r) ** 2 + dzp ** 2)
         row["wrap_3d_mean"] = _nanstat(np.mean, dw)
         row["wrap_3d_max"] = _nanstat(np.max, dw)
         # сырые x, y, z выхода против эталона в соглашении судьи judge_grid
-        if judge_grid:
-            _, gE, gN = G.grid_origin(judge_grid)
-            jx, jy = Er - gE, Nr - gN
-        else:
-            jx, jy = G.wrap(Er, Nr)
+        jx, jy = _conv(Er, Nr, judge_grid)
         J = np.c_[jx, jy, al[idx]]
-        dj = np.linalg.norm(O["XYZ"][jp] - J, axis=1)
+        dj = np.linalg.norm(XYZ_raw[jp] - J, axis=1)
         row["judge_raw_3d_mean"] = _nanstat(np.mean, dj)
         row["judge_raw_3d_max"] = _nanstat(np.max, dj)
+        row["judge_raw_km"] = int(np.sum(dj > 1000.0))
     if not full:
         return row, s
     alg, cr, sref, L = along_cross(P[:, :2], idx, Xp[:, :2])
@@ -353,7 +399,7 @@ def score_position(O, a, frame, judge_grid="", full=True):
     row["drift_pct_3d"] = 100.0 * row["p3d_end"] / L if L > 100 else float("nan")
     row["drift_pct_along"] = 100.0 * abs(row["along_end"]) / L if L > 100 else float("nan")
     if "SS" in O and np.isfinite(O["SS"]).any():
-        ssp = O["SS"][jp]
+        ssp = O["SS"][PV][jp]
         m = np.isfinite(alg)
         row["cov2s_along"] = float(np.mean(np.abs(alg[m]) <= 2 * ssp[m])) if m.any() else float("nan")
         row["sigma_s_med"] = float(np.median(ssp)) if len(ssp) else float("nan")
@@ -363,25 +409,30 @@ def score_position(O, a, frame, judge_grid="", full=True):
 
 # ------------------------------------------------------------------ агрегирование
 
+BX = tuple(f"bx_{o}_{j}" for o in ("wrap", "grid") for j in ("wrap", "grid"))
 W_MEAN = ("v_mae", "v_bias", "cov2s_v", "cov1s_v", "p3d_mean", "p2d_mean", "pz_mean",
-          "along_mean", "along_bias", "cross_mean", "cov2s_along", "v_pair_frac",
-          "judge_raw_3d_mean", "wrap_3d_mean")
+          "along_mean", "along_bias", "cross_mean", "cov2s_along",
+          "judge_raw_3d_mean", "wrap_3d_mean") + tuple(b + "_3d_mean" for b in BX)
 W_RMS = ("v_rmse", "p3d_rmse", "along_rmse")
 MAXES = ("v_max", "p3d_max", "along_max", "cross_max", "judge_raw_3d_max", "wrap_3d_max")
-SUMS = ("v_pairs", "p_pairs", "sq_mismatch", "false_ss_n", "moving_n", "v_nan", "p_nan",
-        "along_undef")
+SUMS = ("v_ref", "v_pairs", "v_unpaired", "v_nan", "v_out_nan", "p_ref", "p_pairs", "p_unpaired",
+        "p_out", "p_out_invalid", "p_nan", "sq_mismatch", "judge_raw_km", "false_ss_n", "moving_n",
+        "along_undef") + tuple(b + "_km" for b in BX)
 
 
 def totals(rows):
     """Итог по прогонам. Средние взвешены числом пар скорости (v_pairs), как
     critic_offline.py sub15: для MAE, смещения и RMSE это совпадает с пулом
     всех пар; для средней 3D — «средняя по прогонам с весом пар скорости».
-    Максимумы — по всем прогонам; дрейф — по прогонам длиннее 100 м."""
+    Максимумы — по всем прогонам; дрейф — по прогонам длиннее 100 м. Доли
+    пар — по суммам (пар / меток эталона). Прогоны без пар скорости (упал
+    на старте, нет выхода) в средние не входят — их число runs_empty."""
+    n_in = len([r for r in rows if r is not None])
     rows = [r for r in rows if r and r.get("v_pairs", 0) > 0]
     if not rows:
         return None
     w = np.array([r["v_pairs"] for r in rows], float)
-    out = dict(runs=len(rows))
+    out = dict(runs=len(rows), runs_empty=n_in - len(rows))
 
     def wavg(k, sq=False):
         x = np.array([r.get(k, np.nan) for r in rows], float)
@@ -412,6 +463,9 @@ def totals(rows):
             out[k + "_max"] = float(np.max(x))
     mv = out.get("moving_n", 0)
     out["false_ss_rate"] = out.get("false_ss_n", 0) / mv if mv else 0.0
+    for p in ("v", "p"):
+        if out.get(f"{p}_ref"):
+            out[f"{p}_pair_frac"] = out.get(f"{p}_pairs", 0) / out[f"{p}_ref"]
     return out
 
 

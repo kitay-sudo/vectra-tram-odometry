@@ -1,17 +1,30 @@
 """Прогон записи через связку Runner так же, как это делает нода (для tools/eval.py).
 
-* Лист: yaml (`/tram_state_estimator: ros__parameters`, как у ноды) или json
+* Параметры ноды: значения по умолчанию из объявлений tram_node.py
+  (`P("имя", значение)` / `declare_parameter`), поверх — лист. Лист: yaml
+  (`/tram_state_estimator: ros__parameters`, как у ноды) или json
   (`{"params": {...}}`, как tram_calibration.json). Поля Params — ядру, всё
   остальное — параметры ноды (map_file, init_window_s, таймауты, начало,
-  после слияний — projection, mgrs_grid и т. п.). Для json-листа параметры
-  ноды берутся из боевого config/tram.yaml.
-* Связка — как в tram_node.py: Runner(params, track_map, origin,
-  wheel_timeout, handle_timeout), затем pos.init_window. Новые аргументы
-  Runner (после слияний) подставляются из параметров ноды по имени
-  (`x` или `x_s`); что не подошло — пишется в meta["node_params_unused"].
+  projection, mgrs_grid и т. п.). Для json-листа параметры ноды берутся
+  из боевого config/tram.yaml.
+* Связка — как в tram_node.py: Runner(params, track_map, origin, ...).
+  Аргументы Runner подставляются из параметров ноды по имени (`x` или
+  `x_s`); если у Runner есть **kwargs (настройки Position после WP10) —
+  то же для аргументов Position.__init__. Что не подошло (кроме параметров
+  самой ноды: map_file, начало, frame_id, пульс, sheet) — пишется в
+  meta["node_params_unused"] и в шапку EVAL.md.
 * Порядок событий — по времени записи в bag (как `ros2 bag play`); GNSS —
   первые N с записи от первой точки master (как analysis/evaluate.events)
   или весь прогон (--gnss full: так выглядит bag жюри с полным GNSS).
+  Статус NavSatFix передаётся в on_fix, если Runner его принимает. Если в
+  runner.py есть StartSorter (нода после WP24), стартовый всплеск
+  сортируется так же: часы — время записи в bag, окно — start_sort_s.
+  Пульс ноды (WP16) не эмулируется: он публикует те же узлы сетки, что
+  связка выдаёт при следующем сообщении (прогноз на копии тем же кодом),
+  с теми же значениями — меняется только момент публикации.
+* Выход: скорость публикуется всегда; положение — только при pos_valid
+  (нода после WP10 не публикует /result/position без якоря или у края
+  квадрата MGRS) и конечных x, y, z — поле PV.
 * Исключение в связке = падение ноды: дальше у этой связки выходов нет
   (в ROS 2 исключение в колбэке валит rclpy.spin).
 * База «только колесо»: тот же Runner (сетка, выставка, карта, привязка к
@@ -20,6 +33,8 @@
   Совпадает с NaiveRunner из tools/audit/core_metrics.py.
 """
 
+import ast
+import copy
 import hashlib
 import inspect
 import json
@@ -48,7 +63,15 @@ assert core.STANDSTILL == M.STANDSTILL, "estimator_core.STANDSTILL сменил�
 
 PARAM_NAMES = {f.name for f in fields(core.Params)}
 # аргументы Runner, которые нода задаёт явно (tram_node.py)
-RUNNER_KW = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeout_s"}
+RUNNER_KW = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeout_s",
+             "init_window": "init_window_s"}
+# параметры самой ноды (не Runner): карта, начало, имена систем, пульс и
+# сортировка всплеска (WP16/WP24), выбор листа (WP22)
+NODE_ONLY = {"map_file", "origin_lat", "origin_lon", "origin_alt", "frame_id", "child_frame_id",
+             "sheet", "pulse_horizon_s", "pulse_margin_s", "pulse_margin_nohandle_s",
+             "pulse_period_s", "start_sort_s"}
+START_SORT_DEFAULT = 0.1     # с: start_sort_s ноды после WP24, если его нет в листе
+NODE_PY = PKG / "tram_state_estimator" / "tram_node.py"
 
 
 def sha(path):
@@ -84,12 +107,51 @@ def eval_sheet_candidates():
     return [e / "tram_eval.yaml", e / "tram.yaml", e / "tram_calibration.json"]
 
 
+def _literal(n):
+    """Значение по умолчанию из объявления параметра (литерал или float("nan"))."""
+    try:
+        return ast.literal_eval(n)
+    except ValueError:
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "float"
+                and len(n.args) == 1 and isinstance(n.args[0], ast.Constant)):
+            return float(n.args[0].value)
+        raise
+
+
+def node_declared(path=NODE_PY):
+    """Параметры, которые нода объявляет сама, с их значениями по умолчанию:
+    вызовы P("имя", значение) и *.declare_parameter("имя", значение) в
+    tram_node.py (параметры ядра объявляются отдельно и сюда не входят)."""
+    try:
+        tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return {}
+    out = {}
+    for n in ast.walk(tree):
+        if not (isinstance(n, ast.Call) and len(n.args) >= 2):
+            continue
+        f = n.func
+        name = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else ""
+        if name not in ("P", "declare_parameter"):
+            continue
+        a0 = n.args[0]
+        if not (isinstance(a0, ast.Constant) and isinstance(a0.value, str)):
+            continue
+        try:
+            out.setdefault(a0.value, _literal(n.args[1]))
+        except (ValueError, TypeError, SyntaxError):
+            continue
+    return {k: v for k, v in out.items() if k not in PARAM_NAMES}
+
+
 def resolve_sheet(spec):
     """spec: eval | jury | json | путь. Возвращает dict(label, path, kind,
-    core, node, leak)."""
+    core, node, leak). node — объявления tram_node.py, поверх — лист."""
     jury_yaml = CFG / "tram.yaml"
-    node_defaults = {k: v for k, v in _read_yaml_sheet(jury_yaml).items()
-                     if k not in PARAM_NAMES}
+    declared = node_declared()
+    node_defaults = dict(declared)
+    node_defaults.update({k: v for k, v in _read_yaml_sheet(jury_yaml).items()
+                          if k not in PARAM_NAMES})
     leak = None
     if spec == "eval":
         path = next((p for p in eval_sheet_candidates() if p.exists()), None)
@@ -122,11 +184,18 @@ def resolve_sheet(spec):
     else:
         d = _read_yaml_sheet(path)
         corep = {k: v for k, v in d.items() if k in PARAM_NAMES}
-        node = {k: v for k, v in d.items() if k not in PARAM_NAMES}
+        node = dict(declared)
+        node.update({k: v for k, v in d.items() if k not in PARAM_NAMES})
         kind = "yaml"
     rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
     return dict(spec=spec, label=label, path=rel, kind=kind, sha=sha(path), core=corep,
-                node=node, leak=leak)
+                node=node, leak=leak, node_declared=sorted(declared))
+
+
+def split_overrides(ov):
+    """--set: поля Params — ядру, остальное — параметрам ноды."""
+    return ({k: v for k, v in ov.items() if k in PARAM_NAMES},
+            {k: v for k, v in ov.items() if k not in PARAM_NAMES})
 
 
 def parse_overrides(text):
@@ -147,7 +216,7 @@ def parse_overrides(text):
 
 def make_params(sheet, overrides=None):
     d = dict(sheet["core"])
-    d.update(overrides or {})
+    d.update({k: v for k, v in (overrides or {}).items() if k in PARAM_NAMES})
     return core.Params.from_dict(d)
 
 
@@ -159,28 +228,45 @@ def load_map(path):
 
 # ------------------------------------------------------------------ связка
 
-def make_runner(params, node, tmap):
+def _named(fn):
+    return [q.name for q in inspect.signature(fn).parameters.values()
+            if q.kind not in (q.VAR_KEYWORD, q.VAR_POSITIONAL)
+            and q.name not in ("self", "params", "track_map", "origin")]
+
+
+def runner_arg_names(cls=None):
+    """Имена аргументов Runner, которые берутся из параметров ноды. При
+    **kwargs у Runner (после WP10: настройки Position) — плюс аргументы
+    Position.__init__."""
+    cls = cls or runner_mod.Runner
+    names = _named(cls.__init__)
+    sig = inspect.signature(cls.__init__).parameters
+    if any(q.kind == q.VAR_KEYWORD for q in sig.values()) and hasattr(runner_mod, "Position"):
+        names += [n for n in _named(runner_mod.Position.__init__) if n not in names]
+    return names
+
+
+def make_runner(params, node, tmap, cls=None):
     """Runner так же, как в tram_node.py. Возвращает (runner, неиспользованные
     параметры ноды)."""
-    sig = inspect.signature(runner_mod.Runner.__init__)
+    cls = cls or runner_mod.Runner
     o = (node.get("origin_lat", float("nan")), node.get("origin_lon", float("nan")),
          node.get("origin_alt", float("nan")))
     o = tuple(float(x) for x in o)
     origin = o if all(math.isfinite(x) for x in o) else None
     kw = {}
-    used = {"map_file", "origin_lat", "origin_lon", "origin_alt", "init_window_s",
-            "frame_id", "child_frame_id"}
-    for name in sig.parameters:
-        if name in ("self", "params", "track_map", "origin"):
-            continue
+    used = set(NODE_ONLY) | {"init_window_s"}
+    for name in runner_arg_names(cls):
         key = RUNNER_KW.get(name)
-        if key is None:
+        if key is None or key not in node:
             key = name if name in node else (name + "_s" if name + "_s" in node else None)
         if key is not None and key in node:
             kw[name] = node[key]
             used.add(key)
-    r = runner_mod.Runner(params, track_map=tmap, origin=origin, **kw)
-    if "init_window_s" in node and hasattr(r, "pos") and hasattr(r.pos, "init_window"):
+    r = cls(params, track_map=tmap, origin=origin, **kw)
+    # код до WP10: окно выставки задаётся после __init__ (как tram_node.py до правок)
+    if ("init_window" not in kw and "init_window_s" in node and hasattr(r, "pos")
+            and hasattr(r.pos, "init_window")):
         r.pos.init_window = float(node["init_window_s"])
     unused = sorted(k for k in node if k not in used)
     return r, unused
@@ -221,40 +307,54 @@ class NaiveCore(core.Estimator):
         return self._naive()
 
 
-def make_naive(params, node, tmap):
-    r, _ = make_runner(params, node, tmap)
-    r.core = NaiveCore(params, r)
-    if hasattr(r, "reset"):             # сброс связки (после WP4) не должен вернуть ядро
-        orig = r.reset
+class NaiveRunner(runner_mod.Runner):
+    """Runner с базой вместо ядра. Сброс связки (после WP4 пересоздаёт ядро
+    через __init__) снова ставит базу. Подкласс, а не подмена метода у
+    экземпляра: копия связки (deepcopy для инъекций) остаётся независимой."""
 
-        def reset(*a, **k):
-            res = orig(*a, **k)
-            r.core = NaiveCore(params, r)
-            return res
-        r.reset = reset
+    def reset(self, *a, **k):
+        res = super().reset(*a, **k)
+        self.core = NaiveCore(self.p, self)
+        return res
+
+
+def make_naive(params, node, tmap):
+    r, _ = make_runner(params, node, tmap, cls=NaiveRunner)
+    r.core = NaiveCore(params, r)
     return r
 
 
 # ------------------------------------------------------------------ события
 
+def _rows(x, ncol):
+    """Массив прогона как (n, ≥ncol); пустой — (0, ncol) (bagio пишет пустые (0, 3))."""
+    x = np.asarray(x, float)
+    if x.ndim != 2 or x.shape[1] < ncol:
+        return np.zeros((0, ncol))
+    return x
+
+
 def events(a, gnss="3"):
     """События в порядке записи в bag: (tb, вид, индекс, th, значение).
     gnss: число секунд от первой записи master fix (как evaluate.events при 3)
-    или "full"."""
+    или "full". Значение GNSS — (lat, lon, alt, status)."""
     ev = []
     for i, key in enumerate(("front", "rear")):
-        for tb, th, v in a[key][:, :3]:
+        for tb, th, v in _rows(a[key], 3)[:, :3]:
             ev.append((tb, 0, i, th, v))
-    for tb, th, n in a["cmd"][:, :3]:
+    for tb, th, n in _rows(a["cmd"], 3)[:, :3]:
         ev.append((tb, 1, 0, th, n))
+    mfix = _rows(a["mfix"], 5)
     if gnss == "full":
         t_end = math.inf
     else:
-        t_end = a["mfix"][0, 0] + float(gnss) if len(a["mfix"]) else -1
+        t_end = mfix[0, 0] + float(gnss) if len(mfix) else -1
     for key, ant in (("mfix", "master"), ("rfix", "rover")):
-        for row in a[key]:
+        x = _rows(a[key], 5)
+        for row in x:
             if row[0] <= t_end:
-                ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4])))
+                st = int(row[5]) if len(row) > 5 and math.isfinite(row[5]) else 0
+                ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4], st)))
     ev.sort(key=lambda e: e[0])
     return ev
 
@@ -271,48 +371,117 @@ def cut_stamp(a, t_end):
 
 
 KEYS = ("stamp", "v", "x", "y", "z", "sigma_v", "sigma_s", "mode", "valid", "slip", "ambiguous",
-        "wheels_stale", "pos_ready")
+        "wheels_stale", "pos_ready", "pos_valid")
+SORT_TIMER_S = 0.01     # с: период таймера ноды, который отпускает буфер StartSorter
+
+
+def _num(x, default=np.nan):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return default
 
 
 def _pack(o):
-    return (float(o["stamp"]), float(o["v"]), float(o["x"]), float(o["y"]), float(o["z"]),
-            float(o.get("sigma_v", np.nan)), float(o.get("sigma_s", np.nan)),
+    return (_num(o["stamp"]), _num(o["v"]), _num(o["x"]), _num(o["y"]), _num(o["z"]),
+            _num(o.get("sigma_v", np.nan)), _num(o.get("sigma_s", np.nan)),
             int(o.get("mode", -1)), bool(o.get("valid", True)), bool(o.get("slip", False)),
             bool(o.get("ambiguous", False)), bool(o.get("wheels_stale", False)),
-            bool(o.get("pos_ready", False)))
+            bool(o.get("pos_ready", False)), bool(o.get("pos_valid", True)))
 
 
-def replay(evs, runners):
+class Glue:
+    """Как нода подаёт сообщения в связку: статус NavSatFix — если on_fix его
+    принимает; сортировка стартового всплеска — если в runner.py есть
+    StartSorter (часы — время записи в bag)."""
+
+    def __init__(self, r, node=None):
+        node = node or {}
+        self.r = r
+        self.fix_status = "status" in inspect.signature(r.on_fix).parameters
+        S = getattr(runner_mod, "StartSorter", None)
+        self.sort_s = float(node.get("start_sort_s", START_SORT_DEFAULT)) if S else None
+        self.sorter = S(self.sort_s) if S else None
+
+    def _dispatch(self, m):
+        kind, i, th, val = m
+        r = self.r
+        if kind == 0:
+            return r.on_wheel(i, th, val)
+        if kind == 1:
+            return r.on_handle(th, val)
+        if self.fix_status:
+            return r.on_fix(th, i, *val)
+        return r.on_fix(th, i, *val[:3])
+
+    def feed(self, tb, kind, i, th, val):
+        m = (kind, i, th, val)
+        if self.sorter is None:
+            return self._dispatch(m)
+        out = []
+        for x in self.sorter.poll(tb - SORT_TIMER_S):      # таймер сработал до сообщения
+            out += self._dispatch(x)
+        for x in self.sorter.push(tb, th, m):
+            out += self._dispatch(x)
+        return out
+
+    def flush(self):
+        out = []
+        if self.sorter is not None:
+            for x in self.sorter.poll(math.inf):
+                out += self._dispatch(x)
+        return out
+
+
+def arrays(R):
+    """Строки _pack -> dict массивов выхода. PV — положение опубликовано
+    (pos_valid и конечные x, y, z)."""
+    A = np.array(R, dtype=float) if R else np.zeros((0, len(KEYS)))
+    fin = np.isfinite(A[:, 2:5]).all(axis=1)
+    return dict(T=A[:, 0], V=A[:, 1], XYZ=A[:, 2:5], SV=A[:, 5], SS=A[:, 6],
+                MODE=A[:, 7].astype(int), VALID=(A[:, 8] > 0) & ~(A[:, 11] > 0),
+                SLIP=A[:, 9] > 0, AMB=A[:, 10] > 0, STALE=A[:, 11] > 0, READY=A[:, 12] > 0,
+                POSV=A[:, 13] > 0, PV=(A[:, 13] > 0) & fin)
+
+
+class Replay:
+    """Прогон событий через несколько связок сразу; fork() — независимая
+    копия всего состояния (связки, выходы) для продолжения другим потоком
+    событий (инъекции с общего чистого начала)."""
+
+    def __init__(self, runners, node=None):
+        self.glues = [Glue(r, node) for r in runners]
+        self.rows = [[] for _ in runners]
+        self.crash = [None] * len(runners)
+
+    def feed(self, evs):
+        for ev in evs:
+            for k, gl in enumerate(self.glues):
+                if self.crash[k] is not None:
+                    continue
+                try:
+                    self.rows[k].extend(_pack(x) for x in gl.feed(*ev))
+                except Exception as e:           # noqa: BLE001 — падение ноды фиксируется
+                    self.crash[k] = dict(stamp=float(ev[3]), error=f"{type(e).__name__}: {e}"[:200])
+        return self
+
+    def fork(self):
+        return copy.deepcopy(self)
+
+    def finish(self):
+        for k, gl in enumerate(self.glues):
+            if self.crash[k] is None:
+                try:
+                    self.rows[k].extend(_pack(x) for x in gl.flush())
+                except Exception as e:           # noqa: BLE001
+                    self.crash[k] = dict(stamp=math.inf, error=f"{type(e).__name__}: {e}"[:200])
+        return [(arrays(self.rows[k]), self.crash[k]) for k in range(len(self.glues))]
+
+
+def replay(evs, runners, node=None):
     """Прогон событий через несколько связок сразу. Возвращает для каждой
     dict массивов и сведения о падении (или None)."""
-    rows = [[] for _ in runners]
-    crash = [None] * len(runners)
-    for tb, kind, i, th, val in evs:
-        for k, r in enumerate(runners):
-            if crash[k] is not None:
-                continue
-            try:
-                if kind == 0:
-                    o = r.on_wheel(i, th, val)
-                elif kind == 1:
-                    o = r.on_handle(th, val)
-                else:
-                    o = r.on_fix(th, i, *val)
-                rows[k].extend(_pack(x) for x in o)
-            except Exception as e:           # noqa: BLE001 — падение ноды фиксируется
-                crash[k] = dict(stamp=float(th), error=f"{type(e).__name__}: {e}"[:200])
-    outs = []
-    for k in range(len(runners)):
-        R = rows[k]
-        if R:
-            A = np.array(R, dtype=float)
-        else:
-            A = np.zeros((0, len(KEYS)))
-        O = dict(T=A[:, 0], V=A[:, 1], XYZ=A[:, 2:5], SV=A[:, 5], SS=A[:, 6],
-                 MODE=A[:, 7].astype(int), VALID=(A[:, 8] > 0) & ~(A[:, 11] > 0),
-                 SLIP=A[:, 9] > 0, AMB=A[:, 10] > 0, STALE=A[:, 11] > 0, READY=A[:, 12] > 0)
-        outs.append((O, crash[k]))
-    return outs
+    return Replay(runners, node).feed(evs).finish()
 
 
 # ------------------------------------------------------------------ система выхода Runner'а
@@ -323,7 +492,7 @@ RUNNER_FRAMES = ("auto", "equirect", "enu", "utm", "mgrs")
 def runner_origin(r):
     """(lat0, lon0, alt0) начала локальной системы Runner'а, если есть."""
     pos = getattr(r, "pos", None)
-    for name in ("enu", "proj", "projection", "geo"):
+    for name in ("frame", "enu", "proj", "projection", "geo"):
         obj = getattr(pos, name, None)
         if obj is not None and all(hasattr(obj, k) for k in ("lat0", "lon0", "alt0")):
             return (float(obj.lat0), float(obj.lon0), float(obj.alt0))
@@ -388,7 +557,7 @@ def to_geo(XYZ, frame_name, grid, origin, zone):
 
 
 def first_master(a):
-    m = a["mfix"]
+    m = _rows(a["mfix"], 5)
     m = m[np.isfinite(m[:, 2]) & np.isfinite(m[:, 3]) & np.isfinite(m[:, 4])]
     return (float(m[0, 2]), float(m[0, 3]), float(m[0, 4])) if len(m) else None
 

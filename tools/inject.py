@@ -25,6 +25,7 @@ import numpy as np
 KMH = 3.6
 T_SKIP = 60.0          # с от начала входов: окно не раньше (выставка, трогание)
 AFTER = 120.0          # с после окна должно остаться до конца прогона
+NOISE_SIGMA_MS = 0.05  # м/с: база σ шума (×5) — абсолютная, от листа не зависит
 
 # name: ru — описание; dur — длительность аномалии, с; eval — длительность
 # окна «во время» для метрик, с (для мгновенных аномалий больше dur);
@@ -40,7 +41,7 @@ KINDS = {
     "skid_brake": dict(ru="юз: обе тележки −30 % на торможении", dur=4.0, where="brake"),
     "spin_traction": dict(ru="буксование: обе тележки +30 % на разгоне", dur=4.0, where="traction"),
     "outliers": dict(ru="выбросы ×3: 1, 2 и 3 сообщения подряд (через 5 с)", dur=12.0, where="moving"),
-    "noise": dict(ru="шум ×5 (σ = 5·sigma_meas) на обеих тележках", dur=20.0, where="moving"),
+    "noise": dict(ru="шум ×5: σ = 0,25 м/с (5 × 0,05 м/с) на обеих тележках", dur=20.0, where="moving"),
     "nan": dict(ru="одно показание передней тележки NaN", dur=0.1, eval=5.0, where="moving_start"),
     "stamp_jump": dict(ru="метка одного сообщения передней тележки +30 с", dur=0.1, eval=30.0,
                        jump=30.0, where="moving_start"),
@@ -129,11 +130,13 @@ def choose_window(a, kind, t_skip=T_SKIP, after=AFTER):
 
 # ------------------------------------------------------------ инъекция
 
-def apply(a, kind, t0, dur=None, seed=0, sigma_meas=0.05):
+def apply(a, kind, t0, dur=None, seed=0, sigma_meas=NOISE_SIGMA_MS):
     """Копия массивов прогона с аномалией kind в окне [t0, t0+dur) по th.
 
     Возвращает (массивы, info): info — окно, число затронутых сообщений и
-    описание. sigma_meas — шум измерения скорости оси из листа, м/с (для noise).
+    описание. sigma_meas — базовая σ шума, м/с (для noise: σ = 5·sigma_meas).
+    По умолчанию абсолютная 0,05 м/с (sigma_meas листа до правок), а не
+    значение текущего листа: иначе смена листа меняла бы саму аномалию.
     """
     k = KINDS[kind]
     dur = float(k["dur"] if dur is None else dur)

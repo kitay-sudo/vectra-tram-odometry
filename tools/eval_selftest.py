@@ -180,8 +180,27 @@ def _synthetic_run():
     return dict(front=f, rear=r, cmd=c, mfix=mfix, rfix=rfix, mvel=vel, rvel=vel)
 
 
+def test_naive_speed_is_mean_of_fresh_bogies():
+    """База для любой версии Runner: при постоянных показаниях v = среднее ×
+    meas_scale / 3,6, путь — интеграл v·dt на сетке."""
+    import eval_replay as R
+    a = _synthetic_run()
+    a["front"][:, 2] = 36.0
+    a["rear"][:, 2] = 43.2
+    sheet = R.resolve_sheet("json")
+    p = R.make_params(sheet)
+    nv = R.make_naive(p, sheet["node"], None)
+    (O, crash), = R.replay(R.events(a, "3"), [nv], sheet["node"])
+    assert crash is None and len(O["T"]) > 2000
+    v_exp = 0.5 * (36.0 + 43.2) / 3.6 * p.meas_scale
+    assert np.allclose(O["V"][5:], v_exp, atol=1e-12)
+    assert float(nv.core.x[R.core.IS]) == pytest.approx(float(np.sum(O["V"])) * p.dt, rel=1e-9)
+
+
 def test_naive_matches_core_metrics_baseline():
-    """База на Runner (eval_replay.make_naive) = NaiveRunner аудита (core_metrics)."""
+    """База на Runner (eval_replay.make_naive) = NaiveRunner аудита (core_metrics).
+    Только для связки с той же сеткой, что у аудита (до WP23: узлы от первой
+    метки); после WP23 узлы кратны dt — проверяет test_naive_speed_is_mean_of_fresh_bogies."""
     sys.path.insert(0, str(ROOT / "tools" / "audit"))
     import eval_replay as R
     import core_metrics as CM
@@ -196,10 +215,12 @@ def test_naive_matches_core_metrics_baseline():
     old = []
     for tb, kind, i, th, val in evs:
         old += (nv_old.on_wheel(i, th, val) if kind == 0 else nv_old.on_handle(th, val)
-                if kind == 1 else nv_old.on_fix(th, i, *val))
+                if kind == 1 else nv_old.on_fix(th, i, *val[:3]))
     To = np.array([o["stamp"] for o in old])
     Vo = np.array([o["v"] for o in old])
     Xo = np.array([[o["x"], o["y"], o["z"]] for o in old])
+    if len(To) != len(o_new["T"]) or To[0] != o_new["T"][0]:
+        pytest.skip("сетка Runner отличается от аудита (WP23: узлы кратны dt)")
     assert np.array_equal(To, o_new["T"])
     assert np.array_equal(Vo, o_new["V"])
     assert np.allclose(Xo, o_new["XYZ"], atol=1e-9)
@@ -214,16 +235,296 @@ def test_runner_like_node_and_frame_roundtrip():
     r, unused = R.make_runner(p, sheet["node"], None)
     assert r.pos.init_window == sheet["node"]["init_window_s"]
     assert r.wheel_timeout == sheet["node"]["wheel_timeout_s"]
-    (O, crash), = R.replay(R.events(a, "3"), [r])
+    (O, crash), = R.replay(R.events(a, "3"), [r], sheet["node"])
     assert crash is None and len(O["T"]) > 2000
-    fr, grid, note = R.detect_frame(sheet["node"], "auto", O["XYZ"])
+    PV = O["PV"]
+    assert PV.sum() > 2000
+    XYZ = O["XYZ"][PV]
+    fr, grid, note = R.detect_frame(sheet["node"], "auto", XYZ)
     origin = R.runner_origin(r)
     assert origin is not None
-    lat, lon, alt = R.to_geo(O["XYZ"], fr, grid, origin, 37)
-    back = G.equirect_fwd(lat, lon, alt, origin)
-    assert np.max(np.abs(back - O["XYZ"])) < 1e-6
+    lat, lon, alt = R.to_geo(XYZ, fr, grid, origin, 37)
+    # обратно в систему выхода той же формулой: перевод без потерь (любая версия Runner)
+    if fr == "equirect":
+        back = G.equirect_fwd(lat, lon, alt, origin)
+    elif fr == "enu":
+        back = G.enu_fwd(lat, lon, alt, origin)
+    else:
+        E_, N_ = G.utm_fwd(lat, lon, 37)
+        if fr == "mgrs":
+            x_, y_ = M._conv(E_, N_, grid)
+        elif np.median(np.abs(XYZ[:, 0])) > 1e5:
+            x_, y_ = E_, N_
+        else:
+            E0, N0 = G.utm_fwd(origin[0], origin[1], 37)
+            x_, y_ = E_ - E0, N_ - N0
+        back = np.c_[x_, y_, alt if fr == "mgrs" or np.median(np.abs(XYZ[:, 0])) > 1e5
+                     else alt - origin[2]]
+    assert np.max(np.abs(back - XYZ)) < 1e-6, fr
     # MGRS «перенос по точке» и обратно: непрерывность через границу квадрата
     E, N = G.utm_fwd(lat, lon, 37)
     x, y = G.wrap(E, N)
     la2, lo2, al2 = R.to_geo(np.c_[x, y, alt], "mgrs", "", origin, 37)
     assert np.max(np.abs(la2 - lat)) < 1e-9 and np.max(np.abs(lo2 - lon)) < 1e-9
+
+
+# ------------------------------------------------------------ опубликованное положение (pos_valid)
+
+def _line_ref(n=600, E0=399700.0, N0=6185000.0, dE=1.0, zone=37):
+    """Эталон: прямая на восток через E = 400 км, фиксы 10 Гц."""
+    t = np.arange(n) * 0.1
+    E = E0 + dE * np.arange(n)
+    N = np.full(n, N0)
+    lat, lon = G.utm_inv(E, N, zone)
+    alt = np.full(n, 150.0)
+    mfix = np.c_[t + 0.05, t, lat, lon, alt, np.zeros(n), np.zeros((n, 3))]
+    vel = np.c_[t + 0.05, t, np.full(n, 10.0), np.zeros(n), np.zeros(n)]
+    a = dict(front=np.zeros((0, 3)), rear=np.zeros((0, 3)), cmd=np.zeros((0, 3)), mfix=mfix,
+             rfix=np.zeros((0, 3)), mvel=vel, rvel=vel)
+    return a, t, E, N, lat, lon, alt
+
+
+def _out(t, lat, lon, alt, pv):
+    """Выход «как у Runner»: GEO (для опубликованных), сырые XYZ — MGRS с переносом."""
+    E, N = G.utm_fwd(lat, lon, 37)
+    x, y = G.wrap(E, N)
+    XYZ = np.c_[x, y, alt]
+    k = int((~pv).sum())
+    XYZ[~pv] = np.c_[np.arange(k) * 0.5, np.zeros(k), np.zeros(k)]
+    geo = tuple(np.where(pv, g_, np.nan) for g_ in (lat, lon, alt))
+    return dict(T=t.copy(), V=np.full(len(t), 10.0), XYZ=XYZ, SV=np.full(len(t), 0.1),
+                SS=np.full(len(t), 1.0), GEO=geo, POSV=pv.copy(), PV=pv.copy())
+
+
+def test_pos_valid_rows_are_not_paired():
+    """Строки без опубликованного положения (pos_valid = False, «s, 0, 0») не
+    входят в пары: средняя 3D та же, непарных фиксов больше."""
+    a, t, E, N, lat, lon, alt = _line_ref()
+    fr = M.Frame("mgrs", (lat[0], lon[0], alt[0]))
+    lat_e = lat + 1e-6                                   # оценка ~0,11 м севернее
+    pv_all = np.ones(len(t), bool)
+    pv_late = pv_all.copy()
+    pv_late[:50] = False                                 # первые 5 с — без якоря
+    r_all, _ = M.score_position(_out(t, lat_e, lon, alt, pv_all), a, fr, full=False)
+    r_late, _ = M.score_position(_out(t, lat_e, lon, alt, pv_late), a, fr, full=False)
+    assert r_all["p_unpaired"] == 0 and r_late["p_unpaired"] == 50
+    assert r_late["p_pairs"] == r_all["p_pairs"] - 50 and r_late["p_out_invalid"] == 50
+    assert r_late["p3d_mean"] == pytest.approx(r_all["p3d_mean"], rel=1e-6)
+    assert r_late["p3d_max"] < 1.0 and r_late["judge_raw_3d_max"] < 1.0
+    # опубликованный NaN: не пара, отдельный счёт
+    o = _out(t, lat_e, lon, alt, pv_all)
+    o["XYZ"][100] = np.nan
+    o["PV"][100] = False
+    r_nan, _ = M.score_position(o, a, fr, full=False)
+    assert r_nan["p_nan"] == 1 and r_nan["p_unpaired"] == 1
+
+
+def test_replay_marks_pos_valid():
+    """Связка-заглушка: первые шаги с pos_valid = False -> PV ложь, NaN -> PV ложь."""
+    import eval_replay as R
+
+    class Stub:
+        def __init__(self):
+            self.n = 0
+
+        def _o(self, t):
+            self.n += 1
+            return [dict(stamp=t, v=1.0, x=float("nan") if self.n == 6 else 1.0, y=2.0, z=3.0,
+                         pos_valid=self.n > 3)]
+
+        def on_wheel(self, i, stamp, value):
+            return self._o(stamp)
+
+        def on_handle(self, stamp, pos):
+            return []
+
+        def on_fix(self, stamp, antenna, lat, lon, alt):
+            return []
+
+    evs = [(0.1 * k, 0, 0, 0.1 * k, 1.0) for k in range(10)]
+    (O, crash), = R.replay(evs, [Stub()])
+    assert crash is None
+    assert list(O["POSV"]) == [False] * 3 + [True] * 7
+    assert list(O["PV"]) == [False] * 3 + [True, True, False] + [True] * 4
+
+
+def test_totals_pair_fractions_and_empty_runs():
+    rows = [dict(v_pairs=90, v_ref=100, p_pairs=40, p_ref=50, v_mae=0.1, p3d_mean=2.0, p_out_invalid=3),
+            dict(v_pairs=10, v_ref=100, p_pairs=10, p_ref=50, v_mae=0.3, p3d_mean=4.0, p_out_invalid=0),
+            dict(v_pairs=0, v_ref=100)]
+    t = M.totals(rows)
+    assert t["runs"] == 2 and t["runs_empty"] == 1
+    assert t["v_pair_frac"] == pytest.approx(100 / 200) and t["p_pair_frac"] == pytest.approx(50 / 100)
+    assert t["v_mae"] == pytest.approx(0.12) and t["p_out_invalid"] == 3
+
+
+def test_boundary_matrix():
+    """Эталон через E = 400 км, оценка = эталон: совпавшие соглашения — 0 м,
+    разные — 100 км у каждой пары западнее границы."""
+    a, t, E, N, lat, lon, alt = _line_ref()
+    fr = M.Frame("mgrs", (lat[0], lon[0], alt[0]))
+    r, _ = M.score_position(_out(t, lat, lon, alt, np.ones(len(t), bool)), a, fr, full=False)
+    west = int(np.sum(E < 4e5))
+    assert 0 < west < len(t)
+    assert r["bx_wrap_wrap_3d_mean"] < 1e-6 and r["bx_grid_grid_3d_mean"] < 1e-6
+    assert r["bx_wrap_grid_km"] == west and r["bx_grid_wrap_km"] == west
+    assert r["bx_wrap_grid_3d_mean"] == pytest.approx(1e5 * west / len(t), rel=1e-6)
+    assert r["sq_mismatch"] == 0
+
+
+def test_no_master_fix_does_not_crash():
+    import eval_replay as R
+    a = _fake_run()
+    a["mfix"] = np.zeros((0, 3))                          # так bagio пишет пустой топик
+    a["rfix"] = np.zeros((0, 3))
+    assert R.first_master(a) is None
+    tr, la, lo, al = M.reference_geo(a)
+    assert len(tr) == 0
+    assert all(e[1] != 2 for e in R.events(a, "3"))
+
+
+# ------------------------------------------------------------ связка как в ноде
+
+def test_node_declared_parses_defaults(tmp_path):
+    import eval_replay as R
+    src = tmp_path / "node.py"
+    src.write_text("class N:\n    def __init__(self):\n        P = self.declare_parameter\n"
+                   "        P('init_window_s', 3.0)\n        P('origin_lat', float('nan'))\n"
+                   "        P('mgrs_grid', '')\n        P('utm_zone', 0)\n"
+                   "        self.declare_parameter('pulse_horizon_s', 2.0)\n"
+                   "        P('dt', 0.05)\n", encoding="utf-8")
+    d = R.node_declared(src)
+    assert d["init_window_s"] == 3.0 and math.isnan(d["origin_lat"]) and d["mgrs_grid"] == ""
+    assert d["utm_zone"] == 0 and d["pulse_horizon_s"] == 2.0
+    assert "dt" not in d                                  # поле Params — не параметр ноды
+
+
+def test_make_runner_passes_position_kwargs(monkeypatch):
+    """Runner(…, **position_opts): параметры ноды доходят до Position по имени."""
+    import types
+    import eval_replay as R
+
+    class Position:
+        def __init__(self, track_map=None, origin=None, init_window=3.0, projection="mgrs",
+                     mgrs_grid="", nomap_mode="hold", scale_adapt=True):
+            self.kw = dict(init_window=init_window, projection=projection, mgrs_grid=mgrs_grid,
+                           nomap_mode=nomap_mode, scale_adapt=scale_adapt)
+
+    class Runner:
+        def __init__(self, params, track_map=None, origin=None, wheel_timeout=1.0,
+                     handle_timeout=0.5, stop_dwell=8.0, **position_opts):
+            self.wheel_timeout = wheel_timeout
+            self.pos = Position(track_map, origin, **position_opts)
+
+    monkeypatch.setattr(R, "runner_mod", types.SimpleNamespace(Runner=Runner, Position=Position))
+    node = dict(wheel_timeout_s=2.0, handle_timeout_s=0.5, init_window_s=4.0, projection="utm",
+                mgrs_grid="37UDB", nomap_mode="line", scale_adapt=False, map_file="",
+                frame_id="map", start_sort_s=0.1, bogus=1)
+    r, unused = R.make_runner(None, node, None)
+    assert r.wheel_timeout == 2.0
+    assert r.pos.kw == dict(init_window=4.0, projection="utm", mgrs_grid="37UDB", nomap_mode="line",
+                            scale_adapt=False)
+    assert unused == ["bogus"]
+
+
+def test_glue_status_and_start_sorter(monkeypatch):
+    """Статус NavSatFix — если on_fix его принимает; стартовый всплеск — по меткам."""
+    import types
+    import eval_replay as R
+
+    class Sorter:                      # семантика StartSorter (WP24)
+        def __init__(self, window):
+            self.window, self.done, self._t0, self._buf = window, window <= 0, None, []
+
+        def push(self, now, stamp, item):
+            if self.done:
+                return [item]
+            if self._t0 is None:
+                self._t0 = now
+            self._buf.append((stamp, len(self._buf), item))
+            return self.poll(now)
+
+        def poll(self, now):
+            if self.done or self._t0 is None or now - self._t0 < self.window:
+                return []
+            self.done = True
+            out = [it for _, _, it in sorted(self._buf, key=lambda e: e[:2])]
+            self._buf = []
+            return out
+
+    seen = []
+
+    class Rn:
+        def on_wheel(self, i, stamp, value):
+            seen.append(("w", stamp))
+            return []
+
+        def on_handle(self, stamp, pos):
+            seen.append(("h", stamp))
+            return []
+
+        def on_fix(self, stamp, antenna, lat, lon, alt, status=0):
+            seen.append(("f", stamp, status))
+            return []
+
+    monkeypatch.setattr(R, "runner_mod", types.SimpleNamespace(StartSorter=Sorter))
+    gl = R.Glue(Rn(), dict(start_sort_s=0.1))
+    assert gl.fix_status and gl.sort_s == 0.1
+    evs = [(10.00, 0, 0, 9.0, 1.0), (10.01, 1, 0, 7.5, 0.0),
+           (10.02, 2, "master", 8.0, (55.8, 37.4, 150.0, 2)), (10.50, 0, 0, 10.4, 1.0)]
+    for e in evs:
+        gl.feed(*e)
+    gl.flush()
+    assert seen == [("h", 7.5), ("f", 8.0, 2), ("w", 9.0), ("w", 10.4)]
+
+
+def _long_run(T=260.0):
+    """Периодический профиль (разгон, ход, торможение, стоянка) с GNSS в начале."""
+    t = np.arange(0.0, T, 0.1)
+    ph = t % 60.0
+    v = np.where(ph < 10, 0.8 * ph, np.where(ph < 35, 8.0, np.where(ph < 43, 8.0 - (ph - 35), 0.0)))
+    kmh = v * 3.6
+    f = np.c_[t + 0.05, t, kmh]
+    r = np.c_[t + 0.06, t + 0.013, kmh * 1.001]
+    h = np.where(ph < 10, 6.0, np.where(ph < 35, 0.0, np.where(ph < 43, -6.0, 0.0)))
+    c = np.c_[t + 0.04, t + 0.021, h]
+    tf = np.arange(0.0, 4.0, 0.1)
+    lat0, lon0 = 55.80484, 37.42050
+    dlat = 12.4 / 6378137.0 * 180 / math.pi
+    mfix = np.c_[tf + 0.08, tf, np.full_like(tf, lat0), np.full_like(tf, lon0), np.full_like(tf, 150.0),
+                 np.ones_like(tf), np.zeros((len(tf), 3))]
+    rfix = mfix.copy()
+    rfix[:, 2] += dlat
+    rfix[:, 0] += 0.01
+    vel = np.c_[t + 0.08, t, np.zeros_like(t), v, np.zeros_like(t)]
+    return dict(front=f, rear=r, cmd=c, mfix=mfix, rfix=rfix, mvel=vel, rvel=vel)
+
+
+@pytest.mark.parametrize("kind", ["both_zero", "stamp_jump", "rear_drop", "nan"])
+def test_injection_from_snapshot_equals_full_replay(kind):
+    """Копия чистой связки перед аномалией + поток с инъекцией = прогон с нуля."""
+    import eval_replay as R
+    a = _long_run()
+    sheet = R.resolve_sheet("json")
+    p = R.make_params(sheet)
+    node = sheet["node"]
+    t0, dur = inject.choose_window(a, kind)
+    assert t0 is not None
+    b, _ = inject.apply(a, kind, t0, dur, seed=inject.seed_for("x", kind))
+    b = R.cut_stamp(b, t0 + inject.eval_window(kind) + 20.0)
+    evs, clean = R.events(b, "3"), R.events(a, "3")
+    t_snap = t0 - 35.0
+
+    def runners():
+        return [R.make_runner(p, node, None)[0], R.make_naive(p, node, None)]
+    full = R.replay(evs, runners(), node)
+    pos = int(np.searchsorted([e[0] for e in clean], t_snap))
+    assert pos > 100 and all(x[:4] == y[:4] for x, y in zip(evs[:pos], clean[:pos]))
+    rp = R.Replay(runners(), node).feed(clean[:pos])
+    snap = rp.fork().feed(evs[pos:]).finish()
+    rest = rp.feed(clean[pos:]).finish()                  # оригинал после копии не испорчен
+    assert len(rest[0][0]["T"]) > len(snap[0][0]["T"])
+    for (Of, cf), (Os, cs) in zip(full, snap):
+        assert (cf is None) == (cs is None)
+        for k in ("T", "V", "XYZ", "SV", "PV"):
+            assert np.array_equal(Of[k], Os[k], equal_nan=k != "PV"), (kind, k)
