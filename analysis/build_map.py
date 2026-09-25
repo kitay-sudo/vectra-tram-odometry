@@ -1,33 +1,88 @@
-"""Сборка карты путей из GNSS обучающих прогонов (офлайн).
+"""Сборка карты путей из GNSS прогонов (офлайн).
 
 Точки GNSS master на ходу (скорость > 1 м/с) агрегируются по клеткам 1 м и
-секторам курса 15°: средние широта, долгота, высота, курс; вес — число разных
-прогонов, прошедших через клетку в этом направлении.
+секторам курса 15°: средние широта, долгота, высота, истинный курс; вес — число
+разных прогонов, прошедших через клетку в этом направлении. Точки остановок —
+устойчивые стоянки не меньше 3 разных прогонов. Множитель пути (метры карты на
+метр пути колёс) калибруется во ВНУТРЕННЕЙ системе ноды (UTM со сдвигом в
+начало прогона, geodesy.Frame): scale_frame = "utm".
 
-    py -3 build_map.py all                                  # из всех -> карта пакета
-    py -3 build_map.py train cache/track_map_train.npz      # из обучающих -> для оценки
+Два набора (docs/POSITION_FRAME.md):
+    EVAL — только обучающие прогоны разбиения (tools/split.json: train),
+           для всех чисел оценки на holdout_scored;
+    JURY — все прогоны, уходит жюри в пакете (config/track_map.npz).
+
+    python3 analysis/build_map.py eval   # -> config/eval/track_map.npz
+    python3 analysis/build_map.py jury   # -> config/track_map.npz
+    python3 analysis/build_map.py --set train --split tools/split.json --out F
+    опции: --calib <tram_calibration.json> (meas_scale колёс), --n-runs 30
+
+Множитель зависит от meas_scale листа: после смены листа карты пересобрать.
 """
 
+import argparse
 import json
+import math
 import sys
 
 import numpy as np
 
 import bagio
 
-sys.path.insert(0, str(bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator"))
+PKG = bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator"
+sys.path.insert(0, str(PKG))
+from tram_state_estimator.geodesy import Frame  # noqa: E402
+from tram_state_estimator.estimator_core import Params  # noqa: E402
 from tram_state_estimator.track_map import TrackMap  # noqa: E402
 
-LAT0, LON0 = 55.80484, 37.42050
+LAT0, LON0 = 55.80484, 37.42050    # только для сетки агрегации (клетки 1 м)
 R = 6378137.0
-OUT = bagio.ROOT / "ros2_ws" / "src" / "tram_state_estimator" / "config" / "track_map.npz"
+OUT_JURY = PKG / "config" / "track_map.npz"
+OUT_EVAL = PKG / "config" / "eval" / "track_map.npz"
+SPLIT = bagio.ROOT / "tools" / "split.json"
+CALIB = PKG / "config" / "tram_calibration.json"
+
+
+def all_ids():
+    if bagio.DATA.exists() and any(bagio.DATA.iterdir()):
+        return bagio.bag_ids()
+    return sorted(p.stem for p in bagio.CACHE.glob("30*.npz"))
+
+
+def select_ids(which, split=SPLIT):
+    if which == "all":
+        return all_ids()
+    sp = json.loads(split.read_text(encoding="utf-8"))
+    return list(sp[which])
 
 
 def main():
-    use_all = len(sys.argv) > 1 and sys.argv[1] == "all"
-    out = bagio.ROOT / "analysis" / sys.argv[2] if len(sys.argv) > 2 else OUT
-    dm = json.loads((bagio.CACHE.parent / "drive_model.json").read_text(encoding="utf-8"))
-    ids = bagio.bag_ids() if use_all else dm["train"]
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("preset", nargs="?", choices=["eval", "jury"])
+    ap.add_argument("--set", default=None, help="train | all | ключ split-файла")
+    ap.add_argument("--split", default=str(SPLIT))
+    ap.add_argument("--out")
+    ap.add_argument("--calib", default=str(CALIB))
+    ap.add_argument("--n-runs", type=int, default=30)
+    a = ap.parse_args()
+    which = a.set or {"eval": "train", "jury": "all", None: "train"}[a.preset]
+    out = a.out or (OUT_JURY if (a.preset == "jury" or which == "all") else OUT_EVAL)
+    ids = select_ids(which, bagio.Path(a.split))
+    ms = Params.from_dict(json.loads(bagio.Path(a.calib).read_text(encoding="utf-8"))
+                          ["params"]).meas_scale
+    tm = build(ids, which == "all" or len(ids) > 20)
+    tm.stops = find_stops(ids)
+    tm.scale = calibrate_scale(tm, ids, ms, a.n_runs)
+    tm.scale_frame = "utm"
+    bagio.Path(out).parent.mkdir(parents=True, exist_ok=True)
+    tm.save(out, source=np.array(f"{which}: {len(ids)} прогонов; split {bagio.Path(a.split).name}"),
+            meas_scale=np.array(ms))
+    print(f"набор {which}: прогонов {len(ids)}, точек карты {len(tm.lat)}, "
+          f"остановок {len(tm.stops)}, множитель пути {tm.scale:.5f} (UTM), записано {out}")
+
+
+def build(ids, min2):
     k = np.cos(np.radians(LAT0))
     acc = {}
     for rid, b in enumerate(ids):
@@ -61,23 +116,18 @@ def main():
     R_ = np.array(rows)
     # одиночные случайные клетки (выбросы) — вон; путь, пройденный хоть одним
     # прогоном дважды в разные дни, остаётся
-    keep = R_[:, 4] >= (2 if use_all or len(ids) > 20 else 1)
-    R_ = R_[keep]
-    tm = TrackMap(R_[:, 0], R_[:, 1], R_[:, 2], R_[:, 3], R_[:, 4].astype(float))
-    tm.stops = find_stops(ids)
-    tm.scale = calibrate_scale(tm, ids)
-    tm.save(out)
-    print(f"прогонов {len(ids)}, точек карты {len(R_)}, множитель пути "
-          f"{tm.scale:.5f}, записано {out}")
+    R_ = R_[R_[:, 4] >= (2 if min2 else 1)]
+    return TrackMap(R_[:, 0], R_[:, 1], R_[:, 2], R_[:, 3], R_[:, 4].astype(float),
+                    1.0, None, "utm")
 
 
 def find_stops(ids, dwell=8.0, join_r=8.0, min_runs=3, max_spread=4.0):
     """Устойчивые точки остановок: платформы и стоп-линии.
 
     Стоянка — скорость GNSS ниже 0,2 м/с дольше dwell. Её точка — медиана
-    положения, курс — последний курс на ходу перед ней. Стоянки ближе join_r
-    с тем же курсом объединяются; остаются точки, где стояли не меньше
-    min_runs разных прогонов с разбросом вдоль пути не больше max_spread.
+    положения, курс — последний истинный курс на ходу перед ней. Стоянки
+    ближе join_r с тем же курсом объединяются; остаются точки, где стояли не
+    меньше min_runs разных прогонов с разбросом вдоль пути не больше max_spread.
     """
     k = np.cos(np.radians(LAT0))
     ev = []
@@ -127,18 +177,16 @@ def find_stops(ids, dwell=8.0, join_r=8.0, min_runs=3, max_spread=4.0):
     return np.array(out) if out else np.zeros((0, 4))
 
 
-def calibrate_scale(tm, ids, n_runs=30):
-    """Сколько метров карты приходится на метр пути колёс.
+def calibrate_scale(tm, ids, meas_scale, n_runs=30):
+    """Сколько метров карты (во внутренней системе UTM) приходится на метр
+    пути колёс.
 
     Курсор идёт по карте на путь колёс (среднее тележек × meas_scale) от
-    истинной точки старта; опережение вдоль пути делится на пройденный путь.
-    Участки, где курсор ушёл с эталона вбок больше чем на 3 м (другая ветка),
-    не учитываются.
+    истинной точки старта; опережение вдоль пути относительно master делится
+    на пройденный путь. Участки, где курсор ушёл с эталона вбок больше чем
+    на 3 м (другая ветка), не учитываются.
     """
-    import math
-    from evaluate import tram_params
-    from tram_state_estimator.runner import Enu
-    ms = tram_params().meas_scale
+    tm.scale, tm.scale_frame = 1.0, "utm"
     runs = sorted(ids, key=lambda b: -len(bagio.load(b)["mfix"]))[:n_runs]
     fr = []
     for b in runs:
@@ -146,23 +194,28 @@ def calibrate_scale(tm, ids, n_runs=30):
         m, g, f, r = a["mfix"], a["mvel"], a["front"], a["rear"]
         if len(m) < 1000:
             continue
-        enu = Enu(m[0, 2], m[0, 3], m[0, 4])
-        ref = np.array([enu.fwd(*q) for q in m[:, 2:5]])
-        tm.bind(enu)
+        fr_ = Frame(m[0, 2], m[0, 3], m[0, 4], "utm")
+        ref = fr_.fwd_arr(m[:, 2], m[:, 3], m[:, 4])
+        tm.bind(fr_)
         sp = np.hypot(g[:, 2], g[:, 3])
         vg = np.interp(m[:, 1], g[:, 1], sp)
         k0 = int(np.argmax(vg > 1.0))
         j0 = np.searchsorted(g[:, 1], m[k0, 1])
-        c = tm.locate(ref[k0], math.atan2(g[j0, 2], g[j0, 3]))
+        h_true = math.atan2(g[j0, 2], g[j0, 3])
+        h_grid = float(fr_.scale_heading(m[k0, 2], m[k0, 3], h_true)[1][0])
+        c = tm.locate(ref[k0], h_grid)
         grid = np.arange(m[k0, 1], m[-1, 1], 0.05)
-        w = 0.5 * (np.interp(grid, f[:, 1], f[:, 2]) + np.interp(grid, r[:, 1], r[:, 2])) / 3.6 * ms
+        w = 0.5 * (np.interp(grid, f[:, 1], f[:, 2]) + np.interp(grid, r[:, 1], r[:, 2])) / 3.6 * meas_scale
         sw = np.interp(m[:, 1], grid, np.r_[0, np.cumsum(w[:-1] * 0.05)])
         for q in range(k0 + 1, len(m)):
             tm.advance(c, sw[q] - sw[q - 1])
             if q % 50 or vg[q] < 2 or sw[q] < 1000:
                 continue
-            ve = np.interp(m[q, 1], g[:, 1], g[:, 2]) / vg[q]
-            vn = np.interp(m[q, 1], g[:, 1], g[:, 3]) / vg[q]
+            # направление движения в осях сетки
+            he = math.atan2(np.interp(m[q, 1], g[:, 1], g[:, 2]),
+                            np.interp(m[q, 1], g[:, 1], g[:, 3]))
+            hg = float(fr_.scale_heading(m[q, 2], m[q, 3], he)[1][0])
+            ve, vn = math.sin(hg), math.cos(hg)
             dx, dy = c["x"] - ref[q, 0], c["y"] - ref[q, 1]
             if abs(-dx * vn + dy * ve) < 3.0:
                 fr.append((dx * ve + dy * vn) / sw[q])
