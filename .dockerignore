@@ -9,3 +9,6 @@ analysis/drive_samples.npz
 **/log/
 .git/
 out/
+.env
+docker/proxy/certs/
+.github/

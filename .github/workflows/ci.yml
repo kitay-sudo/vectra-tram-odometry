@@ -36,11 +36,18 @@ jobs:
           apt-get install -y --no-install-recommends python3-pytest python3-psutil python3-numpy python3-yaml
           rm -rf /var/lib/apt/lists/*
 
-      - name: colcon build + pytest (docker/run_tests.sh)
+      - name: colcon build + pytest без timing-тестов (docker/run_tests.sh)
         env:
           SRC: ${{ github.workspace }}/ros2_ws/src
-          FAST: "0"
+          NO_TIMING: "1"
         run: bash docker/run_tests.sh
+
+      - name: timing-тесты (время шага по стенным часам; на общих раннерах могут мигать)
+        continue-on-error: true
+        env:
+          SRC: ${{ github.workspace }}/ros2_ws/src
+          SKIP_BUILD: "1"
+        run: bash docker/run_tests.sh -m timing
 
       - name: ROS-смоук на фикстуре (ros2 launch + bag 30 с + проба)
         run: bash tools/ros_smoke.sh --ws /tmp/ws --seconds 30 --tag ci

@@ -1,11 +1,14 @@
 """Общие настройки pytest для тестов пакета.
 
-Маркер `slow` — самые долгие тесты имитатора (> 10 с каждый при --cpus 2,
-замер 25.09: полный набор 288 с). Быстрый прогон без них:
+Маркеры (списки ведутся здесь, чтобы не править test_model.py напарника):
 
-    python3 -m pytest test/ -m "not slow"         # или FAST=1 docker compose run --rm test
-
-Список ведётся здесь, чтобы не править test_model.py напарника.
+- `slow` — самые долгие тесты имитатора (> 10 с каждый при --cpus 2; замер
+  25.09: полный набор 288 с). Быстрый прогон: `-m "not slow"` или
+  `FAST=1 docker compose run --rm test`.
+- `timing` — проверки времени шага по стенным часам. При нехватке CPU (другая
+  нагрузка рядом, облачный CI) могут «мигать»: 25.09 в прогоне параллельно с
+  ROS-смоуком `test_step_time_within_budget` упал на p99. В CI идут отдельным
+  шагом, который не валит сборку; `NO_TIMING=1` их пропускает.
 """
 
 import pytest
@@ -16,13 +19,20 @@ SLOW = {
     "test_ice_lock_is_flagged_ambiguous",                        # 14 с
     "test_all_sensors_zero_is_not_taken_for_standstill",         # 12 с
 }
+TIMING = {
+    "test_step_time_within_budget",
+}
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "slow: долгий тест (> 10 с), пропускается в FAST=1")
+    config.addinivalue_line("markers", "slow: долгий тест (> 10 с), пропускается при FAST=1")
+    config.addinivalue_line("markers", "timing: проверка времени по стенным часам, зависит от загрузки CPU")
 
 
 def pytest_collection_modifyitems(config, items):
     for item in items:
-        if getattr(item, "originalname", item.name) in SLOW:
+        name = getattr(item, "originalname", item.name)
+        if name in SLOW:
             item.add_marker(pytest.mark.slow)
+        if name in TIMING:
+            item.add_marker(pytest.mark.timing)

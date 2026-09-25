@@ -10,16 +10,23 @@
 #   bash tools/ros_smoke.sh --ws /tmp/ws         # workspace уже собран
 # Опции:
 #   --bag ID      прогон из DATA_DIR (по умолчанию — bag из фикстуры e2e-теста)
-#   --seconds S   сколько секунд проигрывать (30)
+#   --seconds S   сколько секунд проигрывать (30; 0 — весь bag, тогда проверяется
+#                 и то, что проба получила все входы bag)
 #   --build       собрать /repo/ros2_ws/src во временный workspace (иначе /ws образа,
 #                 если исходники совпадают, или --ws)
 #   --ws DIR      готовый workspace (DIR/install/setup.bash)
 #   --tag NAME    каталог результатов out/smoke/NAME (smoke)
+#   --gnss-window S  (только фикстура) GNSS в bag лишь первые S с по header.stamp —
+#                 сценарий жюри «GNSS только в начале» (TODO WP9, риск 16);
+#                 тогда обязательна проверка: выставка прошла, ср. 3D < 10 м
+#   --repeat N    повторить N раз (новая нода каждый раз); PASS, только если все
+#   пример: tools/ros_smoke.sh --gnss-window 3 --repeat 10 --tag gnss3s
 # Переменные: IMAGE (vectra/tram:compose), DATA_DIR (<repo>/data).
-# Критерии (TODO WP9): >= 19 Гц по меткам и по стенным часам; in2out p99 < 100 мс
-# в установившемся режиме (без первых 2 с — стартовый всплеск, риск 15/16);
-# выходов >= 95 % узлов сетки; 0 NaN; frame_id map/base_link; нода жива до
-# конца; останов по SIGINT без трассировок. Код выхода 0 — всё PASS.
+# Критерии (TODO WP9, tools/smoke_verdict.py): >= 19 Гц по меткам и по стенным
+# часам; in2out p99 < 100 мс в установившемся режиме (без первых 2 с —
+# стартовый всплеск, риск 15/16); выходов >= 95 % узлов сетки; 0 NaN; frame_id
+# map/base_link; нода жива до конца; останов по SIGINT за 15 с (трассировки —
+# справочно до WP3). Код выхода 0 — всё PASS.
 
 if [ ! -d /opt/ros/humble ]; then
   # ---------------- хост: запускаем себя в контейнере ----------------
@@ -46,7 +53,8 @@ fi
 # ---------------- внутри ROS-окружения ----------------
 [ "${1:-}" = "--inside" ] && shift
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-BAG=""; SECONDS_PLAY=30; BUILD=0; WS=""; TAG=smoke
+FIXTURE="$REPO/ros2_ws/src/tram_state_estimator/test/data/e2e_30618_b95ca60a_180s.npz"
+BAG=""; SECONDS_PLAY=30; BUILD=0; WS=""; TAG=smoke; GNSS_WIN=0; REPEAT=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --bag) BAG="$2"; shift ;;
@@ -54,6 +62,8 @@ while [ $# -gt 0 ]; do
     --build) BUILD=1 ;;
     --ws) WS="$2"; shift ;;
     --tag) TAG="$2"; shift ;;
+    --gnss-window) GNSS_WIN="$2"; shift ;;
+    --repeat) REPEAT="$2"; shift ;;
     *) echo "[smoke] неизвестная опция $1"; exit 2 ;;
   esac
   shift
@@ -82,85 +92,82 @@ fi
 export PYTHONUNBUFFERED=1 RCUTILS_LOGGING_BUFFERED_STREAM=0
 set -m    # у фоновых процессов своя группа: SIGINT группе = Ctrl+C
 
+VERDICT_ARGS=()
 if [ -z "$BAG" ]; then
   BAGDIR=/tmp/smoke_bag
   python3 "$REPO/tools/fixture_to_bag.py" --out "$BAGDIR" --seconds "$SECONDS_PLAY" \
-    || { log "не собрать bag из фикстуры"; exit 1; }
+    --gnss-window "$GNSS_WIN" || { log "не собрать bag из фикстуры"; exit 1; }
   SRC="фикстура e2e (30618_b95ca60a, holdout)"
+  VERDICT_ARGS=(--fixture "$FIXTURE" --bag-meta "$BAGDIR/metadata.yaml")
+  [ "$GNSS_WIN" != "0" ] && VERDICT_ARGS+=(--need-position) && SRC="$SRC, GNSS только ${GNSS_WIN} с по меткам"
 else
+  [ "$GNSS_WIN" != "0" ] && { log "--gnss-window работает только с фикстурой"; exit 2; }
   BAGDIR="/data/$BAG"
   [ -f "$BAGDIR/metadata.yaml" ] || { log "нет $BAGDIR (DATA_DIR)"; exit 2; }
   SRC="$BAG"
+  [ "$SECONDS_PLAY" = "0" ] && VERDICT_ARGS=(--bag-meta "$BAGDIR/metadata.yaml")
 fi
-log "bag: $SRC, ${SECONDS_PLAY} с; ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0} LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-0}; CPU в контейнере: $(nproc)"
+log "bag: $SRC, ${SECONDS_PLAY} с, повторов $REPEAT; ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0} LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-0}; CPU в контейнере: $(nproc)"
 
-python3 "$REPO/tools/ros_probe.py" --out "$OUT/summary.json" --npz "$OUT/raw.npz" \
-  --tag "$TAG" >"$OUT/probe.log" 2>&1 &
-PROBE=$!
-ros2 launch tram_state_estimator tram.launch.py >"$OUT/node.log" 2>&1 &
-NODE=$!
-python3 "$REPO/tools/ros_wait.py" --subscribers /vehicle/front_bogie_velocity:2 \
-  --publishers /result/velocity:1 --timeout 60 || log "нода или проба не подписались за 60 с"
-log "нода: $(grep -m1 'оценщик запущен' "$OUT/node.log" || echo 'НЕТ строки запуска')"
+run_once() {   # $1 — каталог результатов прогона
+  local D="$1" PROBE NODE NPID ALIVE=0 SHUT=1 TRACE t0
+  mkdir -p "$D"
+  python3 "$REPO/tools/ros_probe.py" --out "$D/summary.json" --npz "$D/raw.npz" \
+    --tag "$TAG" >"$D/probe.log" 2>&1 &
+  PROBE=$!
+  ros2 launch tram_state_estimator tram.launch.py >"$D/node.log" 2>&1 &
+  NODE=$!
+  python3 "$REPO/tools/ros_wait.py" --subscribers /vehicle/front_bogie_velocity:2 \
+    --publishers /result/velocity:1 --timeout 60 || log "нода или проба не подписались за 60 с"
+  log "нода: $(grep -m1 -o 'оценщик запущен.*' "$D/node.log" || echo 'НЕТ строки запуска')"
+  t0=$(date +%s)
+  local TMO=$((${SECONDS_PLAY%.*} + 10))
+  [ "$SECONDS_PLAY" = "0" ] && TMO=86400
+  timeout -s INT "$TMO" \
+    ros2 bag play "$BAGDIR" -d 2 --disable-keyboard-controls >"$D/bag.log" 2>&1
+  log "bag проигран за $(( $(date +%s) - t0 )) с"
+  sleep 2
+  NPID=$(pgrep -f "lib/tram_state_estimator/tram_estimator" | head -1)
+  [ -n "$NPID" ] && ALIVE=1 && log "нода жива: $(ps -o %cpu=,rss= -p "$NPID" | awk '{printf "cpu=%s%% rss=%.0f МБ", $1, $2/1024}')"
+  kill -INT $PROBE 2>/dev/null; wait $PROBE 2>/dev/null
+  kill -INT -- -$NODE 2>/dev/null
+  for _ in $(seq 1 150); do kill -0 $NODE 2>/dev/null || break; sleep 0.1; done
+  if kill -0 $NODE 2>/dev/null; then
+    log "launch не остановился за 15 с — SIGKILL"; kill -9 -- -$NODE 2>/dev/null; SHUT=0
+    pkill -9 -f lib/tram_state_estimator/tram_estimator 2>/dev/null
+  fi
+  wait $NODE 2>/dev/null
+  TRACE=$(grep -c -E "Traceback|process has died" "$D/node.log")
+  python3 "$REPO/tools/smoke_verdict.py" "$D/summary.json" --raw "$D/raw.npz" \
+    --alive "$ALIVE" --shut "$SHUT" --trace "$TRACE" --json "$D/verdict.json" "${VERDICT_ARGS[@]}"
+}
 
-t0=$(date +%s)
-timeout -s INT $((${SECONDS_PLAY%.*} + 10)) \
-  ros2 bag play "$BAGDIR" -d 2 --disable-keyboard-controls >"$OUT/bag.log" 2>&1
-log "bag проигран за $(( $(date +%s) - t0 )) с"
-sleep 2
-
-NPID=$(pgrep -f "lib/tram_state_estimator/tram_estimator" | head -1)
-ALIVE=0
-[ -n "$NPID" ] && ALIVE=1 && log "нода жива: $(ps -o %cpu=,rss= -p "$NPID" | awk '{printf "cpu=%s%% rss=%.0f МБ", $1, $2/1024}')"
-kill -INT $PROBE 2>/dev/null; wait $PROBE 2>/dev/null
-
-kill -INT -- -$NODE 2>/dev/null
-for _ in $(seq 1 150); do kill -0 $NODE 2>/dev/null || break; sleep 0.1; done
-if kill -0 $NODE 2>/dev/null; then
-  log "launch не остановился за 15 с — SIGKILL"; kill -9 -- -$NODE 2>/dev/null; SHUT=0
-else
-  SHUT=1
+rc=0; npass=0; nlost=0
+for i in $(seq 1 "$REPEAT"); do
+  if [ "$REPEAT" = "1" ]; then D="$OUT"; else D="$OUT/run$i"; log "---- прогон $i из $REPEAT ----"; fi
+  run_once "$D"; r=$?
+  if [ $r -eq 0 ]; then npass=$((npass + 1)); else rc=1; [ $r -eq 3 ] && nlost=$((nlost + 1)); fi
+  [ "$REPEAT" != "1" ] && sleep 1
+done
+if [ "$REPEAT" != "1" ]; then
+  python3 - "$OUT" "$REPEAT" <<'PY'
+import json, os, sys
+out, n = sys.argv[1], int(sys.argv[2])
+print("| прогон | итог | выходов | in2out p99 устан., мс | выставка | ср. 3D, м | потери у пробы |")
+print("|---|---|---|---|---|---|---|")
+for i in range(1, n + 1):
+    f = os.path.join(out, f"run{i}", "verdict.json")
+    if not os.path.exists(f):
+        print(f"| {i} | нет verdict.json | | | | | |")
+        continue
+    v = json.load(open(f, encoding="utf-8"))
+    p = v.get("position") or {}
+    lost = json.dumps(v["harness_loss"]) if v.get("harness_loss") else "—"
+    print(f"| {i} | {v.get('verdict')} | {v['outputs']}/{v['expected']} | "
+          f"{v['in2out_steady_ms'].get('p99')} | {'да' if p.get('aligned') else ('нет' if p else '—')} | "
+          f"{p.get('mean_m', '—')} | {lost} |")
+PY
+  log "ИТОГ ПОВТОРОВ из $REPEAT: PASS $npass, FAIL $((REPEAT - npass - nlost)), НЕ ЗАСЧИТАН (проба потеряла начало bag) $nlost"
 fi
-wait $NODE 2>/dev/null
-TRACE=$(grep -c -E "Traceback|process has died" "$OUT/node.log")
-
-python3 - "$OUT/summary.json" "$ALIVE" "$SHUT" "$TRACE" <<'EOF'
-import json, sys
-R = json.load(open(sys.argv[1], encoding="utf-8"))
-alive, shut, trace = int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
-o = R["outputs"]["velocity"]; p = R["outputs"]["position"]; L = R["latency"]
-st = L.get("in2out_vehicle_steady_ms", {}); al = L.get("in2out_vehicle_ms", {})
-bad = R.get("nonfinite_or_bad", {})
-fr = R.get("frame_ids", {})
-exp = o.get("expected_by_stamp") or 0
-rows = [
-    ("выходов /result/velocity от узлов сетки", f"{o.get('count')}/{exp}",
-     exp > 0 and o.get("count", 0) >= 0.95 * exp),
-    ("/result/position столько же", f"{p.get('count')}", p.get("count") == o.get("count")),
-    ("частота по меткам >= 19 Гц", f"{o.get('rate_stamp_hz')}", (o.get("rate_stamp_hz") or 0) >= 19),
-    ("частота по стенным часам >= 19 Гц", f"{o.get('rate_wall_hz')}", (o.get("rate_wall_hz") or 0) >= 19),
-    ("in2out p99 < 100 мс (без первых 2 с)", f"p50 {st.get('p50')} / p95 {st.get('p95')} / p99 {st.get('p99')} / max {st.get('max')}",
-     st.get("n", 0) > 0 and st["p99"] < 100),
-    ("0 NaN/inf в выходах", f"{bad}", not any(bad.get(k, 0) for k in ("vel_nonfinite", "odo_nonfinite", "cov_nonfinite"))),
-    ("frame_id: map / base_link", f"{list(fr.get('position', {}))} / {list(fr.get('position_child', {}))}",
-     set(fr.get("position", {})) == {"map"} and set(fr.get("position_child", {})) == {"base_link"}),
-    ("нода жива до конца bag", "да" if alive else "НЕТ", bool(alive)),
-    ("останов по SIGINT за 15 с", "да" if shut else "НЕТ", bool(shut)),
-]
-info = [("in2out p99 с учётом старта (справочно)", f"p99 {al.get('p99')} / max {al.get('max')}"),
-        ("трассировки при останове (справочно, WP3)", str(trace)),
-        ("CPU ноды, % ядра", str(R.get("node_process", {}).get("cpu_pct_1core"))),
-        ("RSS ноды, МБ (первый/последний/макс)", str(R.get("node_process", {}).get("rss_mb_first_last_max"))),
-        ("точность по GNSS bag (санити)", json.dumps({k: v for k, v in R.get("accuracy_sanity_vs_bag_gnss", {}).items() if k != "note"}, ensure_ascii=False))]
-print("| проверка | значение | итог |\n|---|---|---|")
-for name, val, ok in rows:
-    print(f"| {name} | {val} | {'PASS' if ok else 'FAIL'} |")
-for name, val in info:
-    print(f"| {name} | {val} | — |")
-ok = all(r[2] for r in rows)
-print(f"\n[smoke] ИТОГ: {'PASS' if ok else 'FAIL'}")
-sys.exit(0 if ok else 1)
-EOF
-rc=$?
-log "результаты: out/smoke/$TAG/{summary.json,run.log,node.log,probe.log}"
+log "результаты: $OUT"
 exit $rc

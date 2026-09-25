@@ -74,6 +74,9 @@ def main():
     ap.add_argument("--out", required=True, help="каталог bag (перезаписывается)")
     ap.add_argument("--seconds", type=float, default=0.0,
                     help="только первые N с по времени записи (0 — вся фикстура)")
+    ap.add_argument("--gnss-window", type=float, default=0.0,
+                    help="GNSS (fix и vel) только первые S с по header.stamp от первой "
+                         "точки master, как, возможно, в bag жюри (0 — весь)")
     a = ap.parse_args()
 
     import rosbag2_py
@@ -82,11 +85,15 @@ def main():
     z = np.load(a.fixture, allow_pickle=False)
     rows = []
     t_first = min(float(z[k][0, 0]) for k in TOPICS if k in z.files and len(z[k]))
+    th_gnss0 = float(z["mfix"][0, 1]) if "mfix" in z.files and len(z["mfix"]) else 0.0
     for key in TOPICS:
         if key not in z.files:
             continue
+        gnss = key in ("mfix", "rfix", "mvel", "rvel")
         for r in z[key]:
             if a.seconds and r[0] > t_first + a.seconds:
+                continue
+            if gnss and a.gnss_window and r[1] > th_gnss0 + a.gnss_window:
                 continue
             rows.append((float(r[0]), key, r))
     rows.sort(key=lambda x: (x[0], x[1]))
@@ -104,7 +111,10 @@ def main():
         w.write(TOPICS[key][0], serialize_message(make(key, r)), int(round(tb * 1e9)))
     del w
     span = rows[-1][0] - rows[0][0] if rows else 0.0
-    print(f"[fixture_to_bag] {a.out}: {len(rows)} сообщений, {span:.1f} с записи", flush=True)
+    g = [tb for tb, key, _ in rows if key in ("mfix", "rfix")]
+    gi = (f"; GNSS fix: {len(g)} шт., по времени записи {min(g) - t_first:.2f}…"
+          f"{max(g) - t_first:.2f} с от начала bag") if g else "; GNSS нет"
+    print(f"[fixture_to_bag] {a.out}: {len(rows)} сообщений, {span:.1f} с записи{gi}", flush=True)
     return 0
 
 
