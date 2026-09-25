@@ -35,10 +35,18 @@ from pathlib import Path
 import numpy as np
 
 _PKG = Path(__file__).resolve().parents[1] / "ros2_ws" / "src" / "tram_state_estimator"
-if str(_PKG) not in sys.path:
+# пакет из этого дерева — первым в пути (в образе PYTHONPATH ведёт на /ws со
+# старой сборкой, и без этого молча взялась бы она)
+if sys.path[:1] != [str(_PKG)]:
+    if str(_PKG) in sys.path:
+        sys.path.remove(str(_PKG))
     sys.path.insert(0, str(_PKG))
 
 from tram_state_estimator import geodesy as GD      # noqa: E402
+
+if not Path(GD.__file__).resolve().is_relative_to(_PKG):
+    raise ImportError(f"геодезия взята не из этого дерева: {GD.__file__} "
+                      f"(tram_state_estimator уже импортирован из другого места)")
 
 A = GD.A_WGS
 F = GD.F_WGS

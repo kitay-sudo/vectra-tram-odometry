@@ -48,9 +48,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "ros2_ws" / "src" / "tram_state_estimator"
 CFG = PKG / "config"
-if str(PKG) not in sys.path:
+# пакет из этого дерева — первым в пути (в образе PYTHONPATH ведёт и на /ws со
+# старой сборкой: при PKG не на первом месте молча взялась бы она)
+if sys.path[:1] != [str(PKG)]:
+    if str(PKG) in sys.path:
+        sys.path.remove(str(PKG))
     sys.path.insert(0, str(PKG))
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(1, str(ROOT / "tools"))
 
 from tram_state_estimator import estimator_core as core           # noqa: E402
 from tram_state_estimator import runner as runner_mod             # noqa: E402
