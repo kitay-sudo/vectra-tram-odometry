@@ -520,3 +520,21 @@ def test_mgrs_guard_band_suppresses_position_near_square_edge():
     for o in outs:
         if o["pos_valid"] and o["stamp"] > 1.0:
             assert 5.0 <= o["x"] <= 1e5 - 5.0
+
+
+@pytest.mark.parametrize("mode", ["hold", "line"])
+def test_no_map_fallback_modes(mode):
+    """Без карты (map_file ""): hold (по умолчанию) — выход стоит в якоре;
+    line — прямая вдоль курса выставки (здесь курс на восток, путь 100 м)."""
+    route = Route(L1=400.0)
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+    r = Runner(_tram(), nomap_mode=mode)
+    assert Runner(_tram()).pos.nomap_mode == "hold"
+    outs = _feed(r, 0.0, 23.0, v_of_t, route, s_of_t)
+    assert r.pos.ready and outs[-1]["pos_valid"]
+    E, N = _continuous(outs[-1], r.pos.frame)
+    moved = math.hypot(E - E_B, N - N_B)
+    if mode == "hold":
+        assert moved < 0.5
+    else:
+        assert moved == pytest.approx(s_of_t(outs[-1]["stamp"]), abs=5.0)

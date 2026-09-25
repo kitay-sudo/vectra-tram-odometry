@@ -46,8 +46,9 @@ class Position:
       * якорь и путь выставки s_ref пересчитываются только при точке, вошедшей
         в выставку; после окна GNSS не читается.
     Движение: с картой — курсор по карте (track_map.py) с привязкой к точкам
-    остановок и онлайн-подстройкой масштаба пути (WP13); без карты — прямая
-    вдоль курса выставки (nomap_mode "line") или стоянка в якоре ("hold").
+    остановок и онлайн-подстройкой масштаба пути (WP13); без карты — стоянка
+    в якоре (nomap_mode "hold", по умолчанию: на отложенных 2,3 км против
+    3,1 км) или прямая вдоль курса выставки ("line").
     """
 
     PAIR_TOL = 0.06              # с: master и rover одной эпохи
@@ -62,7 +63,7 @@ class Position:
 
     def __init__(self, track_map=None, origin=None, init_window=3.0,
                  projection="mgrs", mgrs_grid="", utm_zone=0, stop_dwell=8.0,
-                 scale_adapt=True, nomap_mode="line", keep_offset_xy=True,
+                 scale_adapt=True, nomap_mode="hold", keep_offset_xy=True,
                  keep_offset_z=True, mgrs_guard_m=0.0):
         self.map = track_map
         self.origin = origin            # (lat, lon, alt) или None: первая точка master
