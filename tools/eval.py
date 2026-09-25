@@ -67,6 +67,7 @@ TAIL_S = 300.0                          # с: прогон с инъекцией
 SNAP_MARGIN_S = 5.0                     # с: копия чистой связки — за BEFORE_S + это до аномалии
 REC_TOL, REC_HOLD = 0.1, 3.0            # м/с, с: восстановление = |v − v_чисто| ≤ tol в течение hold
 PROBE_GLOB = "out/realtime/**/summary.json,out/ros_e2e/*/summary.json"
+DOC = "docs/EVAL.md"
 
 
 # ------------------------------------------------------------------ подготовка
@@ -820,7 +821,9 @@ def main():
     ap.add_argument("--out", default="out/eval", help="каталог JSON")
     ap.add_argument("--label", default="", help="подпись версии в EVAL.md (например «до правок»)")
     ap.add_argument("--no-doc", action="store_true", help="не писать docs/EVAL.md и графики")
-    ap.add_argument("--doc", default="docs/EVAL.md")
+    ap.add_argument("--doc", default=DOC,
+                    help=f"документ (по умолчанию {DOC}; с --quick — <out>/EVAL.md, графики — "
+                         "img/ рядом с документом)")
     ap.add_argument("--probe-glob", default=PROBE_GLOB,
                     help="сводки tools/ros_probe.py для раздела «Реальное время» (строки "
                          "сохраняются в timing.json, --render-only берёт их оттуда, если файлов нет)")
@@ -830,6 +833,8 @@ def main():
     ap.add_argument("--check-determinism", action="store_true",
                     help="прогнать всё второй раз и сравнить JSON побайтно")
     args = ap.parse_args()
+    if args.quick and args.doc == DOC:          # короткий прогон не затирает отчёт и графики
+        args.doc = f"{args.out.rstrip('/')}/EVAL.md"
 
     if args.cache:
         bagio.set_cache(Path(args.cache).resolve())
@@ -853,9 +858,9 @@ def main():
         pd = out / "plotdata.npz"
         if pd.exists():
             base_p, res_p = eval_report.load_plotdata(pd)
-            pics = eval_report.draw(result, base_p, res_p, ROOT)
+            pics = eval_report.draw(result, base_p, res_p, ROOT, eval_report.img_dir(ROOT, args))
         else:
-            pics = eval_report.existing_pics(ROOT)
+            pics = eval_report.existing_pics(ROOT, eval_report.img_dir(ROOT, args))
         (ROOT / args.doc).write_text(eval_report.render(result, timing, args, pics, ROOT),
                                      encoding="utf-8")
         log(f"пересобран {args.doc} из {out.relative_to(ROOT)}")

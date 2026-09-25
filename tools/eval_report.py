@@ -323,8 +323,13 @@ OK_VERDICTS = ("в пределах нормы", "флаг есть", "флаг 
 
 # ------------------------------------------------------------------ документ
 
-def existing_pics(root):
-    img = root / "docs" / "img"
+def img_dir(root, args):
+    """Каталог графиков — img/ рядом с документом (docs/img для docs/EVAL.md)."""
+    return (root / args.doc).parent / "img"
+
+
+def existing_pics(root, img=None):
+    img = img or root / "docs" / "img"
     names = dict(speed="eval_speed_error.png", pos="eval_position_error.png", phase="eval_phase.png")
     out = {k: (v if (img / v).exists() else None) for k, v in names.items()}
     out["inj"] = [n for n in ("eval_inject_speed.png", "eval_inject_along.png") if (img / n).exists()]
@@ -392,14 +397,14 @@ def load_plotdata(path):
     return base, res
 
 
-def draw(result, base, res, root):
+def draw(result, base, res, root, img=None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     _style(plt)
     S = result["summary"]
     ids = S["meta"]["runs"]
-    img = root / "docs" / "img"
+    img = img or root / "docs" / "img"
     img.mkdir(parents=True, exist_ok=True)
     pics = {}
     pics["speed"] = plot_speed(base, img, PLOT_RUN if PLOT_RUN in base else ids[0])
@@ -413,7 +418,7 @@ def draw(result, base, res, root):
 def write(result, timing, base, res, args, root, out=None):
     if out is not None:
         save_plotdata(out / "plotdata.npz", result, base, res)
-    pics = draw(result, base, res, root)
+    pics = draw(result, base, res, root, img_dir(root, args))
     doc = render(result, timing, args, pics, root)
     (root / args.doc).write_text(doc, encoding="utf-8")
 
@@ -510,8 +515,9 @@ def render(result, timing, args, pics, root):
           f"{f(tm0.get('bx_wrap_grid_3d_mean'), 0)} м, {bg} × перенос "
           f"{f(tm0.get('bx_grid_wrap_3d_mean'), 0)} м** (пар с ошибкой > 1 км: "
           f"{tm0.get('bx_wrap_grid_km', 0)} и {tm0.get('bx_grid_wrap_km', 0)} из {tm0.get('p_pairs', 0)}). "
-          "Несовпадение соглашений стоит ~100 км всей западной части пути; совпадение — "
-          f"{tm0.get('sq_mismatch', 0)} пар у самой границы (раздел 3.2).")
+          "Несовпадение соглашений стоит ~100 км всей западной части пути; при совпадении "
+          "добавляются только пары у самой границы, где оценка и эталон по разные стороны "
+          f"(перенос × перенос: {tm0.get('sq_mismatch', 0)}; раздел 3.2).")
     gf0 = S.get("gnss_full")
     if gf0:
         A(f"* **GNSS весь прогон:** выход совпал с режимом «GNSS 3 с» в {gf0.get('identical_runs')} из "
@@ -554,7 +560,8 @@ def render(result, timing, args, pics, root):
          "при `--cpus 2`)"],
         ["`--gnss-full-runs`", "каждый 3-й", "прогоны проверки «GNSS весь прогон» (первые 5 мин): список "
          "или `all`"],
-        ["`--quick`", "—", "CI: 2 прогона по 300 с, 4 инъекции, без вариантов и GNSS-full"],
+        ["`--quick`", "—", "CI: 2 прогона по 300 с, 4 инъекции, без вариантов и GNSS-full; документ и "
+         "графики — в `<out>/EVAL.md`, `docs/` не трогает"],
         ["`--check-determinism`", "—", "второй проход и побайтное сравнение JSON (код выхода 2 при расхождении)"],
         ["`--render-only`", "—", "пересобрать документ и графики из `out/eval/*.json` и `plotdata.npz`"],
         ["`--cache`, `--data`, `--out`", "`analysis/cache`, `data`, `out/eval`", "каталоги"],
@@ -613,8 +620,10 @@ def render(result, timing, args, pics, root):
       "стартового всплеска (StartSorter, WP24): "
       + (f"да, окно {f(gl.get('start_sort_s'), 2)} с по времени записи" if gl.get("start_sort_s") is not None
          else "нет в этом коде") + ". Пульс ноды (WP16) не эмулируется: он публикует те же узлы "
-      "сетки с теми же значениями, что связка выдаёт при следующем сообщении. Исключение в связке "
-      "считается падением ноды: дальше выходов нет.")
+      "сетки с теми же значениями, что связка выдаёт при следующем сообщении (прогноз на копии тем "
+      "же кодом), кроме ≤ 2 с после последнего входа записи. Исключение в связке считается падением "
+      "ноды: дальше выходов нет (нода после WP4 ловит исключения в колбэках и живёт, но Runner их "
+      "бросать не должен — это дефект в любом случае).")
     A("* **Пары.** Выход ↔ эталон по ближайшей метке `header.stamp` в пределах 0,05 с (README, 5.1). "
       "Скорость публикуется на каждом шаге; положение — только при `pos_valid` (нода после WP10 не "
       "публикует `/result/position` без якоря GNSS или у края квадрата) и конечных x, y, z: фикс "
