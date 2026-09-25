@@ -72,7 +72,7 @@ class Position:
     def __init__(self, track_map=None, origin=None, init_window=3.0,
                  projection="mgrs", mgrs_grid="", utm_zone=0, stop_dwell=8.0,
                  scale_adapt=True, nomap_mode="hold", keep_offset_xy=True,
-                 keep_offset_z=True, keep_offset_max_status=1, mgrs_guard_m=5.0,
+                 keep_offset_z=True, keep_offset_max_status=-1, mgrs_guard_m=20.0,
                  terminal_hold="terminals"):
         self.map = track_map
         if track_map is not None:
@@ -89,13 +89,14 @@ class Position:
         if nomap_mode not in ("line", "hold"):
             raise ValueError(f"nomap_mode {nomap_mode!r}: line | hold")
         self.nomap_mode = nomap_mode
-        # сдвиг «GNSS окна − карта» в якоре сохраняется в выходе, но только у
-        # решения без RTK (медиана NavSatFix.status точек master окна ≤
-        # keep_offset_max_status; 2 = GBAS/RTK у 30618): эталон судьи — тот же
-        # GNSS, без RTK он смещён от оси пути на метры, и смещение держится.
-        # У RTK сдвиг — шум окна (на train со сдвигом хуже). По горизонтали
-        # это только поперечная часть (курсор притягивается к оси пути поперёк,
-        # не дальше snap_r), по высоте — не больше OFFSET_Z_MAX
+        # сдвиг «GNSS окна − карта» в якоре: сохранять ли его в выходе, если
+        # медиана NavSatFix.status точек окна ≤ keep_offset_max_status.
+        # −1 (по умолчанию) — никогда: на train (68 прогонов) сдвиг не даёт
+        # выигрыша (всегда 3,687 м, только без RTK 3,672, никогда 3,666),
+        # у RTK — вреден (1,841 против 1,823). 1 — только без RTK (статус
+        # 0/1), 2 — всегда (прежнее умолчание, выбранное по holdout). По
+        # горизонтали это только поперечная часть (курсор притягивается к оси
+        # пути поперёк, не дальше snap_r), по высоте — не больше OFFSET_Z_MAX
         self.keep_offset_xy = bool(keep_offset_xy)
         self.keep_offset_z = bool(keep_offset_z)
         self.keep_offset_max_status = int(keep_offset_max_status)
@@ -104,6 +105,8 @@ class Position:
         # MGRS с переносом по квадратам: ближе mgrs_guard_m к краю 100-км
         # квадрата положение не публикуется (pos_valid = False): выход и эталон
         # могли бы оказаться в разных квадратах (ошибка 100 км). 0 — выкл.
+        # 20 м выбрано на train (68 прогонов): при 5 м 49 таких отсчётов на 7
+        # прогонах, при 20 м — 0; цена — ~4,7 с без положения на пересечение
         self.mgrs_guard_m = float(mgrs_guard_m)
         self.frame = None               # geodesy.Frame: с первой точки master
         self.fixed = False              # якорь есть (положение известно)

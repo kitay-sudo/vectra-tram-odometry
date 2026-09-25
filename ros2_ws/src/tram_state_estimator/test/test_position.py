@@ -232,11 +232,11 @@ def test_position_follows_map_in_mgrs():
     assert math.hypot(E - e, N - n) < 0.02 * s_true + 3.0
     assert o["z"] == pytest.approx(150.0, abs=0.5)                   # абсолютная высота
     assert 0.0 <= o["x"] < 1e5 and 0.0 <= o["y"] < 1e5
-    # положение есть всегда, кроме полосы mgrs_guard_m = 5 м у E = 400 км
+    # положение есть всегда, кроме полосы mgrs_guard_m = 20 м у E = 400 км
     for q in outs:
         if q["stamp"] > 0.2 and not q["pos_valid"]:
             e, _ = route.en(s_of_t(q["stamp"]))
-            assert abs(e - 400000.0) < 12.0          # 5 м + ошибка оценки
+            assert abs(e - 400000.0) < 27.0          # 20 м + ошибка оценки
 
 
 def test_whole_run_gnss_does_not_freeze_or_shift_outputs():
@@ -386,7 +386,7 @@ def test_terminal_hold_at_dead_end():
     курсор стоит в последней точке пути, а не уходит по прямой за конец. Без
     известной конечной там же (или terminal_hold off) — уходит по прямой."""
     route = Route(L1=400.0)
-    end = 150.0
+    end = 100.0                                      # E 399 900: до края 100 м
     v_of_t, s_of_t = _profile(5.0, 3.0)
     e_end, n_end = route.en(end)
     t_end = 3.0 + (end + 60.0) / 5.0
@@ -519,14 +519,15 @@ def test_external_map_loaders_agree(tmp_path):
 
 
 @pytest.mark.parametrize("status,max_status,kept", [
-    (0, 1, True),        # без RTK (30639): сдвиг сохраняется (по умолчанию)
-    (2, 1, False),       # RTK/GBAS (30618): сдвиг — шум окна, не переносится
-    (2, 2, True),        # keep_offset_max_status 2 — всегда
+    (0, None, False),    # по умолчанию (−1) — никогда: выбрано по train
+    (0, 1, True),        # 1 — только без RTK (статус 0/1)
+    (2, 1, False),       #     у RTK/GBAS (статус 2) — нет
+    (2, 2, True),        # 2 — всегда
 ])
-def test_window_offset_gnss_minus_map_kept_only_without_rtk(status, max_status, kept):
-    """GNSS окна сдвинут от оси пути на 1,5 м вбок. Эталон судьи — тот же
-    GNSS: у решения без RTK смещение держится весь прогон, и сдвиг сохраняется
-    в выходе; у RTK (статус 2) выход — ось пути. Правило выбрано по train."""
+def test_window_offset_gnss_minus_map_by_status(status, max_status, kept):
+    """GNSS окна сдвинут от оси пути на 1,5 м вбок. Сдвиг «GNSS окна − карта»
+    сохраняется в выходе, только если медиана статуса окна ≤
+    keep_offset_max_status; по умолчанию (−1) — никогда, выход — ось пути."""
     route = Route()
     v_of_t, s_of_t = _profile(5.0, 3.0)
 
@@ -536,14 +537,15 @@ def test_window_offset_gnss_minus_map_kept_only_without_rtk(status, max_status, 
             la, lo = g.utm_inv(e, n + 1.5, 37)            # на север, поперёк пути
             return float(la), float(lo)
 
-    r = Runner(_tram(), track_map=route.track_map(), keep_offset_max_status=max_status)
+    kw = {} if max_status is None else dict(keep_offset_max_status=max_status)
+    r = Runner(_tram(), track_map=route.track_map(), **kw)
     o = _feed(r, 0.0, 20.0, v_of_t, Shifted(), s_of_t, fix_status=status)[-1]
     assert r.pos.window_status == status
     E, N = _continuous(o, r.pos.frame)
     e, n = route.en(s_of_t(o["stamp"]))
     assert N - n == pytest.approx(1.5 if kept else 0.0, abs=0.3)
     r = Runner(_tram(), track_map=route.track_map(), keep_offset_xy=False,
-               keep_offset_z=False, keep_offset_max_status=max_status)
+               keep_offset_z=False, **kw)
     o = _feed(r, 0.0, 20.0, v_of_t, Shifted(), s_of_t, fix_status=status)[-1]
     E, N = _continuous(o, r.pos.frame)
     assert N - n == pytest.approx(0.0, abs=0.3)
@@ -641,14 +643,18 @@ def test_mgrs_guard_band_suppresses_position_near_square_edge():
     (pos_valid = False), чтобы выход и эталон не оказались в разных квадратах."""
     route = Route()
     v_of_t, s_of_t = _profile(5.0, 3.0)
-    r = Runner(_tram(), track_map=route.track_map())       # по умолчанию 5 м
-    assert r.pos.mgrs_guard_m == 5.0
+    r = Runner(_tram(), track_map=route.track_map())       # по умолчанию 20 м
+    assert r.pos.mgrs_guard_m == 20.0
     outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
     bad = [o for o in outs if not o["pos_valid"] and o["stamp"] > 1.0]
-    assert 10 <= len(bad) <= 60                     # ~10 м при 5 м/с — около 2 с
+    assert 120 <= len(bad) <= 200                   # полоса 40 м при 5 м/с — около 8 с
     for o in outs:
         if o["pos_valid"] and o["stamp"] > 1.0:
-            assert 5.0 <= o["x"] <= 1e5 - 5.0
+            assert 20.0 <= o["x"] <= 1e5 - 20.0
+    r = Runner(_tram(), track_map=route.track_map(), mgrs_guard_m=5.0)
+    bad = [o for o in _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
+           if not o["pos_valid"] and o["stamp"] > 1.0]
+    assert 25 <= len(bad) <= 60                     # 10 м — около 2 с
     # защита только для MGRS с переносом: от фиксированного квадрата — нет
     r = Runner(_tram(), track_map=route.track_map(), mgrs_grid="37UDB")
     outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
