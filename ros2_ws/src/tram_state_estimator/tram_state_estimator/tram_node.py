@@ -16,14 +16,29 @@
 шагает на сетке p.dt по этим меткам (runner.Runner); каждый шаг публикуется с
 меткой своего момента. Та же связка используется в офлайн-оценке
 analysis/evaluate.py, поэтому числа оценки и работа ноды совпадают.
+
+Устойчивость (docs/ROBUST.md):
+  * лист: без --params-file нода сама берёт config/tram.yaml пакета (WP22);
+  * битые входы и разрывы времени отсекает Runner; исключение в колбэке не
+    роняет ноду (лог с ограничением частоты), launch перезапускает её при
+    падении (respawn);
+  * пульс (WP16): если входы молчат, таймер по монотонным часам публикует
+    прогноз на копии связки (состояние не меняется) не дальше
+    pulse_horizon_s от последней метки; метки выхода не идут назад;
+  * старт (WP24): первые start_sort_s с по часам прихода сообщения
+    сортируются по метке, сетка начинается с самой ранней.
 """
 
 import math
 import os
+import signal
 import time
 
 import rclpy
+from rclpy.clock import Clock, ClockType
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from builtin_interfaces.msg import Time as TimeMsg
@@ -34,12 +49,59 @@ from sensor_msgs.msg import NavSatFix
 from tram_msgs.msg import EstimatorStatus
 from tram_vehicle_msgs.msg import DriverControllerCommand, VelocitySensor
 
+from .estimator_core import Params
 from .estimator_node import declare_core_params
-from .runner import Runner
+from .runner import Runner, StartSorter
 from .track_map import TrackMap
 
 IN_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                     history=HistoryPolicy.KEEP_LAST, depth=50)
+PKG = "tram_state_estimator"
+SHEET = os.path.join("config", "tram.yaml")
+# Ковариации Odometry (WP12a): диагонали, которые ядро не оценивает, заданы
+# физически осмысленными конечными значениями, а не нулём («известно точно»).
+ROLL_SD = 0.05          # рад: возвышение наружного рельса в кривой до ~3°
+UNKNOWN_VAR = 1.0e6     # до выставки: абсолютное положение неизвестно
+Z_MAP_SD = 1.0          # м: высота из карты (усреднённый GNSS)
+YAW_MAP_SD = 0.05       # рад: курс по оси пути карты (~3°)
+LAT_V_SD = 0.05         # м/с: боковая скорость на рельсах ≈ 0
+ANG_RATE_SD = 0.02      # рад/с: крен и тангаж почти не меняются
+R_CURVE_MIN = 20.0      # м: наименьший радиус кривой трамвая — предел рыскания
+
+
+def use_package_sheet(node):
+    """WP22. Без --params-file (ros2 run) нода молча брала бы заглушки Params:
+    4 оси, rad_s, шаг 10 мс, без карты. Если ни одного параметра ядра не
+    передано, значения по умолчанию берутся из config/tram.yaml пакета;
+    переданные явно (-p) остаются. Параметр sheet: auto (так), путь к листу
+    или none (заглушки Params, имитатор). Возвращает строку для лога."""
+    ov = node._parameter_overrides      # rclpy Humble: --params-file и -p
+    sheet = ov["sheet"].value if "sheet" in ov else "auto"
+    core = {f for f in Params.__dataclass_fields__}
+    if sheet == "none":
+        return "заглушки Params (sheet: none)"
+    if sheet == "auto" and core & set(ov):
+        return "параметры запуска (--params-file / -p)"
+    path = SHEET if sheet == "auto" else sheet
+    try:
+        if not os.path.isabs(path):
+            from ament_index_python.packages import get_package_share_directory
+            path = os.path.join(get_package_share_directory(PKG), path)
+        import yaml
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh) or {}
+        name = node.get_name()
+        sect = next((doc[k] for k in (f"/{name}", name, "/**") if k in doc), {})
+        vals = sect.get("ros__parameters", {})
+    except Exception as e:                       # noqa: BLE001
+        node.get_logger().warn(f"лист {path} не прочитан ({e}): заглушки Params")
+        return f"заглушки Params (лист {path} не прочитан)"
+    for k, v in vals.items():
+        if k not in ov:
+            if isinstance(v, list) and any(isinstance(x, float) for x in v):
+                v = [float(x) for x in v]        # [0, 0.5] — один тип
+            ov[k] = Parameter(k, value=v)
+    return f"{path} (без --params-file: лист пакета)"
 
 
 def to_sec(stamp):
@@ -58,6 +120,7 @@ def to_msg(t):
 class TramEstimatorNode(Node):
     def __init__(self):
         super().__init__("tram_state_estimator")
+        self.sheet_src = use_package_sheet(self)          # WP22: до объявлений
         P = self.declare_parameter
         P("wheel_timeout_s", 1.0)
         P("handle_timeout_s", 0.5)
@@ -87,22 +150,22 @@ class TramEstimatorNode(Node):
         self.runner.pos.init_window = g("init_window_s")
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
+        self._robust_setup()
 
-        S = self.create_subscription
-        S(VelocitySensor, "/vehicle/front_bogie_velocity",
-          lambda m: self._emit(self.runner.on_wheel(0, to_sec(m.header.stamp),
-                                                    m.velocity)), IN_QOS)
-        S(VelocitySensor, "/vehicle/rear_bogie_velocity",
-          lambda m: self._emit(self.runner.on_wheel(1, to_sec(m.header.stamp),
-                                                    m.velocity)), IN_QOS)
-        S(DriverControllerCommand, "/vehicle/driver_position_cmd",
-          lambda m: self._emit(self.runner.on_handle(to_sec(m.header.stamp),
-                                                     m.position)), IN_QOS)
+        # Все входы идут через _input: ошибки и порядок старта (WP3, WP24).
+        def sub(mtype, topic, name, args):
+            self.create_subscription(
+                mtype, topic, lambda m: self._input(name, args(m)), IN_QOS)
+        sub(VelocitySensor, "/vehicle/front_bogie_velocity", "on_wheel",
+            lambda m: (0, to_sec(m.header.stamp), m.velocity))
+        sub(VelocitySensor, "/vehicle/rear_bogie_velocity", "on_wheel",
+            lambda m: (1, to_sec(m.header.stamp), m.velocity))
+        sub(DriverControllerCommand, "/vehicle/driver_position_cmd", "on_handle",
+            lambda m: (to_sec(m.header.stamp), m.position))
         for ant in ("master", "rover"):
-            S(NavSatFix, f"/sensing/gnss/{ant}/fix",
-              lambda m, a=ant: self._emit(self.runner.on_fix(
-                  to_sec(m.header.stamp), a, m.latitude, m.longitude,
-                  m.altitude)), IN_QOS)
+            sub(NavSatFix, f"/sensing/gnss/{ant}/fix", "on_fix",
+                lambda m, a=ant: (to_sec(m.header.stamp), a, m.latitude,
+                                  m.longitude, m.altitude))
 
         self.pub_v = self.create_publisher(VelocitySensor, "/result/velocity", 10)
         self.pub_p = self.create_publisher(Odometry, "/result/position", 10)
@@ -111,70 +174,233 @@ class TramEstimatorNode(Node):
                                            "/tram/estimator_status", 10)
         self.get_logger().info(
             f"оценщик запущен: шаг {params.dt * 1000:.0f} мс, "
-            f"карта {'есть' if tmap is not None else 'нет'}")
+            f"карта {'есть' if tmap is not None else 'нет'}; "
+            f"лист: {self.sheet_src}; карта: {path or 'нет (map_file пуст)'}; "
+            f"единицы {params.meas_units}; пульс {self.pulse_h:.1f} с")
 
-    def _emit(self, outs):
-        """Публикует все шаги, сделанные по приходу сообщения."""
+    # ---------- устойчивость ----------
+
+    def _robust_setup(self):
+        P = self.declare_parameter
+        g = lambda n: self.get_parameter(n).value               # noqa: E731
+        P("sheet", "auto")                  # auto | путь к листу | none (WP22)
+        P("pulse_horizon_s", 2.0)           # с от последней метки; 0 — без пульса
+        P("pulse_margin_s", 0.1)            # с: узел просрочен — прогноз (ручка есть)
+        P("pulse_margin_nohandle_s", 0.03)  # с: то же без ручки (сетка от 10 Гц)
+        P("pulse_period_s", 0.01)           # с: период таймера по монотонным часам
+        P("start_sort_s", 0.1)              # с: сортировка стартового всплеска
+        self.pulse_h = float(g("pulse_horizon_s"))
+        self.margin = float(g("pulse_margin_s"))
+        self.margin_nh = float(g("pulse_margin_nohandle_s"))
+        self._sorter = StartSorter(float(g("start_sort_s")))
+        self._last_pub = -math.inf          # метка последнего выхода: не назад
+        self._stamp_ref = None              # наибольшая принятая метка входа
+        self._mono_ref = 0.0                # и когда она пришла (монотонные часы)
+        self._fork = None                   # копия связки для прогноза
+        self._errors = 0                    # ошибок подряд в колбэках
+        self._good = (0.0, 0.0, 0.0)        # последнее конечное положение
+        self.n_pulse = self.n_suppressed = self.n_errors = 0
+        # Таймер по монотонным часам: с use_sim_time без /clock таймер ROS
+        # не сработал бы ни разу.
+        self.create_timer(max(float(g("pulse_period_s")), 1e-3), self._pulse,
+                          clock=Clock(clock_type=ClockType.STEADY_TIME))
+
+    def _input(self, name, args):
+        """Колбэк входа. Исключение не выходит в rclpy.spin: нода живёт."""
+        try:
+            now = time.monotonic()
+            stamp = args[1] if name == "on_wheel" else args[0]
+            for item in self._sorter.push(now, stamp, (name, args)):
+                self._dispatch(now, *item)
+        except Exception as e:                   # noqa: BLE001
+            self._fail(name, e)
+
+    def _dispatch(self, now, name, args):
+        r = self.runner
+        n_in, resets, core_resets = r.n_in, r.resets, r.core_resets
+        t0 = time.perf_counter_ns()
+        outs = getattr(r, name)(*args)
+        call_us = (time.perf_counter_ns() - t0) / 1000.0
+        if r.resets != resets:
+            self.get_logger().warn(f"сброс связки: {r.reset_reason}")
+            self._last_pub = -math.inf           # новый прогон: метки заново
+            self._stamp_ref = None
+        if r.core_resets != core_resets:
+            self.get_logger().warn(r.reset_reason, throttle_duration_sec=5.0)
+        if r.n_in != n_in:                       # принято новое сообщение
+            self._fork = None
+            if self._stamp_ref is None or r.stamp_max > self._stamp_ref:
+                self._stamp_ref, self._mono_ref = r.stamp_max, now
+        self._emit(outs, call_us)
+        self._errors = 0
+
+    def _fail(self, where, e):
+        import traceback
+        self._errors += 1
+        self.n_errors += 1
+        tb = traceback.format_exc(limit=4).strip().splitlines()
+        self.get_logger().error(
+            f"ошибка в {where} ({self.n_errors} всего): {type(e).__name__}: {e}"
+            f" | {' / '.join(x.strip() for x in tb[-3:])}",
+            throttle_duration_sec=5.0)
+        if self._errors >= 20:                   # что-то застряло: новый прогон
+            self._errors = 0
+            self.runner.reset("20 ошибок подряд в колбэках")
+            self._fork, self._stamp_ref = None, None
+            self.get_logger().warn("сброс связки: 20 ошибок подряд в колбэках")
+
+    def _pulse(self):
+        try:
+            now = time.monotonic()
+            for item in self._sorter.poll(now):
+                self._dispatch(now, *item)
+            self._extrapolate(now)
+        except Exception as e:                   # noqa: BLE001
+            self._fail("пульс", e)
+
+    def _extrapolate(self, now):
+        """WP16. Входы молчат: публикуются узлы сетки, просроченные на margin
+        по часам (метка последнего входа + прошедшее время), не дальше
+        pulse_horizon_s от этой метки. Считаются на копии связки: когда входы
+        вернутся, связка продолжит со своего состояния, а её узлы, уже
+        выданные прогнозом, второй раз не публикуются (метки не идут назад)."""
+        r = self.runner
+        if self.pulse_h <= 0.0 or r.t is None or self._stamp_ref is None:
+            return
+        alive = (r.t - r.t_notch) <= r.handle_timeout
+        margin = self.margin if alive else self.margin_nh
+        est = self._stamp_ref + (now - self._mono_ref)
+        target = min(est - margin, self._stamp_ref + self.pulse_h)
+        if target + 1e-6 < max(r.next_node(), self._last_pub + r.p.dt):
+            return
+        t0 = time.perf_counter_ns()
+        if self._fork is None:
+            self._fork = r.fork()
+        outs = self._fork.tick(target)
+        self.n_pulse += self._emit(outs, (time.perf_counter_ns() - t0) / 1000.0)
+
+    def summary(self):
+        r = self.runner
+        return (f"итог: выходов {self.frame}, из них прогноз пульса "
+                f"{self.n_pulse}, подавлено повторов {self.n_suppressed}; "
+                f"сбросов связки {r.resets}, ядра {r.core_resets}; отброшено "
+                f"меток {r.rejected_stamps}, значений {r.rejected_values}; "
+                f"ошибок в колбэках {self.n_errors}")
+
+    # ---------- публикация ----------
+
+    def _emit(self, outs, call_us=0.0):
+        """Публикует шаги по порядку меток; возвращает число опубликованных.
+        step_time_us — время вызова связки (шаг ядра и карты), делённое на
+        число шагов этого вызова."""
+        n = 0
+        per_us = call_us / max(1, len(outs))
         for o in outs:
-            t0 = time.perf_counter_ns()
-            st = to_msg(o["stamp"])
+            if o["stamp"] <= self._last_pub + 1e-6:
+                self.n_suppressed += 1           # уже выдан прогнозом пульса
+                continue
+            self._publish(o, per_us)
+            self._last_pub = o["stamp"]
+            n += 1
+        return n
 
-            v = VelocitySensor()
-            v.header.stamp, v.header.frame_id = st, self.child
-            v.velocity = float(o["v"])
-            self.pub_v.publish(v)
+    def _publish(self, o, step_us):
+        st = to_msg(o["stamp"])
+        v_ = float(o["v"])
+        xyz = tuple(float(o[k]) for k in ("x", "y", "z"))
+        if not (math.isfinite(v_) and all(math.isfinite(c) for c in xyz)):
+            # последний рубеж: NaN в выход не уходит (ядро сбрасывается само)
+            self.get_logger().warn("неконечный выход заменён последним конечным",
+                                   throttle_duration_sec=5.0)
+            v_ = v_ if math.isfinite(v_) else 0.0
+            xyz = tuple(c if math.isfinite(c) else g
+                        for c, g in zip(xyz, self._good))
+        self._good = xyz
+        ready = bool(o.get("pos_ready"))
+        sv2 = float(o["sigma_v"]) ** 2
+        ss2 = float(o["sigma_s"]) ** 2
+        th = float(self.runner.p.theta_max)
 
-            od = Odometry()
-            od.header.stamp, od.header.frame_id = st, self.frame_id
-            od.child_frame_id = self.child
-            od.pose.pose.position.x = float(o["x"])
-            od.pose.pose.position.y = float(o["y"])
-            od.pose.pose.position.z = float(o["z"])
-            yaw = o.get("yaw")
-            if yaw is not None:
-                od.pose.pose.orientation.z = math.sin(yaw / 2.0)
-                od.pose.pose.orientation.w = math.cos(yaw / 2.0)
-            ss = float(o["sigma_s"]) ** 2
-            od.pose.covariance[0] = od.pose.covariance[7] = ss
-            od.twist.twist.linear.x = float(o["v"])
-            od.twist.covariance[0] = float(o["sigma_v"]) ** 2
-            self.pub_p.publish(od)
+        v = VelocitySensor()
+        v.header.stamp, v.header.frame_id = st, self.child
+        v.velocity = v_
+        self.pub_v.publish(v)
 
-            ac = AccelStamped()
-            ac.header.stamp, ac.header.frame_id = st, self.child
-            ac.accel.linear.x = float(o["a"])
-            self.pub_a.publish(ac)
+        od = Odometry()
+        od.header.stamp, od.header.frame_id = st, self.frame_id
+        od.child_frame_id = self.child
+        (od.pose.pose.position.x, od.pose.pose.position.y,
+         od.pose.pose.position.z) = xyz
+        yaw = o.get("yaw")
+        if yaw is not None:
+            od.pose.pose.orientation.z = math.sin(yaw / 2.0)
+            od.pose.pose.orientation.w = math.cos(yaw / 2.0)
+        # WP12a: ни одной нулевой диагонали. x, y — σ пути ядра (изотропно);
+        # z — высота карты; крен — возвышение рельса; тангаж — уклон линии
+        # (theta_max); курс — ось пути карты. До выставки положение и курс
+        # в абсолютной системе неизвестны.
+        pc = od.pose.covariance
+        pc[0] = pc[7] = ss2 if ready else UNKNOWN_VAR
+        pc[14] = Z_MAP_SD ** 2 if ready else UNKNOWN_VAR
+        pc[21] = ROLL_SD ** 2
+        pc[28] = th ** 2
+        pc[35] = YAW_MAP_SD ** 2 if yaw is not None else UNKNOWN_VAR
+        od.twist.twist.linear.x = v_
+        # twist в base_link: вдоль — σ_v ядра; поперёк и вверх — рельсы
+        # (вверх — скорость по уклону); угловые: крен и тангаж почти
+        # постоянны, рыскание не оценивается (0) и ограничено v / R_min.
+        tc = od.twist.covariance
+        tc[0] = sv2
+        tc[7] = LAT_V_SD ** 2
+        tc[14] = (v_ * th) ** 2 + LAT_V_SD ** 2
+        tc[21] = tc[28] = ANG_RATE_SD ** 2
+        tc[35] = (v_ / R_CURVE_MIN) ** 2 + ANG_RATE_SD ** 2
+        self.pub_p.publish(od)
 
-            s = EstimatorStatus()
-            s.header.stamp, s.header.frame_id = st, self.child
-            s.mode = int(o["mode"])
-            s.v, s.s, s.d = float(o["v"]), float(o["s"]), float(o["d"])
-            s.k_traction, s.k_brake = float(o["k_t"]), float(o["k_b"])
-            s.mu = float(o["mu"])
-            s.sigma_v, s.sigma_s = float(o["sigma_v"]), float(o["sigma_s"])
-            s.wheel_healthy = [bool(x) for x in o["healthy"]]
-            s.axle_scale = [float(x) for x in self.runner.core.axle_scale]
-            s.slip, s.ambiguous = bool(o["slip"]), bool(o["ambiguous"])
-            s.n_accepted, s.n_rejected = int(o["n_accepted"]), int(o["n_rejected"])
-            s.odometry_used = bool(o["odometry_used"])
-            s.valid = bool(o["valid"]) and not o["wheels_stale"]
-            self.frame += 1
-            s.frame_count = self.frame
-            s.sensor_stamp = st
-            s.step_time_us = (time.perf_counter_ns() - t0) / 1000.0
-            self.pub_s.publish(s)
+        ac = AccelStamped()
+        ac.header.stamp, ac.header.frame_id = st, self.child
+        ac.accel.linear.x = float(o["a"])
+        self.pub_a.publish(ac)
+
+        s = EstimatorStatus()
+        s.header.stamp, s.header.frame_id = st, self.child
+        s.mode = int(o["mode"])
+        s.v, s.s, s.d = v_, float(o["s"]), float(o["d"])
+        s.k_traction, s.k_brake = float(o["k_t"]), float(o["k_b"])
+        s.mu = float(o["mu"])
+        s.sigma_v, s.sigma_s = float(o["sigma_v"]), float(o["sigma_s"])
+        s.wheel_healthy = [bool(x) for x in o["healthy"]]
+        s.axle_scale = [float(x) for x in self.runner.core.axle_scale]
+        s.slip, s.ambiguous = bool(o["slip"]), bool(o["ambiguous"])
+        s.n_accepted, s.n_rejected = int(o["n_accepted"]), int(o["n_rejected"])
+        s.odometry_used = bool(o["odometry_used"])
+        s.valid = bool(o["valid"]) and not o["wheels_stale"]
+        self.frame += 1
+        s.frame_count = self.frame
+        s.sensor_stamp = st
+        s.step_time_us = float(step_us)
+        self.pub_s.publish(s)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = TramEstimatorNode()
+    node = None
     try:
+        node = TramEstimatorNode()
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        # Ctrl+C в терминале приходит группе процессов, launch шлёт ещё один
+        # SIGINT: второй не должен прервать останов трассировкой.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        if node is not None:
+            try:            # контекст уже закрыт: в /rosout не пишется, только в консоль
+                print(f"[tram_state_estimator] {node.summary()}", flush=True)
+            except Exception:                    # noqa: BLE001
+                pass
+            node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
