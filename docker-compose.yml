@@ -8,11 +8,15 @@
 # Настройки — в .env (шаблон .env.example): DATA_DIR, BAG, ROS_DOMAIN_ID,
 # PUBLIC_HOST, порты. Подробно: docs/JURY.md (§ Docker) и docs/DEMO.md.
 #
-# DDS между контейнерами: все ROS-сервисы в сети проекта (bridge) с
-# одинаковым ROS_DOMAIN_ID и ROS_LOCALHOST_ONLY=0 — discovery FastDDS по
-# multicast внутри этой сети. Проверено на Docker Desktop 28.3 (Windows 11):
-# см. docs/JURY.md, «Проверено». Сеть изолирована от хоста и чужих
-# контейнеров, поэтому соседние ROS-контейнеры с тем же ROS_DOMAIN_ID не мешают.
+# DDS между контейнерами: ROS-сервисы в сети проекта (bridge) с одинаковым
+# ROS_DOMAIN_ID и ROS_LOCALHOST_ONLY=0, discovery FastDDS по multicast внутри
+# сети; проверено на Docker Desktop 28.3 (Windows 11) — мост в отдельном
+# контейнере получает /result/* на 20 Гц. player и probe при этом живут в
+# сетевом и IPC-пространстве estimator ("как на одной машине", DDS по
+# loopback/SHM): так задержка вход -> выход та же, что у жюри на одном хосте
+# (in2out p99 59,5 мс против 107,8 мс через сеть bridge, 30618_98161270), и
+# проба не теряет начало bag. Сеть проекта изолирована от хоста и чужих
+# контейнеров. Подробно: docs/JURY.md.
 
 name: vectra-tram
 
@@ -38,6 +42,7 @@ services:
     # только launch: он подставляет лист config/tram.yaml и карту (ros2 run
     # без --params-file берёт умолчания — см. docs/JURY.md)
     command: ros2 launch tram_state_estimator tram.launch.py
+    ipc: shareable
     stop_signal: SIGINT
     stop_grace_period: 15s
     restart: unless-stopped
@@ -45,6 +50,8 @@ services:
   player:
     <<: *ros
     depends_on: [estimator]
+    network_mode: "service:estimator"
+    ipc: "service:estimator"
     environment:
       <<: *ros-env
       BAG: ${BAG:-30618_e9a34502}
@@ -61,6 +68,8 @@ services:
   probe:
     <<: *ros
     depends_on: [estimator]
+    network_mode: "service:estimator"
+    ipc: "service:estimator"
     # общее пространство PID с нодой: psutil видит процесс tram_estimator (CPU, RSS)
     pid: "service:estimator"
     environment:
