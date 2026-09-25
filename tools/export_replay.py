@@ -228,6 +228,10 @@ def instrument_core():
     C = EC.Estimator
     if getattr(C, "_tv_instrumented", False):
         return
+    if not all(hasattr(C, n) for n in ("_axle_speeds", "_correct", "step", "step_open_loop")):
+        print("внимание: у Estimator нет ожидаемых методов — состояние тележек не экспортируется")
+        C._tv_instrumented = True
+        return
     o_axle, o_corr, o_step, o_ol = C._axle_speeds, C._correct, C.step, C.step_open_loop
 
     def _axle_speeds(self, meas, fm):
@@ -242,6 +246,8 @@ def instrument_core():
         return acc
 
     def diag(self, open_loop):
+        if not hasattr(self, "slots") or not hasattr(self, "healthy"):
+            return dict(state=[9] * int(getattr(self, "nw", 2)))
         st = []
         for i in range(self.nw):
             ax = next((a for a, sl in enumerate(self.slots) if i in list(sl)), i)

@@ -131,11 +131,15 @@ function frames(n, label, check) {
 const nanSeen = new Set();
 const TRACE = [];
 let traceN = 0;
-let falseT = 0, falseMaxT = 0, spinStillMax = 0, runT = 0;
+let falseT = 0, falseMaxT = 0, spinStillMax = 0, runT = 0, confT = 0, confRunT = 0, confMaxT = 0;
 const nanCheck = () => {
   // S1: оценка > 20 км/ч, пока вагон стоит (< 1 км/ч); буксование на месте
   const vt = S.v * 3.6, ve = S.est.v;
   if (ve > 20 && vt < 1) { runT += 0.05 * 4; falseT += 0.05 * 4; falseMaxT = Math.max(falseMaxT, runT); } else runT = 0;
+  // S1 в строгом смысле: ложная скорость при «достоверно» и узкой σ (< 2 км/ч). При
+  // неоднозначности «стоим или скользим» скорость держится намеренно, но valid = false и σ широкая.
+  const o = S.lastOut, conf = o && o.valid && o.sigma_v * 3.6 < 2;
+  if (ve > 20 && vt < 1 && conf) { confRunT += 0.05 * 4; confT += 0.05 * 4; confMaxT = Math.max(confMaxT, confRunT); } else confRunT = 0;
   if (S.plant.v < 0.1) for (let i = 0; i < 8; i++) spinStillMax = Math.max(spinStillMax, Math.abs(S.plant.w[i] * 0.35 * 3.6));
   if (process.env.TRACE && ++traceN % 20 === 0) { const p = S.plant, es = S.estimator; const z = S.zones.wx; TRACE.push({ t: +S.simT.toFixed(1), v: +(p.v * 3.6).toFixed(2), w: Array.from(p.w, x => +(x * 0.35 * 3.6).toFixed(1)), asr: Array.from(p.asr, x => +x.toFixed(2)), grade_pm: +(S.gradeAt(S.s) * 1000).toFixed(1), wx: z && S.D > z.a && S.D < z.b ? z.kind : '-', notch: S.notch, healthy: es.healthy.map(h => +h).join(''), est: +(S.est.v).toFixed(1), mode: S.est.st, mass: +S.mTrue.toFixed(1) }); }
   const e = S.est;
@@ -182,7 +186,7 @@ if (process.env.REC_INPUTS) fs.writeFileSync(path.join(ROOT, 'out', 'sim_wp17', 
 if (process.env.TRACE) fs.writeFileSync(path.join(ROOT, 'out', 'sim_wp17', `sim_trace_seed${process.env.SEED || 'rnd'}.json`), JSON.stringify(TRACE));
 const res = { wall_s: +wallS.toFixed(1), sim_time_s: +S.simT.toFixed(1), frames_errors: errors.length, errors: errors.slice(0, 20), nan_fields: [...nanSeen],
   slip_delay_ms_median: sd.length ? Math.round(sd[sd.length >> 1]) : null, slip_events: sd.length, slip_missed: S.slipMissed.n, slip_short: S.slipMissed.short,
-  false_moving_s: +falseT.toFixed(1), false_moving_max_run_s: +falseMaxT.toFixed(1), wheel_spin_at_standstill_max_kmh: +spinStillMax.toFixed(1),
+  false_moving_s: +falseT.toFixed(1), false_moving_max_run_s: +falseMaxT.toFixed(1), false_confident_s: +confT.toFixed(1), false_confident_max_run_s: +confMaxT.toFixed(1), wheel_spin_at_standstill_max_kmh: +spinStillMax.toFixed(1),
   metrics: rows, timeline: log };
 const out = path.join(ROOT, 'out', 'sim_wp17', `sim_headless${process.env.OUTTAG ? '_' + process.env.OUTTAG : ''}${process.env.SEED ? '_seed' + process.env.SEED : ''}.json`);
 fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -192,5 +196,5 @@ if (errors.length) console.log(errors.slice(0, 5));
 console.table(rows);
 console.table(log);
 console.log('обнаружение срыва: медиана, мс', res.slip_delay_ms_median, 'обнаружено', res.slip_events, 'пропущено', res.slip_missed);
-console.log('S1: оценка > 20 км/ч при стоящем вагоне, с:', res.false_moving_s, '(макс. подряд', res.false_moving_max_run_s, 'с); буксование на месте, макс. км/ч:', res.wheel_spin_at_standstill_max_kmh);
+console.log('S1: оценка > 20 км/ч при стоящем вагоне, с:', res.false_moving_s, '(макс. подряд', res.false_moving_max_run_s, 'с); из них «достоверно» и σ < 2 км/ч:', res.false_confident_s, 'с (подряд', res.false_confident_max_run_s, 'с); буксование на месте, макс. км/ч:', res.wheel_spin_at_standstill_max_kmh);
 console.log('->', path.relative(ROOT, out));

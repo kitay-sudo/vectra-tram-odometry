@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vectra: резервная одометрия по модели</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%230E9AA7'/%3E%3C/svg%3E">
 <style>
   :root {
     color-scheme: light;
@@ -3084,7 +3085,7 @@ const TramPlant = (() => {
   }
   $('rvUrl').value = defaultUrl();
   $('rvUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { liveStop(); liveStart(); } });
-  $('rvConn').addEventListener('click', () => { if (LV.want) liveStop(); else liveStart(); });
+  $('rvConn').addEventListener('click', () => { if (LV.want) liveStop(true); else liveStart(); });
   function setLiveState(st, txt) {
     LV.state = st;
     const el = $('rvLiveSt'), col = st === 'on' ? 'var(--ok)' : st === 'wait' ? 'var(--warn)' : st === 'off' ? 'var(--bad)' : 'var(--fg)';
@@ -3098,7 +3099,9 @@ const TramPlant = (() => {
     $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master (только эталон для показа: нода берёт GNSS лишь в окне выставки) через rosbridge, 10 Гц на топик. Адрес — поле выше или <b>?ros=wss://хост/ros</b>.';
     $('rvMapNote').textContent = 'Плоскость: выход ноды (MGRS/UTM переводится в метры от первой точки GNSS; разрыв квадрата 100 км снимается).';
     $('rvSub').textContent = '';
-    if (!LV.want && (qs.has('ros') || store.get('tv.liveAuto') === '1')) liveStart();
+    // автоподключение: явный ?ros=, прошлый выбор, или страница с сервера (мост того же хоста, /ros)
+    const served = /^https?:$/.test(location.protocol) && !/^(localhost|127\.|\[::1\])/.test(location.hostname);
+    if (!LV.want && (qs.has('ros') || store.get('tv.liveAuto') === '1' || (served && store.get('tv.liveAuto') !== '0'))) liveStart();
     else if (!LV.want) setLiveState('idle', 'не подключено');
   }
   function liveStart() {
@@ -3107,10 +3110,10 @@ const TramPlant = (() => {
     store.set('tv.ros', url); store.set('tv.liveAuto', '1');
     LV.want = true; LV.retry = 0; liveConnect(url);
   }
-  function liveStop() {
+  function liveStop(byUser) {
     LV.want = false; clearTimeout(LV.timer);
     if (LV.ws) { try { LV.ws.onclose = null; LV.ws.close(); } catch (_) {} LV.ws = null; }
-    store.set('tv.liveAuto', '0');
+    if (byUser) store.set('tv.liveAuto', '0');          // «Отключить» — не подключаться самим и дальше
     if ($('rvLiveSt')) setLiveState('idle', 'не подключено');
   }
   function liveConnect(url) {
