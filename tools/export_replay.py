@@ -564,9 +564,11 @@ def detect_frame(xyz, T, ready, m, hint=None):
         disp, ref = xm - U0, U - U0
         wrap = bool(np.any(np.abs(np.diff(X[ready, 0])) > 5e4)
                     or np.any(np.abs(np.diff(X[ready, 1])) > 5e4))
-        grid = hint[2] if hint is not None and hint[1] == "mgrs" else ""
-        label = ("MGRS, покадровый квадрат (разрыв 100 км снят)" if wrap else
-                 f"MGRS от квадрата {grid}" if grid else
+        mgrs = hint is not None and hint[1] == "mgrs"
+        grid = hint[2] if mgrs else ""
+        label = (f"MGRS от квадрата {grid}" if grid else
+                 "MGRS, покадровый квадрат (разрыв 100 км снят)" if wrap else
+                 "MGRS, координаты в квадрате 100 км" if mgrs else
                  "UTM абсолютные" if not K.any() else f"MGRS/UTM со сдвигом {K[0]:.0f}, {K[1]:.0f} м")
     else:
         disp, ref = xm, xr
