@@ -143,11 +143,13 @@ def plot_position(base, ids, img):
             x[back] = np.nan
             ax[0, col].plot(x, al, color=color, lw=0.9, alpha=0.75)
             ax[1, col].plot(x, d3, color=color, lw=0.9, alpha=0.75)
-        ax[0, col].set_title(f"{title}: {len(ids)} отложенных прогонов (медиана 5 с)", loc="left")
+        ax[0, col].set_title(f"{title}, {len(ids)} прогонов", loc="left")
         ax[1, col].set_xlabel("путь по эталону GNSS, км")
     ax[0, 0].set_ylabel("вдоль пути, м (+ — впереди)")
     ax[1, 0].set_ylabel("3D, м")
-    fig.tight_layout()
+    fig.suptitle("Ошибка положения по пути (MGRS; скользящая медиана 5 с)", x=0.01, ha="left",
+                 fontsize=10, fontweight="semibold")
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     p = img / "eval_position_error.png"
     _save(fig, p)
     plt.close(fig)
@@ -326,22 +328,89 @@ def existing_pics(root):
     return out
 
 
-def write(result, timing, base, res, args, root):
+SERIES_KEYS = ("T", "V", "SV", "tg", "ev", "vg", "tp", "al", "d3")
+SAMPLE_KEYS = ("sref", "al", "d3")
+
+
+def save_plotdata(path, result, base, res):
+    """Минимум рядов для графиков: --render-only перерисует их без прогона."""
+    ids = result["summary"]["meta"]["runs"]
+    arr = {}
+    for b, r in base.items():
+        arr[f"t_first|{b}"] = np.array(r["t_first"])
+        for est, e in r["est"].items():
+            for k in SERIES_KEYS:
+                if k in e.get("series", {}):
+                    arr[f"series|{b}|{est}|{k}"] = np.asarray(e["series"][k])
+            sp = (e.get("samples") or {}).get("p") or {}
+            for k in SAMPLE_KEYS:
+                if k in sp:
+                    arr[f"samples|{b}|{est}|{k}"] = np.asarray(sp[k])
+    for key, r in res.items():
+        if key[0] != "inj" or r.get("skipped"):
+            continue
+        _, kind, b = key
+        arr[f"inj_t0|{kind}|{b}"] = np.array(r["inject"]["t0"])
+        for est, e in r["est"].items():
+            arr[f"inj_crash|{kind}|{b}|{est}"] = np.array(e.get("crash") is not None)
+            for k in SERIES_KEYS:
+                if k in e.get("series", {}):
+                    arr[f"inj|{kind}|{b}|{est}|{k}"] = np.asarray(e["series"][k])
+    arr["_runs"] = np.array(ids)
+    np.savez_compressed(path, **arr)
+
+
+def load_plotdata(path):
+    """Обратно в структуры base / res, как их видят функции графиков."""
+    z = np.load(path)
+    base, res = {}, {}
+    for key in z.files:
+        parts = key.split("|")
+        if parts[0] == "t_first":
+            base.setdefault(parts[1], {"est": {}})["t_first"] = float(z[key])
+        elif parts[0] in ("series", "samples"):
+            _, b, est, k = parts
+            e = base.setdefault(b, {"est": {}})["est"].setdefault(est, {})
+            if parts[0] == "series":
+                e.setdefault("series", {})[k] = z[key]
+            else:
+                e.setdefault("samples", {}).setdefault("p", {})[k] = z[key]
+        elif parts[0] == "inj_t0":
+            _, kind, b = parts
+            res.setdefault(("inj", kind, b), {"est": {}})["inject"] = dict(t0=float(z[key]))
+        elif parts[0] == "inj_crash":
+            _, kind, b, est = parts
+            e = res.setdefault(("inj", kind, b), {"est": {}})["est"].setdefault(est, {})
+            e["crash"] = {"error": "crash"} if bool(z[key]) else None
+        elif parts[0] == "inj":
+            _, kind, b, est, k = parts
+            e = res.setdefault(("inj", kind, b), {"est": {}})["est"].setdefault(est, {})
+            e.setdefault("series", {})[k] = z[key]
+    return base, res
+
+
+def draw(result, base, res, root):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     _style(plt)
     S = result["summary"]
-    meta = S["meta"]
-    ids = meta["runs"]
+    ids = S["meta"]["runs"]
     img = root / "docs" / "img"
     img.mkdir(parents=True, exist_ok=True)
     pics = {}
     pics["speed"] = plot_speed(base, img, PLOT_RUN if PLOT_RUN in base else ids[0])
     pics["pos"] = plot_position(base, ids, img)
     pics["phase"] = plot_phases(S["pooled"], img)
-    inj_bag = result["inject"][0]["bag"] if result["inject"] else None
+    inj_bag = next((x["bag"] for x in result["inject"] if not x.get("skipped")), None)
     pics["inj"] = plot_inject(res, base, inj_bag, result["kinds"], img) if inj_bag else []
+    return pics
+
+
+def write(result, timing, base, res, args, root, out=None):
+    if out is not None:
+        save_plotdata(out / "plotdata.npz", result, base, res)
+    pics = draw(result, base, res, root)
     doc = render(result, timing, args, pics, root)
     (root / args.doc).write_text(doc, encoding="utf-8")
 

@@ -661,7 +661,8 @@ def main():
     ap.add_argument("--probe-glob", default="out/realtime/**/summary.json,out/ros_e2e/*/summary.json",
                     help="сводки tools/ros_probe.py для раздела «Реальное время»")
     ap.add_argument("--render-only", action="store_true",
-                    help="только пересобрать docs/EVAL.md из готовых JSON в --out (графики не трогать)")
+                    help="только пересобрать docs/EVAL.md и графики из готовых out/eval/*.json "
+                         "и plotdata.npz (без прогонов)")
     ap.add_argument("--check-determinism", action="store_true",
                     help="прогнать всё второй раз и сравнить JSON побайтно")
     args = ap.parse_args()
@@ -685,7 +686,12 @@ def main():
         result["kinds"] = result["summary"]["meta"].get("kinds") or list(
             dict.fromkeys(x["kind"] for x in result["inject"]))
         timing = json.loads((out / "timing.json").read_text(encoding="utf-8"))
-        pics = eval_report.existing_pics(ROOT)
+        pd = out / "plotdata.npz"
+        if pd.exists():
+            base_p, res_p = eval_report.load_plotdata(pd)
+            pics = eval_report.draw(result, base_p, res_p, ROOT)
+        else:
+            pics = eval_report.existing_pics(ROOT)
         (ROOT / args.doc).write_text(eval_report.render(result, timing, args, pics, ROOT),
                                      encoding="utf-8")
         log(f"пересобран {args.doc} из {out.relative_to(ROOT)}")
@@ -719,7 +725,10 @@ def main():
         f"3D ср. {n['p3d_mean']:.2f} м")
     if not args.no_doc:
         import eval_report
-        eval_report.write(result, timing, base, res, args, ROOT)
+        # документ — из тех же округлённых JSON, что и --render-only: байты совпадают
+        shown = dict(summary=json.loads(files["summary.json"]), runs=json.loads(files["runs.json"]),
+                     inject=json.loads(files["inject.json"]), kinds=result["kinds"])
+        eval_report.write(shown, timing, base, res, args, ROOT, out)
         log(f"записано {args.doc} и docs/img/eval_*.png")
     log(f"готово за {time.perf_counter() - t_start:.0f} с; JSON в {out.relative_to(ROOT)}")
     if check is not None and not check["identical"]:
