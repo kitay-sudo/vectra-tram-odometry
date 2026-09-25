@@ -1,0 +1,163 @@
+# Vectra — резервная одометрия трамвая (ROS 2 Humble). Одна команда на всё:
+#
+#   docker compose up --build            # живое демо: нода + bag + проба + мост + страница
+#                                        # (--build: образ из текущих исходников, не старый)
+#   docker compose run --rm test         # colcon build + pytest (без сети)
+#   docker compose run --rm eval         # офлайн-оценка tools/eval.py (нужны данные)
+#   docker compose --profile server up -d   # публичный сервер: + обратный прокси :80/:443
+#
+# Настройки — в .env (шаблон .env.example): DATA_DIR, BAG, ROS_DOMAIN_ID,
+# PUBLIC_HOST, порты. Подробно: docs/JURY.md (§ Docker) и docs/DEPLOY.md.
+#
+# DDS между контейнерами: ROS-сервисы в сети проекта (bridge) с одинаковым
+# ROS_DOMAIN_ID и ROS_LOCALHOST_ONLY=0, discovery FastDDS по multicast внутри
+# сети; проверено на Docker Desktop 28.3 (Windows 11) — мост в отдельном
+# контейнере получает /result/* на 20 Гц. player и probe при этом живут в
+# сетевом и IPC-пространстве estimator ("как на одной машине", DDS по
+# loopback/SHM): так задержка вход -> выход та же, что у жюри на одном хосте
+# (in2out p99 59,5 мс против 107,8 мс через сеть bridge, 30618_98161270), и
+# проба не теряет начало bag. Сеть проекта изолирована от хоста и чужих
+# контейнеров. Подробно: docs/JURY.md.
+
+name: vectra-tram
+
+x-ros: &ros
+  image: ${VECTRA_IMAGE:-vectra/tram:compose}
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  init: true
+  environment: &ros-env
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+    ROS_LOCALHOST_ONLY: "0"
+    RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    PYTHONUNBUFFERED: "1"
+    RCUTILS_LOGGING_BUFFERED_STREAM: "0"
+  volumes:
+    - ./:/repo:ro
+
+services:
+  # ---------------------------------------------------------------- демо (по умолчанию)
+  estimator:
+    <<: *ros
+    # только launch: он подставляет лист config/tram.yaml и карту (ros2 run
+    # без --params-file берёт умолчания — см. docs/JURY.md)
+    command: ros2 launch tram_state_estimator tram.launch.py
+    ipc: shareable
+    stop_signal: SIGINT
+    stop_grace_period: 15s
+    # restart здесь НЕ ставится: player и probe живут в сетевом, IPC и PID
+    # пространствах этого контейнера. Перезапущенный контейнер получает новые
+    # пространства, а player/probe остаются в старых (без DDS, probe — Exited).
+    # Упавшую ноду перезапускает сам launch (respawn, поток robust); если упал
+    # весь контейнер: docker compose up -d --force-recreate
+
+  player:
+    <<: *ros
+    depends_on: [estimator]
+    network_mode: "service:estimator"
+    ipc: "service:estimator"
+    environment:
+      <<: *ros-env
+      BAG: ${BAG:-30618_e9a34502}
+      PLAY_LOOP: ${PLAY_LOOP:-0}
+      PLAY_RATE: ${PLAY_RATE:-1.0}
+      PLAY_DELAY: ${PLAY_DELAY:-2}
+      WAIT_SUBSCRIBERS: ${WAIT_SUBSCRIBERS:-2}
+    volumes:
+      - ./:/repo:ro
+      - ${DATA_DIR:-./data}:/data:ro
+    command: bash /repo/docker/play.sh
+    stop_signal: SIGINT
+
+  probe:
+    <<: *ros
+    depends_on: [estimator]
+    network_mode: "service:estimator"
+    ipc: "service:estimator"
+    # общее пространство PID с нодой: psutil видит процесс tram_estimator (CPU, RSS)
+    pid: "service:estimator"
+    environment:
+      <<: *ros-env
+      PROBE_IDLE: ${PROBE_IDLE:-20}
+      PROBE_REPORT_EVERY: ${PROBE_REPORT_EVERY:-30}
+    volumes:
+      - ./:/repo:ro
+      - ./out/probe:/out/probe
+    command: >-
+      bash -c 'python3 /repo/tools/ros_probe.py --out /out/probe/summary.json
+      --npz /out/probe/raw.npz --tag compose --idle "$$PROBE_IDLE"
+      --report-every "$$PROBE_REPORT_EVERY"'
+    stop_signal: SIGINT
+
+  bridge:
+    <<: *ros
+    # rosbridge v2 (JSON по websocket) для симулятора: ws://<хост>:9090.
+    # По умолчанию только для чтения (публичный домен): docker/bridge.sh;
+    # ROSBRIDGE_OPEN=1 — без ограничений (отладка на своей машине)
+    environment:
+      <<: *ros-env
+      ROSBRIDGE_OPEN: ${ROSBRIDGE_OPEN:-0}
+    entrypoint: ["bash", "/repo/docker/bridge.sh"]
+    command: []
+    ports:
+      - "${BRIDGE_BIND:-127.0.0.1}:${BRIDGE_PORT:-9090}:9090"
+    stop_signal: SIGINT
+    restart: unless-stopped
+
+  web:
+    <<: *ros
+    # статическая страница симулятора (python http.server). Внешние ресурсы
+    # страницы (на main — Tailwind CDN и Google Fonts) браузер грузит сам;
+    # в ветке sim страница без них — см. docs/DEPLOY.md
+    command: python3 -m http.server 8080 --bind 0.0.0.0 --directory /repo/simulator
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- публичный сервер
+  proxy:
+    profiles: [server]
+    # nginx 1.30.5 stable (сборка 22.09.2026), закреплён по digest
+    image: ${PROXY_IMAGE:-nginx:1.30-alpine@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1ae99cb068c3bce2b}
+    depends_on: [bridge]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      TLS_CERT: ${TLS_CERT:-/etc/nginx/certs/fullchain.pem}
+      TLS_KEY: ${TLS_KEY:-/etc/nginx/certs/privkey.pem}
+    volumes:
+      - ./docker/proxy/templates:/etc/nginx/templates:ro
+      - ./docker/proxy/40-vectra-tls.sh:/docker-entrypoint.d/40-vectra-tls.sh:ro
+      - ./simulator:/usr/share/nginx/html:ro
+      - ${TLS_DIR:-./docker/proxy/certs}:/etc/nginx/certs:ro
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- тесты и оценка
+  test:
+    <<: *ros
+    profiles: [test]
+    # без сети: заодно проверка, что colcon build и тесты не ходят в интернет
+    network_mode: none
+    environment:
+      <<: *ros-env
+      FAST: ${FAST:-0}
+      # проверки времени шага по стенным часам (маркер timing) «мигают» под
+      # нагрузкой CPU — по умолчанию не входят; отдельно: run --rm test -m timing
+      NO_TIMING: ${NO_TIMING:-1}
+    entrypoint: ["/entrypoint.sh", "bash", "/repo/docker/run_tests.sh"]
+    command: []
+
+  eval:
+    <<: *ros
+    profiles: [eval]
+    network_mode: none
+    volumes:
+      - ./:/repo
+      - ${DATA_DIR:-./data}:/repo/data:ro
+    working_dir: /repo
+    entrypoint: ["/entrypoint.sh", "bash", "/repo/docker/run_eval.sh"]
+    command: []
+

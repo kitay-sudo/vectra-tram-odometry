@@ -23,7 +23,7 @@
     python3 tools/ros_probe.py --out out/ros_e2e/x/summary.json \
         --npz out/ros_e2e/x/raw.npz --rate 1.0 --idle 10
 Останов: SIGINT/SIGTERM, --duration, или --idle секунд тишины после первого
-сообщения.
+сообщения. --report-every N печатает промежуточную сводку раз в N с (демо).
 """
 
 import argparse
@@ -54,6 +54,14 @@ try:
     import psutil
 except ImportError:
     psutil = None
+
+# эталонная геодезия тестов (MGRS/UTM/ENU/equirect): система выхода ноды
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "ros2_ws", "src", "tram_state_estimator", "test"))
+try:
+    import refgeo
+except ImportError:
+    refgeo = None
 
 BE = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                 history=HistoryPolicy.KEEP_LAST, depth=200)
@@ -441,15 +449,31 @@ def analyse(pr, a):
             if i0 >= len(F) or not ok.sum():
                 continue
             lat0, lon0, alt0 = F[i0, 1:4]
-            k = math.cos(math.radians(lat0))
-            ref = np.c_[np.radians(F[:, 2] - lon0) * R_EARTH * k,
-                        np.radians(F[:, 1] - lat0) * R_EARTH, F[:, 3] - alt0]
-            d3 = np.linalg.norm(X[j[ok]] - ref[ok], axis=1)
-            acc[f"pos_{oname}"] = {"pairs": int(ok.sum()), "mean_m": round(float(d3.mean()), 2),
+            if refgeo is not None:
+                # система выхода ноды (MGRS / UTM / ENU / equirect) — по самому
+                # выходу; ошибка — без вычета скачка на границе 100-км квадратов
+                # MGRS, как у судьи; развёрнутая — справочно
+                fr = refgeo.frames(F[ok, 1], F[ok, 2], F[ok, 3], origin=(lat0, lon0, alt0))
+                frame, _ = refgeo.detect(X[j[ok]], fr)
+                d3, d3u, mism = refgeo.errors(X[j[ok]], fr[frame], frame)
+            else:
+                k = math.cos(math.radians(lat0))
+                ref = np.c_[np.radians(F[:, 2] - lon0) * R_EARTH * k,
+                            np.radians(F[:, 1] - lat0) * R_EARTH, F[:, 3] - alt0]
+                frame, d3 = "equirect", np.linalg.norm(X[j[ok]] - ref[ok], axis=1)
+                d3u, mism = d3, 0
+            acc[f"pos_{oname}"] = {"frame": frame, "pairs": int(ok.sum()),
+                                  "mean_m": round(float(d3.mean()), 2),
                                   "max_m": round(float(d3.max()), 2),
-                                  "end_m": round(float(d3[-1]), 2)}
-        acc["note"] = ("санити-проверка по GNSS из bag; начало ENU ноды = первый master fix, "
-                       "принятый нодой; probe_first_fix верен, если нода запущена до bag")
+                                  "end_m": round(float(d3[-1]), 2),
+                                  "mean_m_unwrapped": round(float(d3u.mean()), 2),
+                                  "square_mismatch": int(mism)}
+        acc["note"] = ("санити-проверка по GNSS master из bag в системе выхода ноды "
+                       "(определяется по выходу); mean_m/max_m/end_m — ошибка как у судьи, "
+                       "без вычета скачка на границе 100-км квадратов MGRS; mean_m_unwrapped — "
+                       "с вычетом (справочно); square_mismatch — пар по разные стороны "
+                       "границы квадратов; для относительных систем начало — первый "
+                       "master fix, принятый нодой: probe_first_fix верен, если нода запущена до bag")
     R["accuracy_sanity_vs_bag_gnss"] = acc
     return R
 
@@ -538,6 +562,8 @@ def main():
     ap.add_argument("--duration", type=float, default=0.0, help="макс. длительность, с (0 — без)")
     ap.add_argument("--idle", type=float, default=0.0,
                     help="выйти после стольких секунд тишины после первого сообщения (0 — нет)")
+    ap.add_argument("--report-every", type=float, default=0.0,
+                    help="промежуточная сводка раз в столько секунд (0 — только в конце)")
     ap.add_argument("--proc-match", default="tram_estimator",
                     help="имя исполняемого файла ноды для psutil")
     a = ap.parse_args()
@@ -558,10 +584,19 @@ def main():
     th = threading.Thread(target=proc_sampler, args=(pr, a.proc_match, stop), daemon=True)
     th.start()
     print(f"[probe] started pid={os.getpid()} domain={os.environ.get('ROS_DOMAIN_ID')}", flush=True)
+    next_report = time.monotonic() + a.report_every if a.report_every > 0 else None
     try:
         while not stop.is_set():
             rclpy.spin_once(pr, timeout_sec=0.05)
             now = time.monotonic()
+            if next_report is not None and now >= next_report:
+                next_report = now + a.report_every
+                if pr.first_rx is not None:
+                    try:
+                        print(f"[probe] --- промежуточно, {now - pr.t_start:.0f} с ---", flush=True)
+                        print(brief(analyse(pr, a)), flush=True)
+                    except Exception as e:      # noqa: BLE001
+                        print(f"[probe] промежуточная сводка не удалась: {e!r}", flush=True)
             if a.duration and now - pr.t_start > a.duration:
                 break
             if a.idle and pr.last_rx is not None and now - pr.last_rx > a.idle:

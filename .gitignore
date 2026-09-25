@@ -13,3 +13,8 @@ analysis/drive_samples.npz
 out/
 *.db3
 node_modules/
+# локальные настройки compose и сертификаты демо-сервера
+.env
+docker/proxy/certs/*.pem
+docker/proxy/certs/*.key
+js-port/rec*.json

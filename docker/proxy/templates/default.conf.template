@@ -1,0 +1,19 @@
+# Обратный прокси демо-сервера (docker compose --profile server).
+#   /        статическая страница симулятора (simulator/)
+#   /ros     websocket rosbridge (сервис bridge:9090) — ws://<host>/ros, wss://<host>/ros
+#   /healthz проверка живости
+# HTTPS (443) включает docker/proxy/40-vectra-tls.sh, если смонтированы
+# сертификат и ключ (TLS_DIR, TLS_CERT, TLS_KEY в .env).
+# ${PUBLIC_HOST} подставляет envsubst образа nginx при старте.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${PUBLIC_HOST};
+    include /etc/nginx/conf.d/vectra-locations.inc;
+}

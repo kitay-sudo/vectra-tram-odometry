@@ -1,0 +1,75 @@
+# CI: сборка пакетов ROS 2 Humble, тесты и ROS-смоук на фикстуре — без данных кейса.
+# Те же скрипты, что `docker compose run --rm test` и tools/ros_smoke.sh локально.
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ros:
+    name: colcon build + pytest + ROS smoke (Humble)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    container:
+      # тот же базовый образ, что в docker/Dockerfile (закреплён по digest)
+      image: ros:humble-ros-base@sha256:1813d3c85d7f96ff7d3012d865204583255740182db5d0065f8f8cd029a83138
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONHASHSEED: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+      ROS_LOCALHOST_ONLY: "1"
+      ROS_DOMAIN_ID: "77"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Зависимости тестов (pytest, psutil для пробы)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3-pytest python3-psutil python3-numpy python3-yaml
+          rm -rf /var/lib/apt/lists/*
+
+      - name: colcon build + pytest без timing-тестов (docker/run_tests.sh)
+        env:
+          SRC: ${{ github.workspace }}/ros2_ws/src
+          NO_TIMING: "1"
+        run: bash docker/run_tests.sh
+
+      - name: timing-тесты (время шага по стенным часам; на общих раннерах могут мигать)
+        continue-on-error: true
+        env:
+          SRC: ${{ github.workspace }}/ros2_ws/src
+          SKIP_BUILD: "1"
+        run: bash docker/run_tests.sh -m timing
+
+      - name: ROS-смоук на фикстуре (ros2 launch + bag 30 с + проба)
+        run: bash tools/ros_smoke.sh --ws /tmp/ws --seconds 30 --tag ci
+
+      - name: Результаты смоука
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ros-smoke
+          path: out/smoke/ci
+          if-no-files-found: ignore
+
+  compose:
+    name: docker compose config + синтаксис скриптов
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config (все профили)
+        run: |
+          docker compose config --quiet
+          docker compose --profile server --profile test --profile eval config --services
+      - name: bash -n
+        run: |
+          for f in docker/*.sh tools/*.sh; do bash -n "$f" && echo "ok $f"; done

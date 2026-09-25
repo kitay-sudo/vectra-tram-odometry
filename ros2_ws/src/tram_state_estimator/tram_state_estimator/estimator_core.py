@@ -29,6 +29,7 @@
 
 from bisect import bisect_right
 from collections import deque
+from math import sqrt
 from dataclasses import dataclass, field, fields, replace
 import numpy as np
 
@@ -244,9 +245,13 @@ class Params:
                       "нижняя граница масштаба привода", "Фильтр")
     k_max: float = _f(1.6, "—", "настройка",
                       "верхняя граница масштаба привода", "Фильтр")
+    adapt_on: bool = _f(True, "—", "настройка",
+                        "адаптация масштабов привода k_t, k_b по окнам "
+                        "установившейся тяги и торможения; false — масштабы "
+                        "остаются начальными", "Фильтр")
     t_adapt: float = _f(3.0, "с", "настройка",
                         "окно установившегося режима для адаптации масштаба "
-                        "привода", "Фильтр")
+                        "привода (по реальному времени)", "Фильтр")
     sigma_k_meas: float = _f(0.05, "—", "настройка",
                              "σ оконного измерения масштаба привода", "Фильтр")
     adapt_f_min: float = _f(0.3, "—", "настройка",
@@ -275,6 +280,35 @@ class Params:
     t_standstill: float = _f(0.30, "с", "настройка",
                              "время подтверждения стоянки", "Стоянка")
 
+    # ------------------------------------------------------- выходная σ
+    # Публикуемая неопределённость. Ковариация фильтра знает только то, что
+    # заложено в модель; на реальных данных к ней добавляются возраст
+    # показаний (при торможении и разгоне), ошибка масштаба колёс, шум
+    # эталона на стоянке, ошибка карты и точки привязки. Поля калибруются по
+    # остаткам обучающих прогонов (analysis/calib_sigma.py); значения по
+    # умолчанию не меняют σ фильтра. На саму оценку не влияют.
+    sv_gain: float = _f(1.0, "—", "настройка",
+                        "множитель σ скорости фильтра в публикуемой σ",
+                        "Выходная σ")
+    sv_floor: float = _f(0.0, "м/с", "измерение",
+                         "пол публикуемой σ скорости на ходу", "Выходная σ")
+    sv_floor_stand: float = _f(0.0, "м/с", "измерение",
+                               "пол публикуемой σ скорости на стоянке",
+                               "Выходная σ")
+    sv_age: float = _f(0.0, "с", "измерение",
+                       "эффективный возраст показаний: к σ скорости "
+                       "добавляется модуль ускорения, умноженный на sv_age",
+                       "Выходная σ")
+    sv_rel: float = _f(0.0, "—", "измерение",
+                       "относительная ошибка масштаба колёс: к σ скорости "
+                       "добавляется sv_rel·v", "Выходная σ")
+    ss_map: float = _f(0.0, "м", "измерение",
+                       "σ положения вдоль пути от карты и точки привязки",
+                       "Выходная σ")
+    ss_rel: float = _f(0.0, "—", "измерение",
+                       "рост σ положения на метр пути после выставки или "
+                       "привязки к остановке (масштаб колёс)", "Выходная σ")
+
     # ------------------------------------------------------------- служебное
     dt: float = _f(0.01, "с", "требование",
                    "шаг фильтра; в ноде задаётся частотой цикла rate_hz",
@@ -296,6 +330,10 @@ class Params:
                     if isinstance(v, bool):
                         raise ValueError
                     v = float(v)
+                elif f.type is bool:
+                    if not isinstance(v, (bool, int)) or v not in (0, 1):
+                        raise ValueError
+                    v = bool(v)
                 elif f.type is int:
                     if isinstance(v, bool) or float(v) != int(float(v)):
                         raise ValueError
@@ -335,7 +373,11 @@ class Params:
                     and all(b >= a for a, b in zip(t, t[1:])))
         checks = [(getattr(self, n) > 0, f"{n} должен быть > 0")
                   for n in positive]
+        checks += [(getattr(self, n) >= 0, f"{n} должен быть >= 0")
+                   for n in ("sv_floor", "sv_floor_stand", "sv_age", "sv_rel",
+                             "ss_map", "ss_rel")]
         checks += [
+            (self.sv_gain > 0, "sv_gain должен быть > 0"),
             (self.n_axles >= 1, "n_axles должен быть >= 1"),
             (len(self.driven) == self.n_axles,
              f"driven: {len(self.driven)} значений при n_axles = "
@@ -654,6 +696,14 @@ def h_axles_batch(pts, u, mu, p=DEFAULT):
     return v[:, None] * (1.0 + xi)
 
 
+def position_sigma(sigma_s, ds, p=DEFAULT):
+    """Публикуемая σ положения вдоль пути: σ пути фильтра, ошибка карты и
+    точки привязки, ошибка масштаба колёс на пути ds после выставки или
+    последней привязки к остановке. Привязка сбрасывает накопленную ошибку, а
+    σ пути фильтра этого не знает."""
+    return sqrt(sigma_s * sigma_s + p.ss_map * p.ss_map + (p.ss_rel * ds) ** 2)
+
+
 # ------------------------------------------------------------------ фильтр
 
 class Estimator:
@@ -684,6 +734,9 @@ class Estimator:
         self.axle_prev = np.zeros(p.n_axles)
         self.axle_dot = np.zeros(p.n_axles)
         self.axle_seen = np.zeros(p.n_axles, dtype=bool)
+        # скачок показания оси за один интервал больше физически возможного
+        # (см. step): ловится сразу, без сглаживания axle_dot
+        self.axle_jump = np.zeros(p.n_axles, dtype=bool)
         self.axle_scale = np.ones(p.n_axles)
 
         self.initialised = False    # скорость взята из первых показаний
@@ -698,15 +751,20 @@ class Estimator:
         self.last_acc_n = 0
 
         self.zero_t = 0.0
+        self.frozen = False         # залипли ВСЕ датчики разом (см. _frozen_all)
         self.t_zero_start = None    # время первого нулевого показания подряд
         self.adapting = False
         self.mode_pre = DEGRADED
         self.win_mode = None
         self.t_last_sat = -1e9
         self.win_t = 0.0
+        self.win_t_last = 0.0       # время прошлого вызова _adapt_scale
         self.win_v0 = 0.0
         self.win_F = 0.0
         self.win_W = 0.0
+        # диагностика адаптации (только счётчики и суммы, память не растёт)
+        self.adapt_stats = dict(windows=0, force_ok=0, gate_ok=0,
+                                k_sum=0.0, k_sq=0.0, win_sum=0.0)
         self.t_since_acc = 0.0
         self.t = 0.0
         self.sat = False
@@ -958,8 +1016,9 @@ class Estimator:
         # неопределённость скорости расширяется до расхождения, и показание
         # принимается. Буксование части осей согласия не даёт (холостые
         # расходятся с моторными), резкий срыв ловит предел ускорения.
-        spin_all = np.abs(self.axle_dot) > np.where(
+        spin_all = (np.abs(self.axle_dot) > np.where(
             self.axle_dot > 0, p.a_max_acc, p.a_max_brake) + p.a_slip_margin
+                    ) | self.axle_jump
         recent = (self.t - self.t_axle) <= p.agree_age
 
         def agreed(a):
@@ -979,7 +1038,7 @@ class Estimator:
             # физический предел: колесо не может ускоряться быстрее корпуса
             dot = self.axle_dot[a]
             lim = p.a_max_acc if dot > 0 else p.a_max_brake
-            spinning = abs(dot) > lim + p.a_slip_margin
+            spinning = abs(dot) > lim + p.a_slip_margin or bool(self.axle_jump[a])
 
             Z = Zall[:, a]
             zh = float(self.wm @ Z)
@@ -1142,7 +1201,9 @@ class Estimator:
             # всё дальше — в м/с по ободу колеса; пороги листа тоже в м/с
             meas = sensor_to_speed(meas, p)
             self._diagnose(meas, dts, fm)
+            self._frozen_all(meas, u)
             z, ok = self._axle_speeds(meas, fm)
+            self.axle_jump[:] = False
             for a in range(p.n_axles):
                 if not ok[a]:
                     continue
@@ -1150,7 +1211,19 @@ class Estimator:
                     self.axle_prev[a] = z[a]
                     self.axle_seen[a] = True
                     self.t_axle[a] = self.t - p.dt
-                raw = (z[a] - self.axle_prev[a]) / (self.t - self.t_axle[a])
+                gap = self.t - self.t_axle[a]
+                raw = (z[a] - self.axle_prev[a]) / gap
+                # Скачок за один интервал больше физически возможного (предел
+                # ускорения с запасом плюс допуск согласия осей) — срыв или
+                # отказ датчика СРАЗУ, а не только по сглаженной axle_dot:
+                # сглаженная производная пересекала порог или нет в
+                # зависимости от интервала между показаниями (фаза сетки,
+                # 10 Гц с пропусками). Иначе обе тележки, разом упавшие с
+                # 4 м/с в ноль, при интервале 0,2 с принимались «по согласию
+                # осей» за остановку (инъекция both_zero, 30639_d3c43d69).
+                dz = z[a] - self.axle_prev[a]
+                lim_j = p.a_max_acc if dz > 0 else p.a_max_brake
+                self.axle_jump[a] = abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol
                 self.axle_dot[a] += p.axle_dot_alpha * (raw - self.axle_dot[a])
                 self.axle_prev[a] = z[a]
                 self.t_axle[a] = self.t
@@ -1178,6 +1251,21 @@ class Estimator:
         self._predict(u)
         mode = self._mode(u)
         self.mode_pre = mode
+        if self.frozen:
+            # Показания залипли все разом: о скорости они не говорят. Только
+            # прогноз по ручке, неопределённость по ускорению — до предела,
+            # как при пропаже показаний (step_open_loop). Обычная проверка
+            # правдоподобия этого не ловит: залипшие тележки согласны друг с
+            # другом, и правило «согласие осей сильнее модели» их принимало
+            # (−25…−33 м пути за 20 с на реальных записях).
+            lim = max(self._a_limit(u, True), self._a_limit(u, False))
+            self.P[ID, ID] = max(self.P[ID, ID], (p.sigma_rej_frac * lim) ** 2)
+            self.adapting = False
+            self.n_acc = self.n_rej = 0
+            self.sat = False
+            self.last_acc_n = 0
+            return self._finish(u, z, np.zeros(p.n_axles, dtype=bool), [],
+                                False)
         if fresh:
             acc = self._correct(z, ok, u, mode, handle_ok)
             self.last_acc_n = len(acc)
@@ -1188,6 +1276,25 @@ class Estimator:
         else:
             acc = []
         return self._finish(u, z, ok, acc, fresh)
+
+    def _frozen_all(self, meas, u):
+        """Залипание ВСЕХ датчиков разом (обе тележки выдают одно и то же).
+
+        Одиночное залипание ловит _diagnose: остальные датчики меняются, а
+        этот нет. Когда застыли все, сравнивать не с чем. Признак: у каждого
+        датчика больше stuck_n одинаковых показаний подряд (бит в бит), на
+        ходу (все выше v_dead_ref) и при команде тяги или торможения, когда
+        скорость обязана меняться. На реальных записях вагона на ходу больше
+        4 одинаковых показаний подряд не бывает даже у одной тележки; на
+        выбеге при постоянной скорости квантованный энкодер может повторяться,
+        поэтому выбег признака не даёт. Признак снимается, как только любой
+        датчик изменился."""
+        p = self.p
+        if not np.all(self.stuck_cnt > p.stuck_n):
+            self.frozen = False
+        elif (not self.frozen and abs(u) > p.T_dead
+              and float(np.min(np.abs(meas))) > p.v_dead_ref):
+            self.frozen = True
 
     def _adapt_scale(self, u, mode, acc):
         """Адаптация масштаба тяги и торможения по приращению скорости.
@@ -1202,38 +1309,53 @@ class Estimator:
         в фильтр как обычное линейное измерение параметра.
         """
         p = self.p
-        active = (mode in (TRACTION, BRAKE) and len(acc) >= 2
+        active = (p.adapt_on and mode in (TRACTION, BRAKE) and len(acc) >= 2
                   and self.x[IV] > p.v_adapt_min and not self.sat)
         self.adapting = bool(active)
         if not active or mode != self.win_mode:
             self.win_mode = mode if active else None
             self.win_t = 0.0
+            self.win_t_last = self.t
             self.win_v0 = float(self.x[IV])
             self.win_F = 0.0
             self.win_W = 0.0
             return
 
         v = float(self.x[IV])
+        # Окно копит РЕАЛЬНОЕ прошедшее время: вызов идёт только на шагах с
+        # новыми показаниями, а тележки приходят реже цикла фильтра (9,4 Гц
+        # при 20 Гц). Прежде окно копило p.dt на вызов: «3 с» длились 6–7 с,
+        # интеграл силы был вдвое меньше приращения скорости, k_изм выходил
+        # около 2,3, и ворота отвергали 97–100 % окон на данных вагона.
+        h = self.t - self.win_t_last
+        self.win_t_last = self.t
         # Сила привода БЕЗ ограничения оценкой сцепления: после короткого срыва
         # оценка μ ещё десятки секунд остаётся низкой, урезала бы силу в окне
         # и завышала масштаб тяги. Окно и так работает только без срыва.
-        self.win_F += drive_force(u, v, 1.0, 1.0, p) * p.dt
-        self.win_W += resistance(v, p) * p.dt
-        self.win_t += p.dt
+        self.win_F += drive_force(u, v, 1.0, 1.0, p) * h
+        self.win_W += resistance(v, p) * h
+        self.win_t += h
         if self.win_t < p.t_adapt:
             return
 
         rated = rated_force(mode == TRACTION, p)
-        if abs(self.win_F) >= p.adapt_f_min * rated * p.t_adapt:
+        st = self.adapt_stats
+        st["windows"] += 1
+        st["win_sum"] += self.win_t
+        if abs(self.win_F) >= p.adapt_f_min * rated * self.win_t:
             dv = v - self.win_v0
             k_meas = (p.M_nom * (dv - self.x[ID] * self.win_t) + self.win_W) \
                 / self.win_F
             idx = IKT if mode == TRACTION else IKB
             S = self.P[idx, idx] + p.sigma_k_meas ** 2
+            st["force_ok"] += 1
+            st["k_sum"] += k_meas
+            st["k_sq"] += k_meas * k_meas
             # Окно с неверной командой (ошибка ручки) или неучтённым уклоном
             # даёт мусорное k: такое измерение отвергается, как и показание
             # оси. Без этого масштабы на реальных данных упирались в k_max.
             if (k_meas - self.x[idx]) ** 2 <= p.gate_nis * S:
+                st["gate_ok"] += 1
                 K = self.P[:, idx] / S
                 self.x = self.x + K * (k_meas - self.x[idx])
                 self.P = self.P - np.outer(K, self.P[idx, :])
@@ -1267,6 +1389,25 @@ class Estimator:
         self.last_acc_n = 0
         return self._finish(u, np.zeros(p.n_axles),
                             np.zeros(p.n_axles, dtype=bool), [], False)
+
+    def _sigma_v_out(self, sv, u):
+        """Публикуемая σ скорости: σ фильтра (с множителем) и то, чего фильтр
+        не видит. Показание тележки в момент шага уже старое на доли секунды:
+        при торможении и разгоне оценка отстаёт на |a|·возраст (на данных
+        +0,05 м/с на торможении). Масштаб колёс плавает по вагонам и датам
+        (±0,5 %), эталон на стоянке шумит. Калибруется по остаткам обучающих
+        прогонов; внутренняя ковариация фильтра не меняется."""
+        p = self.p
+        v = float(self.x[IV])
+        a = 0.0
+        if p.sv_age:                # ускорение модели — как в выходе связки
+            a = ((body_force(u, v, self.x[IKT], self.x[IKB], self.mu, p)
+                  - resistance(v, p)) / p.M_nom + float(self.x[ID]))
+            if v <= 0.0 and a < 0.0:
+                a = 0.0
+        floor = p.sv_floor_stand if self.mode == STANDSTILL else p.sv_floor
+        return sqrt((p.sv_gain * sv) ** 2 + floor * floor
+                    + (p.sv_age * a) ** 2 + (p.sv_rel * v) ** 2)
 
     def _finish(self, u, z, ok, acc, fresh):
         """Общая часть шага: параметры, границы, стоянка, режим, выход.
@@ -1331,7 +1472,7 @@ class Estimator:
         if standstill:
             self.mode = STANDSTILL
         valid = (self.have_meas and self.t_since_acc <= p.t_valid
-                 and not self.amb)
+                 and not self.amb and not self.frozen)
         if not self.have_meas or (not valid and not self.amb):
             self.mode = DEGRADED
 
@@ -1340,7 +1481,8 @@ class Estimator:
         # скорости начала срыва. Внутренняя ковариация фильтра не меняется.
         # Путь за это время известен с той же неопределённостью: добавка к σ
         # пути нарастает и остаётся — без внешней привязки ошибка пути не уходит.
-        sv = float(np.sqrt(max(self.P[IV, IV], 0.0)))
+        sv_filt = float(np.sqrt(max(self.P[IV, IV], 0.0)))
+        sv = self._sigma_v_out(sv_filt, u)
         if self.amb:
             sv = max(sv, 0.5 * self.amb_v)
             self.s_extra += 0.5 * self.amb_v * p.dt
@@ -1349,9 +1491,9 @@ class Estimator:
             v=float(self.x[IV]), s=float(self.x[IS]),
             d=float(self.x[ID]), k_t=float(self.x[IKT]), k_b=float(self.x[IKB]),
             mu=float(self.mu),
-            sigma_v=sv, sigma_s=ss,
+            sigma_v=sv, sigma_s=ss, sigma_v_filt=sv_filt,
             mode=self.mode, healthy=self.healthy.copy(),
-            slip=self.sat, ambiguous=self.amb,
+            slip=self.sat, ambiguous=self.amb, frozen=self.frozen,
             n_accepted=self.n_acc, n_rejected=self.n_rej,
             odometry_used=bool(acc), valid=valid,
         )

@@ -1,20 +1,40 @@
 """Чтение прогонов rosbag2 без ROS и кэш в numpy.
 
-Каждый прогон читается один раз и сохраняется в analysis/cache/<bag_id>.npz.
-Дальше анализ, калибровка и оценка работают с кэшем.
+Каждый прогон читается один раз и сохраняется в <кэш>/<bag_id>.npz
+(по умолчанию analysis/cache; другой каталог — переменная TRAM_CACHE или
+set_cache()). Дальше анализ, калибровка и оценка работают с кэшем.
+
+Данные — data/<bag_id>/ (другой каталог — TRAM_DATA). Типы сообщений
+tram_vehicle_msgs берутся из пакета в репозитории
+(ros2_ws/src/tram_vehicle_msgs/msg), а не из распакованного dataset/.
 
 Для каждого топика хранятся две метки времени: tb — время записи в bag,
 th — header.stamp сообщения (с).
 """
 
+import os
 from pathlib import Path
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
-MSGS = ROOT / "dataset" / "tram_vehicle_msgs" / "msg"
-CACHE = Path(__file__).resolve().parent / "cache"
+DATA = Path(os.environ.get("TRAM_DATA") or (ROOT / "data"))
+MSGS = ROOT / "ros2_ws" / "src" / "tram_vehicle_msgs" / "msg"
+CACHE = Path(os.environ.get("TRAM_CACHE") or (Path(__file__).resolve().parent / "cache"))
+
+
+def set_cache(path):
+    """Сменить каталог кэша (и для процессов-потомков через TRAM_CACHE)."""
+    global CACHE
+    CACHE = Path(path)
+    os.environ["TRAM_CACHE"] = str(CACHE)
+
+
+def set_data(path):
+    """Сменить каталог прогонов (и для процессов-потомков через TRAM_DATA)."""
+    global DATA
+    DATA = Path(path)
+    os.environ["TRAM_DATA"] = str(DATA)
 
 TOPICS = {
     "/vehicle/front_bogie_velocity": "front",
@@ -87,17 +107,20 @@ def _one(bag_id):
         return bag_id, "cached"
     try:
         arr = extract(DATA / bag_id)
-        np.savez_compressed(f, **arr)
+        tmp = f.with_name(f.stem + ".tmp.npz")   # недописанный файл не выглядит готовым
+        np.savez_compressed(tmp, **arr)
+        os.replace(tmp, f)
         return bag_id, "ok"
     except Exception as e:          # noqa: BLE001 — отчёт по прогону, не падаем
         return bag_id, f"ERROR {e!r}"
 
 
-def build_cache(workers=None):
-    import os
+def build_cache(workers=None, ids=None):
+    """Строит кэш для прогонов ids (по умолчанию — всех из data/); готовые
+    файлы не трогает."""
     from concurrent.futures import ProcessPoolExecutor
-    CACHE.mkdir(exist_ok=True)
-    ids = bag_ids()
+    CACHE.mkdir(parents=True, exist_ok=True)
+    ids = bag_ids() if ids is None else list(ids)
     workers = workers or max(1, (os.cpu_count() or 2) - 1)
     bad = []
     with ProcessPoolExecutor(workers) as ex:
