@@ -4,15 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vectra: резервная одометрия по модели</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
   :root {
     color-scheme: light;
-    --font-heading: 'Onest', 'Helvetica Neue', Arial, sans-serif;
-    --font-body: 'Onest', 'Helvetica Neue', Arial, sans-serif;
+    /* без сети: системные шрифты (Onest — только если установлен локально) */
+    --font-heading: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-body: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --bg: #eef1f4;
     --fg: #000000;
     --pill-bg: #ffffff;
@@ -115,6 +112,10 @@
     .pills, .sheet, #board { transition: none; }
   }
 </style>
+<!-- Tailwind v3, собран статически (simulator/build/build_css.sh): страница работает с file:// без сети -->
+<style id="tw">/* tw:begin */
+*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}.pointer-events-none{pointer-events:none}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.inset-0{inset:0}.left-0{left:0}.right-0{right:0}.right-5{right:1.25rem}.top-0{top:0}.top-1\/2{top:50%}.top-4{top:1rem}.z-10{z-index:10}.z-40{z-index:40}.z-\[2\]{z-index:2}.z-\[3\]{z-index:3}.z-\[5\]{z-index:5}.m-0{margin:0}.-mx-4{margin-left:-1rem;margin-right:-1rem}.-ml-\[1px\]{margin-left:-1px}.-ml-\[5\.5px\]{margin-left:-5.5px}.-mt-\[1\.5px\]{margin-top:-1.5px}.-mt-\[5\.5px\]{margin-top:-5.5px}.-mt-\[5px\]{margin-top:-5px}.mb-1{margin-bottom:.25rem}.mb-2{margin-bottom:.5rem}.mb-3{margin-bottom:.75rem}.ml-\[2px\]{margin-left:2px}.ml-auto{margin-left:auto}.mt-1{margin-top:.25rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-6{margin-top:1.5rem}.block{display:block}.inline-block{display:inline-block}.flex{display:flex}.table{display:table}.grid{display:grid}.hidden{display:none}.h-0{height:0}.h-1\.5{height:.375rem}.h-\[1\.1em\]{height:1.1em}.h-\[10px\]{height:10px}.h-\[11px\]{height:11px}.h-\[12px\]{height:12px}.h-\[130px\]{height:130px}.h-\[14px\]{height:14px}.h-\[16px\]{height:16px}.h-\[240px\]{height:240px}.h-\[260px\]{height:260px}.h-\[3px\]{height:3px}.h-\[44px\]{height:44px}.h-\[64px\]{height:64px}.h-\[6px\]{height:6px}.h-full{height:100%}.max-h-full{max-height:100%}.min-h-\[90px\]{min-height:90px}.w-1\.5{width:.375rem}.w-3{width:.75rem}.w-4{width:1rem}.w-\[11px\]{width:11px}.w-\[2px\]{width:2px}.w-\[56px\]{width:56px}.w-full{width:100%}.min-w-0{min-width:0}.max-w-\[600px\]{max-width:600px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.transform{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.cursor-crosshair{cursor:crosshair}.resize{resize:both}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1\.5{gap:.375rem}.gap-2{gap:.5rem}.gap-2\.5{gap:.625rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-x-4{-moz-column-gap:1rem;column-gap:1rem}.gap-x-6{-moz-column-gap:1.5rem;column-gap:1.5rem}.gap-y-1{row-gap:.25rem}.gap-y-2{row-gap:.5rem}.overflow-auto{overflow:auto}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis}.truncate,.whitespace-nowrap{white-space:nowrap}.rounded{border-radius:.25rem}.rounded-2xl{border-radius:1rem}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:.5rem}.rounded-xl{border-radius:.75rem}.border{border-width:1px}.border-2{border-width:2px}.border-b{border-bottom-width:1px}.border-t{border-top-width:1px}.border-\[var\(--line\)\]{border-color:var(--line)}.bg-\[var\(--fg\)\]{background-color:var(--fg)}.p-3{padding:.75rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.px-2\.5{padding-left:.625rem;padding-right:.625rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-\[3px\]{padding-top:3px;padding-bottom:3px}.pb-2{padding-bottom:.5rem}.pb-3{padding-bottom:.75rem}.pr-3{padding-right:.75rem}.pr-8{padding-right:2rem}.pt-3{padding-top:.75rem}.pt-\[4px\]{padding-top:4px}.text-left{text-align:left}.align-middle{vertical-align:middle}.text-\[11px\]{font-size:11px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[14px\]{font-size:14px}.text-\[16px\]{font-size:16px}.text-\[21px\]{font-size:21px}.text-\[22px\]{font-size:22px}.text-\[24px\]{font-size:24px}.text-\[26px\]{font-size:26px}.text-\[28px\]{font-size:28px}.font-normal{font-weight:400}.leading-\[1\.45\]{line-height:1.45}.leading-\[1\.55\]{line-height:1.55}.leading-\[1\.5\]{line-height:1.5}.leading-none{line-height:1}.tracking-tight{letter-spacing:-.025em}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.opacity-40{opacity:.4}.opacity-50{opacity:.5}.opacity-60{opacity:.6}.opacity-80{opacity:.8}.shadow{--tw-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);--tw-shadow-colored:0 1px 3px 0 var(--tw-shadow-color),0 1px 2px -1px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.outline{outline-style:solid}.blur{--tw-blur:blur(8px)}.blur,.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.backdrop-filter{-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.transition{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,-webkit-backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter,-webkit-backdrop-filter;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-opacity{transition-property:opacity;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.hover\:opacity-60:hover{opacity:.6}@media (min-width:640px){.sm\:inline-flex{display:inline-flex}.sm\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.sm\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.sm\:gap-2{gap:.5rem}.sm\:gap-9{gap:2.25rem}.sm\:p-8{padding:2rem}.sm\:px-8{padding-left:2rem;padding-right:2rem}.sm\:text-\[18px\]{font-size:18px}.sm\:text-\[26px\]{font-size:26px}.sm\:text-\[28px\]{font-size:28px}.sm\:text-\[34px\]{font-size:34px}}
+/* tw:end */</style>
 </head>
 <body>
 <canvas id="scene" aria-label="Трамвай на линии, прокрутка колеса мыши даёт тягу" role="img"></canvas>
@@ -1543,7 +1544,7 @@ const TramPlant = (() => {
       }
       const sx = X(q.p - 13);
       ctx.fillStyle = P.pole; ctx.fillRect(sx - 1, yb - 3.6 * ppm, 2, 3.05 * ppm);
-      ctx.font = `500 ${Math.max(10, Math.min(13, 0.6 * ppm))}px Onest, sans-serif`;
+      ctx.font = `500 ${Math.max(10, Math.min(13, 0.6 * ppm))}px system-ui, "Segoe UI", Roboto, sans-serif`;
       const tw = ctx.measureText(q.n).width + 12;
       ctx.fillStyle = P.bogie; ctx.fillRect(sx - tw / 2, yb - 4.5 * ppm, tw, Math.max(16, 0.9 * ppm));
       ctx.fillStyle = '#f2f4f6'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1928,7 +1929,7 @@ const TramPlant = (() => {
     };
     zoneSeg(zones.wx, '#5AA9D6'); zoneSeg(zones.urban, '#E89B0C');
     // stops
-    c.font = '11px Onest, sans-serif'; c.textBaseline = 'middle';
+    c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.textBaseline = 'middle';
     const cx0 = ox + (x0 + x1) / 2 * sc;
     PLATFORMS.forEach(q => {
       const [i] = ri(q.p), [x, y] = P(i);
@@ -2001,7 +2002,7 @@ const TramPlant = (() => {
     hist.forEach(p => { top = Math.max(top, p.hi, p.wk, p.vk); });
     const ymax = Math.min(100, Math.ceil((top + 4) / 10) * 10);
     const X = i => PL + (i + (NH - hist.length)) / (NH - 1) * pw, Y = val => PT + ph - Math.min(ymax, val) / ymax * ph;
-    c.font = '11px Onest, sans-serif'; c.strokeStyle = line; c.lineWidth = 1; c.fillStyle = fg;
+    c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.strokeStyle = line; c.lineWidth = 1; c.fillStyle = fg;
     c.textAlign = 'right'; c.textBaseline = 'middle';
     const stepY = ymax > 60 ? 20 : 10;
     for (let y = 0; y <= ymax; y += stepY) {
@@ -2238,7 +2239,7 @@ const TramPlant = (() => {
     c.beginPath(); c.moveTo(X(0), hh); arr.forEach((v, i) => c.lineTo(X(i), Y(v))); c.lineTo(X(arr.length - 1), hh); c.closePath();
     c.fillStyle = g; c.fill();
     c.beginPath(); arr.forEach((v, i) => c.lineTo(X(i), Y(v))); c.strokeStyle = '#0E9AA7'; c.lineWidth = 1.6; c.lineJoin = 'round'; c.stroke();
-    c.fillStyle = fg; c.globalAlpha = .5; c.font = '11px Onest, sans-serif'; c.textAlign = 'right'; c.textBaseline = 'bottom';
+    c.fillStyle = fg; c.globalAlpha = .5; c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'right'; c.textBaseline = 'bottom';
     c.fillText(`99 %: ${p99.toFixed(1)} мкс`, w, Y(p99) - 2); c.globalAlpha = 1;
   }
   function drawRos(time) {
@@ -2248,9 +2249,9 @@ const TramPlant = (() => {
     c.clearRect(0, 0, w, hh);
     const box = (x, y, bw, bh, title, sub, col) => {
       c.strokeStyle = col || line; c.lineWidth = 1; c.beginPath(); c.roundRect(x, y, bw, bh, 8); c.stroke();
-      c.fillStyle = fg; c.font = '500 12px Onest, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = fg; c.font = '500 12px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(title, x + bw / 2, y + bh / 2 - (sub ? 7 : 0));
-      if (sub) { c.globalAlpha = .6; c.font = '11px Onest, sans-serif'; c.fillText(sub, x + bw / 2, y + bh / 2 + 8); c.globalAlpha = 1; }
+      if (sub) { c.globalAlpha = .6; c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.fillText(sub, x + bw / 2, y + bh / 2 + 8); c.globalAlpha = 1; }
     };
     const flow = (x1, y1, x2, y2, hz, col) => {
       c.strokeStyle = line; c.lineWidth = 1.2; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
@@ -2269,7 +2270,7 @@ const TramPlant = (() => {
     box(0, ys[1] - 22, iw, 44, 'tram/wheel_speeds', `100 Гц, ${(est.sensor * 3.6).toFixed(1)} км/ч`, sensMode !== 'ok' ? '#D6443A' : null);
     // node
     c.strokeStyle = '#0E9AA7'; c.lineWidth = 1.5; c.beginPath(); c.roundRect(mx, 8, mw, hh - 16, 12); c.stroke();
-    c.fillStyle = '#0E9AA7'; c.font = '500 12px Onest, sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('estimator_node', mx + pad, 16);
+    c.fillStyle = '#0E9AA7'; c.font = '500 12px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('estimator_node', mx + pad, 16);
     const sw = (mw - pad * 2 - 10) / 2, sh = (hh - 16 - 30 - pad - 12) / 3;
     const subs = [['Привод и режим', `ручка ${notch > 0 ? '+' : ''}${notch}, ${ST_RU[est.st] ? ST_RU[est.st].toLowerCase() : ''}`], ['Проверка осей', lastOut ? `принято ${lastOut.n_accepted}, отвергнуто ${lastOut.n_rejected}` : ''], ['UKF: s, v, d', `v ${est.v.toFixed(1)} км/ч`], ['Масштабы привода', `k_т ${est.kt.toFixed(2)}, k_б ${est.kb.toFixed(2)}`], ['Сцепление μ', est.mu.toFixed(3)], ['Возмущение d', `${est.d.toFixed(2)} м/с²`]];
     subs.forEach(([t, sub], i) => box(mx + pad + (i % 2) * (sw + 10), 8 + 30 + Math.floor(i / 2) * (sh + 6), sw, sh, t, sub));
@@ -2291,7 +2292,7 @@ const TramPlant = (() => {
     let top = 40; REC.forEach(p => { top = Math.max(top, p.hi, p.wk); });
     const ymax = Math.min(100, Math.ceil((top + 4) / 10) * 10);
     const X = i => PL + i / (N - 1) * pw, Y = val => 6 + ph - Math.min(ymax, val) / ymax * ph;
-    c.font = '11px Onest, sans-serif'; c.strokeStyle = line; c.fillStyle = fg; c.textAlign = 'right'; c.textBaseline = 'middle';
+    c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.strokeStyle = line; c.fillStyle = fg; c.textAlign = 'right'; c.textBaseline = 'middle';
     for (let y = 0; y <= ymax; y += ymax > 60 ? 20 : 10) { c.beginPath(); c.moveTo(PL, Y(y) + .5); c.lineTo(w, Y(y) + .5); c.stroke(); c.globalAlpha = .5; c.fillText(y, PL - 6, Y(y)); c.globalAlpha = 1; }
     c.beginPath(); REC.forEach((p, i) => c.lineTo(X(i), Y(p.hi))); for (let i = N - 1; i >= 0; i--) c.lineTo(X(i), Y(REC[i].lo)); c.closePath(); c.fillStyle = 'rgba(14,154,167,0.22)'; c.fill();
     const path = (k, col, lw, al) => { c.beginPath(); c.strokeStyle = col; c.lineWidth = lw; c.globalAlpha = al; REC.forEach((p, i) => c.lineTo(X(i), Y(p[k]))); c.stroke(); c.globalAlpha = 1; };
