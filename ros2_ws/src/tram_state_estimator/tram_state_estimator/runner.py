@@ -24,7 +24,7 @@ import math
 import numpy as np
 
 from .estimator_core import (Estimator, IV, ID, IS, STANDSTILL, body_force,
-                             resistance, sensor_to_speed)
+                             position_sigma, resistance, sensor_to_speed)
 from .geodesy import Equirect, Frame, projection_name
 from .track_map import hold_mode
 
@@ -501,6 +501,8 @@ class Runner:
         self.wheel_timeout = wheel_timeout
         self.handle_timeout = handle_timeout
         self.last = None
+        self._anchors = 0               # привязок к остановкам учтено в σ
+        self._s_fix = -np.inf           # путь ядра при последней привязке
 
     def _new_position(self):
         """Новое положение с теми же картой и параметрами (и при сбросе)."""
@@ -763,12 +765,17 @@ class Runner:
         keep = {k: getattr(self.pos, k) for k in self._POS_KEEP
                 if hasattr(self.pos, k)}
         prev = self._fallback_now()
+        # σ положения (WP12) у запасной выставки продолжает расти от её
+        # последней привязки: отсчёт пути запасной = путь прежнего ядра
+        sig = (self._anchors, self._s_fix)
         args, kwargs = self._ctor
         self.__init__(*args, **kwargs)
         self._grid_state()
         for k, v in keep.items():
             setattr(self.pos, k, v)
         self._pos_prev, self._s_prev = prev
+        if prev[0] is not None:
+            self._anchors, self._s_fix = sig
         self.resets += 1
         self.reset_reason = reason
 
@@ -797,7 +804,9 @@ class Runner:
         if self._pos_prev is None:
             return pq, False
         if self.pos.fixed:
+            # новая выставка: σ положения — от её якоря (отсчёт пути новый)
             self._pos_prev = None
+            self._anchors, self._s_fix = 0, -np.inf
             return pq, False
         return self._pos_prev.step(self._s_prev + s, standing, self.p.dt), True
 
@@ -870,6 +879,17 @@ class Runner:
         # после сброса, пока новый прогон не выставился, — запасная выставка
         pq, fallback = self._position(s, o["mode"] == STANDSTILL and o["valid"],
                                       t, float(c.x[IV]))
+        pos = self._pos_prev if fallback else self.pos
+        if pos.fixed:
+            # σ положения (WP12): путь после выставки или последней привязки
+            # к остановке — в отсчёте пути той выставки, по которой идёт
+            # положение (у запасной — путь ядра прежнего прогона + новый)
+            s_act = self._s_prev + s if fallback else s
+            if pos.anchors != self._anchors:
+                self._anchors, self._s_fix = pos.anchors, s_act
+            ds_fix = s_act - max(pos.s_ref, self._s_fix)
+            o["sigma_s"] = position_sigma(o["sigma_s"], ds_fix, c.p)
+            o["ds_fix"] = ds_fix
         if pq is None:
             # якоря ещё нет (нет GNSS) или точка у края квадрата MGRS: положения
             # в выходной системе нет, pos_valid = False — нода
@@ -880,7 +900,6 @@ class Runner:
         v = float(c.x[IV])
         a = (body_force(c.u_filt, v, c.x[3], c.x[4], c.mu, c.p)
              - resistance(v, c.p)) / c.p.M_nom + float(c.x[ID])
-        pos = self._pos_prev if fallback else self.pos
         o.update(stamp=t, x=x, y=y, z=z, yaw=yaw,
                  a=float(a) if v > 0 or a > 0 else 0.0,
                  pos_ready=pos.ready, pos_valid=pq is not None,

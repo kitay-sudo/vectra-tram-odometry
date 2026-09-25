@@ -602,12 +602,9 @@ def test_step_time_within_budget():
 
 # ============================================================ лист вагона и связка
 
-TRAM_NODE_ONLY = {"wheel_timeout_s", "handle_timeout_s", "init_window_s",
-                  "map_file", "origin_lat", "origin_lon", "origin_alt",
-                  "frame_id", "child_frame_id", "projection", "mgrs_grid",
-                  "utm_zone", "scale_adapt", "nomap_mode", "mgrs_guard_m",
-                  "keep_offset_xy", "keep_offset_z", "keep_offset_max_status",
-                  "terminal_hold"}
+# параметры ноды вне ядра (карта, проекция, кадры, таймауты) отбрасываются по
+# списку полей Params: список ноды растёт (projection, mgrs_grid, utm_zone...)
+CORE_FIELDS = {f.name for f in fields(Params)}
 
 
 def _tram():
@@ -615,7 +612,7 @@ def _tram():
     with open(os.path.join(PKG, "config", "tram.yaml"), encoding="utf-8") as fh:
         got = yaml.safe_load(fh)["/tram_state_estimator"]["ros__parameters"]
     return Params.from_dict({k: v for k, v in got.items()
-                             if k not in TRAM_NODE_ONLY})
+                             if k in CORE_FIELDS})
 
 
 def test_tram_sheet_is_valid_and_tabular():
