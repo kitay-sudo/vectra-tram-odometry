@@ -452,6 +452,15 @@ def render(result, timing, args, pics, root):
     wall = timing.get("wall_all_s")
     A(f"Этот прогон: {f(wall / 60 if wall else None, 1)} мин, процессов {timing.get('workers')} "
       f"(на машине параллельно работали контейнеры других агентов — время предварительное).")
+    shas = timing.get("sha256") or {}
+    if shas:
+        A("sha256 JSON этого прогона: " + ", ".join(f"`{k}` {v[:12]}" for k, v in shas.items()) + ".")
+    A("Проверки воспроизводимости (25.09, код до правок): `--quick --check-determinism` — JSON двух "
+      "проходов совпали побайтно; чистый `git clone` ветки с пустым кэшем (кэш 113 прогонов и карта "
+      "собраны из `data/` за 5,7 мин) дал `runs.json` с тем же sha256 (6377ada2e5b0…), что и "
+      "основной прогон. Карта напарника `analysis/cache/track_map_train.npz` (собрана на Windows) "
+      "совпадает с пересобранной во всех массивах, кроме множителя пути (разница 4·10⁻¹⁶), поэтому "
+      "не используется.")
     det = timing.get("determinism")
     if det:
         A(f"Детерминизм (`--check-determinism`): JSON двух проходов "
@@ -758,6 +767,11 @@ def render(result, timing, args, pics, root):
         A("")
         A(table(["замер", "выходов", "Гц", "in2out p50, мс", "p99", "макс", "CPU ср., %", "CPU макс",
                  "RSS, МБ", "рост RSS, МБ/мин"], pr))
+        if any(str(r[0]).startswith("audit25_") for r in pr):
+            A("")
+            A("Строки `audit25_*` — замеры аудита ROS2_E2E 25.09 на коде до правок, bag ~4,5 мин, "
+              "соседние контейнеры: предварительно. Отчётный замер (полный bag ≥ 20 мин, "
+              "`--cpus 2 --memory 512m`, машина без соседей) делает поток infra (WP8).")
     else:
         A("**Заглушка.** Сводок `tools/ros_probe.py` не найдено (`--probe-glob "
           f"{args.probe_glob}`). Замер делает поток infra (`tools/measure_realtime.sh`, WP8): "
