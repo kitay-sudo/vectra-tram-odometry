@@ -159,8 +159,8 @@ def one(job):
     X = np.array([[o["x"], o["y"], o["z"]] for o in outs])
     res = dict(bag=bag, sheet=sheet, variant=variant, n_out=len(T),
                wall_s=time.time() - t_wall)
-    for k in ("resets", "core_resets", "rejected_stamps", "rejected_values",
-              "skipped_steps"):
+    for k in ("resets", "gaps", "core_resets", "rejected_stamps",
+              "rejected_values", "skipped_steps"):
         res[k] = int(getattr(r, k, -1))
     res["finite"] = bool(np.isfinite(V).all() and np.isfinite(X).all())
     res["vel"] = vel_metrics(T, V, a["mvel"], a["cmd"])
@@ -258,7 +258,7 @@ def cmd_compare(args):
         print(f"\n### Лист {s} ({len(bags)} прогонов, веса — пары скорости)\n")
         print("| вариант | MAE | RMSE | смещение | разгон | выбег | торм. | стоянка "
               "| MAE rover | сдвиг, мс | узел−GNSS мед/макс, мс | узел=GNSS | ср. 3D, м "
-              "| сбросы | отбр. меток/знач. |")
+              "| сбросы+ядро, провалы | отбр. меток/знач. |")
         print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for v in variants:
             rows = [r for r in res if r["sheet"] == s and r["variant"] == v]
@@ -279,6 +279,7 @@ def cmd_compare(args):
                 mean3d=float(np.average([r["pos"]["mean3d"] for r in rows],
                                         weights=w)),
                 resets=int(sum(max(r["resets"], 0) for r in rows)),
+                gaps=int(sum(max(r.get("gaps", -1), 0) for r in rows)),
                 core_resets=int(sum(max(r["core_resets"], 0) for r in rows)),
                 rej_st=int(sum(max(r["rejected_stamps"], 0) for r in rows)),
                 rej_val=int(sum(max(r["rejected_values"], 0) for r in rows)),
@@ -290,7 +291,7 @@ def cmd_compare(args):
                   f"{d['mae_rover']:.4f} | {d['shift_ms']:+.0f} | "
                   f"{d['gap_med']:.1f}/{d['gap_max']:.1f} | {d['exact']:.1%} | "
                   f"{d['mean3d']:.2f} | "
-                  f"{d['resets']}+{d['core_resets']} | {d['rej_st']}/{d['rej_val']} |")
+                  f"{d['resets']}+{d['core_resets']}, {d['gaps']} | {d['rej_st']}/{d['rej_val']} |")
         if "main" in variants:
             print(f"\nРазница с main (лист {s}): по прогонам, на общих метках ±1 мс\n")
             print("| вариант | общих меток | max |dv| | ср. |dv| | выходов с |dv|>1e-9 "

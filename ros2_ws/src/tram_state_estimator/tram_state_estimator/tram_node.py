@@ -18,13 +18,15 @@
 analysis/evaluate.py, поэтому числа оценки и работа ноды совпадают.
 
 Устойчивость (docs/ROBUST.md):
-  * лист: без --params-file нода сама берёт config/tram.yaml пакета (WP22);
+  * лист: config/tram.yaml пакета всегда подкладывается под параметры
+    запуска; без --params-file нода работает по нему целиком (WP22);
   * битые входы и разрывы времени отсекает Runner; исключение в колбэке не
     роняет ноду (лог с ограничением частоты), launch перезапускает её при
     падении (respawn);
   * пульс (WP16): если входы молчат, таймер по монотонным часам публикует
     прогноз на копии связки (состояние не меняется) не дальше
-    pulse_horizon_s от последней метки; метки выхода не идут назад;
+    pulse_horizon_s от последней метки; метки выхода не идут назад; темп
+    проигрывания (play -r) оценивается по приросту меток;
   * старт (WP24): первые start_sort_s с по часам прихода сообщения
     сортируются по метке, сетка начинается с самой ранней.
 """
@@ -69,19 +71,36 @@ ANG_RATE_SD = 0.02      # рад/с: крен и тангаж почти не м
 R_CURVE_MIN = 20.0      # м: наименьший радиус кривой трамвая — предел рыскания
 
 
+def _sheet_section(doc, node):
+    """Секция листа для ноды: её полное имя, имя, «/**»; иначе секция имени
+    ноды пакета по умолчанию (нода переименована через __node:=); иначе
+    единственная секция листа. Возвращает (ключ, параметры) или (None, {})."""
+    name = node.get_name()
+    fqn = node.get_fully_qualified_name()
+    keys = (fqn, fqn.lstrip("/"), f"/{name}", name, "/**", f"/{PKG}", PKG)
+    for k in keys:
+        if isinstance(doc.get(k), dict) and "ros__parameters" in doc[k]:
+            return k, doc[k]["ros__parameters"] or {}
+    sects = [k for k, v in doc.items()
+             if isinstance(v, dict) and "ros__parameters" in v]
+    if len(sects) == 1:
+        return sects[0], doc[sects[0]]["ros__parameters"] or {}
+    return None, {}
+
+
 def use_package_sheet(node):
     """WP22. Без --params-file (ros2 run) нода молча брала бы заглушки Params:
-    4 оси, rad_s, шаг 10 мс, без карты. Если ни одного параметра ядра не
-    передано, значения по умолчанию берутся из config/tram.yaml пакета;
-    переданные явно (-p) остаются. Параметр sheet: auto (так), путь к листу
-    или none (заглушки Params, имитатор). Возвращает строку для лога."""
+    4 оси, rad_s, шаг 10 мс, без карты. Поэтому лист config/tram.yaml пакета
+    всегда подкладывается под параметры запуска: ключи из --params-file и -p
+    остаются, недостающие берутся из листа, а не из заглушек Params (один -p
+    не превращает остальные параметры в заглушки). Параметр sheet: auto (так),
+    путь к листу или none (заглушки Params, имитатор). Возвращает строку для
+    лога: какой лист и сколько ключей из него взято."""
     ov = node._parameter_overrides      # rclpy Humble: --params-file и -p
     sheet = ov["sheet"].value if "sheet" in ov else "auto"
     core = {f for f in Params.__dataclass_fields__}
     if sheet == "none":
         return "заглушки Params (sheet: none)"
-    if sheet == "auto" and core & set(ov):
-        return "параметры запуска (--params-file / -p)"
     path = SHEET if sheet == "auto" else sheet
     try:
         if not os.path.isabs(path):
@@ -90,18 +109,27 @@ def use_package_sheet(node):
         import yaml
         with open(path, encoding="utf-8") as fh:
             doc = yaml.safe_load(fh) or {}
-        name = node.get_name()
-        sect = next((doc[k] for k in (f"/{name}", name, "/**") if k in doc), {})
-        vals = sect.get("ros__parameters", {})
+        sect, vals = _sheet_section(doc, node)
     except Exception as e:                       # noqa: BLE001
         node.get_logger().warn(f"лист {path} не прочитан ({e}): заглушки Params")
         return f"заглушки Params (лист {path} не прочитан)"
+    if sect is None:
+        node.get_logger().warn(
+            f"в листе {path} нет секции для ноды "
+            f"{node.get_fully_qualified_name()}: заглушки Params")
+        return f"заглушки Params (в листе {path} нет секции ноды)"
+    given = core & set(ov)
+    n = 0
     for k, v in vals.items():
         if k not in ov:
             if isinstance(v, list) and any(isinstance(x, float) for x in v):
                 v = [float(x) for x in v]        # [0, 0.5] — один тип
             ov[k] = Parameter(k, value=v)
-    return f"{path} (без --params-file: лист пакета)"
+            n += 1
+    how = ("без --params-file: лист пакета" if not given else
+           f"под параметрами запуска: из листа {n} ключей, "
+           f"параметров ядра из запуска {len(given)}")
+    return f"{path} [{sect}] ({how})"
 
 
 def to_sec(stamp):
@@ -196,6 +224,8 @@ class TramEstimatorNode(Node):
         self._last_pub = -math.inf          # метка последнего выхода: не назад
         self._stamp_ref = None              # наибольшая принятая метка входа
         self._mono_ref = 0.0                # и когда она пришла (монотонные часы)
+        self.rate = 1.0                     # темп проигрывания: метки / монотонные с
+        self._rate_anchor = None            # (монотонные, метка) начала окна оценки
         self._fork = None                   # копия связки для прогноза
         self._errors = 0                    # ошибок подряд в колбэках
         self._good = (0.0, 0.0, 0.0)        # последнее конечное положение
@@ -217,22 +247,44 @@ class TramEstimatorNode(Node):
 
     def _dispatch(self, now, name, args):
         r = self.runner
-        n_in, resets, core_resets = r.n_in, r.resets, r.core_resets
+        n_in, resets, core_resets, gaps = r.n_in, r.resets, r.core_resets, r.gaps
         t0 = time.perf_counter_ns()
         outs = getattr(r, name)(*args)
         call_us = (time.perf_counter_ns() - t0) / 1000.0
         if r.resets != resets:
             self.get_logger().warn(f"сброс связки: {r.reset_reason}")
             self._last_pub = -math.inf           # новый прогон: метки заново
-            self._stamp_ref = None
+            self._stamp_ref = self._rate_anchor = None
+        if r.gaps != gaps:
+            self.get_logger().warn(r.gap_reason)
+            self._rate_anchor = None
         if r.core_resets != core_resets:
             self.get_logger().warn(r.reset_reason, throttle_duration_sec=5.0)
         if r.n_in != n_in:                       # принято новое сообщение
             self._fork = None
             if self._stamp_ref is None or r.stamp_max > self._stamp_ref:
+                self._rate_update(now, r.stamp_max)
                 self._stamp_ref, self._mono_ref = r.stamp_max, now
         self._emit(outs, call_us)
         self._errors = 0
+
+    RATE_WIN_S = 2.0        # с монотонных часов: окно оценки темпа
+    RATE_HOLE_S = 1.0       # с тишины: пауза, а не темп — окно начинается заново
+
+    def _rate_update(self, now, stamp):
+        """Темп проигрывания для пульса: прирост наибольшей метки за окно
+        монотонных часов, в пределах [0,05; 1]. Быстрее 1x пульс не нужен
+        (входы приходят чаще), медленнее (play -r 0.5) без оценки пульс
+        выдавал бы прогноз вместо почти всех выходов. Окно с паузой входов
+        темп не меняет."""
+        a = self._rate_anchor
+        if a is None or self._stamp_ref is None \
+                or now - self._mono_ref > self.RATE_HOLE_S:
+            self._rate_anchor = (now, stamp)
+            return
+        if now - a[0] >= self.RATE_WIN_S:
+            self.rate = min(1.0, max(0.05, (stamp - a[1]) / (now - a[0])))
+            self._rate_anchor = (now, stamp)
 
     def _fail(self, where, e):
         import traceback
@@ -243,11 +295,13 @@ class TramEstimatorNode(Node):
             f"ошибка в {where} ({self.n_errors} всего): {type(e).__name__}: {e}"
             f" | {' / '.join(x.strip() for x in tb[-3:])}",
             throttle_duration_sec=5.0)
-        if self._errors >= 20:                   # что-то застряло: новый прогон
+        if self._errors >= 20:
+            # что-то застряло: только ядро заново (путь, выставка и сетка
+            # остаются; полный сброс потерял бы выставку до конца прогона)
             self._errors = 0
-            self.runner.reset("20 ошибок подряд в колбэках")
-            self._fork, self._stamp_ref = None, None
-            self.get_logger().warn("сброс связки: 20 ошибок подряд в колбэках")
+            self.runner.reset_core("20 ошибок подряд в колбэках")
+            self._fork = None
+            self.get_logger().warn(self.runner.reset_reason)
 
     def _pulse(self):
         try:
@@ -267,9 +321,11 @@ class TramEstimatorNode(Node):
         r = self.runner
         if self.pulse_h <= 0.0 or r.t is None or self._stamp_ref is None:
             return
+        if r.backlog():                     # связка догоняет провал: узлы уже есть
+            return
         alive = (r.t - r.t_notch) <= r.handle_timeout
         margin = self.margin if alive else self.margin_nh
-        est = self._stamp_ref + (now - self._mono_ref)
+        est = self._stamp_ref + self.rate * (now - self._mono_ref)
         target = min(est - margin, self._stamp_ref + self.pulse_h)
         if target + 1e-6 < max(r.next_node(), self._last_pub + r.p.dt):
             return
@@ -283,7 +339,8 @@ class TramEstimatorNode(Node):
         r = self.runner
         return (f"итог: выходов {self.frame}, из них прогноз пульса "
                 f"{self.n_pulse}, подавлено повторов {self.n_suppressed}; "
-                f"сбросов связки {r.resets}, ядра {r.core_resets}; отброшено "
+                f"сбросов связки {r.resets}, ядра {r.core_resets}, провалов "
+                f"входов {r.gaps}; темп {self.rate:.2f}; отброшено "
                 f"меток {r.rejected_stamps}, значений {r.rejected_values}; "
                 f"ошибок в колбэках {self.n_errors}")
 
