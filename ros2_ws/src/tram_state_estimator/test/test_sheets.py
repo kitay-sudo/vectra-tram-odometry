@@ -125,3 +125,24 @@ def test_eval_sheet_is_fit_on_train_only_and_jury_on_all():
     ids = set(_calib("jury").get("_fit_ids", []))
     if ids:
         assert set(split["holdout_scored"]) <= ids
+
+
+@pytest.mark.parametrize("which", SHEETS)
+def test_creep_stubs_are_removed_by_data(which):
+    """WP5: заглушки крипа (0,02 и 0,002) давали смещение +0,01 м/с и до
+    +0,05 на торможении. Регрессия по данным (calib_sheet.py) даёт крип около
+    нуля: масштаб колёс уже подогнан по GNSS. В листе — ноль."""
+    d = _calib(which)
+    assert d["params"]["c_creep"] == 0.0 and d["params"]["c_creep_drag"] == 0.0
+    reg = d["_creep_regression"]
+    assert abs(reg["c_creep"]) < 0.005 and abs(reg["offset"]) < 0.002
+    got = _yaml(which)
+    assert got["c_creep"] == 0.0 and got["c_creep_drag"] == 0.0
+
+
+@pytest.mark.parametrize("which", SHEETS)
+def test_output_sigma_is_calibrated(which):
+    """WP12: выходная σ подогнана по остаткам подгоночных прогонов."""
+    p = Params.from_dict(_calib(which)["params"])
+    assert p.sv_age > 0 or p.sv_floor > 0 or p.sv_gain > 1
+    assert p.ss_map > 0 and p.ss_rel > 0
