@@ -92,8 +92,14 @@ services:
 
   bridge:
     <<: *ros
-    # rosbridge v2 (JSON по websocket) для симулятора: ws://<хост>:9090
-    command: ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090
+    # rosbridge v2 (JSON по websocket) для симулятора: ws://<хост>:9090.
+    # По умолчанию только для чтения (публичный домен): docker/bridge.sh;
+    # ROSBRIDGE_OPEN=1 — без ограничений (отладка на своей машине)
+    environment:
+      <<: *ros-env
+      ROSBRIDGE_OPEN: ${ROSBRIDGE_OPEN:-0}
+    entrypoint: ["bash", "/repo/docker/bridge.sh"]
+    command: []
     ports:
       - "${BRIDGE_BIND:-127.0.0.1}:${BRIDGE_PORT:-9090}:9090"
     stop_signal: SIGINT
