@@ -17,3 +17,4 @@ node_modules/
 .env
 docker/proxy/certs/*.pem
 docker/proxy/certs/*.key
+js-port/rec*.json
