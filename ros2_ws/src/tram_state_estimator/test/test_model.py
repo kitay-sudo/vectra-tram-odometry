@@ -605,7 +605,9 @@ def test_step_time_within_budget():
 TRAM_NODE_ONLY = {"wheel_timeout_s", "handle_timeout_s", "init_window_s",
                   "map_file", "origin_lat", "origin_lon", "origin_alt",
                   "frame_id", "child_frame_id", "projection", "mgrs_grid",
-                  "utm_zone", "scale_adapt", "nomap_mode"}
+                  "utm_zone", "scale_adapt", "nomap_mode", "mgrs_guard_m",
+                  "keep_offset_xy", "keep_offset_z", "keep_offset_max_status",
+                  "terminal_hold"}
 
 
 def _tram():

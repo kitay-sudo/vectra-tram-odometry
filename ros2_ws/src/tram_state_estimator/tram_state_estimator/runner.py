@@ -25,6 +25,7 @@ import numpy as np
 from .estimator_core import (Estimator, IV, ID, IS, STANDSTILL, body_force,
                              resistance)
 from .geodesy import Equirect, Frame, projection_name
+from .track_map import hold_mode
 
 R_EARTH = 6378137.0
 
@@ -43,8 +44,12 @@ class Position:
       * курс — по парам master→rover одной эпохи (rover впереди); без rover —
         по смещению master за окно (> 5 м), иначе по карте в точке якоря;
         иначе курса нет, и выход стоит в точке якоря;
+      * нет master, есть rover — якорь по rover, сдвинутый назад по курсу на
+        базу ROVER_BASE (rover впереди master); без курса — точка rover;
       * якорь и путь выставки s_ref пересчитываются только при точке, вошедшей
-        в выставку; после окна GNSS не читается.
+        в выставку; после окна GNSS не читается;
+      * точка с меткой дальше MAX_SKEW от сетки ядра — сбой метки: не
+        выставка (и не может открыть окно).
     Движение: с картой — курсор по карте (track_map.py) с привязкой к точкам
     остановок и онлайн-подстройкой масштаба пути (WP13); без карты — стоянка
     в якоре (nomap_mode "hold", по умолчанию: на отложенных 2,3 км против
@@ -60,12 +65,18 @@ class Position:
     SCALE_MIN_L = 100.0          # м: короче — отрезок не учитывается
     SCALE_INCONS = 0.012         # отрезки разошлись больше — подстройку выключить
     OFFSET_Z_MAX = 30.0          # м: больший сдвиг высоты GNSS − карта не переносить
+    ROVER_BASE = 12.42           # м: rover впереди master (по данным; tf обещан)
+    MAX_SKEW = 30.0              # с: метка GNSS дальше от сетки ядра — сбой метки
+    ROVER_ONLY_AFTER = 1.0       # с: rover без master дольше — выставка по rover
 
     def __init__(self, track_map=None, origin=None, init_window=3.0,
                  projection="mgrs", mgrs_grid="", utm_zone=0, stop_dwell=8.0,
                  scale_adapt=True, nomap_mode="hold", keep_offset_xy=True,
-                 keep_offset_z=True, mgrs_guard_m=0.0):
+                 keep_offset_z=True, keep_offset_max_status=1, mgrs_guard_m=5.0,
+                 terminal_hold="terminals"):
         self.map = track_map
+        if track_map is not None:
+            track_map.terminal_hold = hold_mode(terminal_hold)
         self.origin = origin            # (lat, lon, alt) или None: первая точка master
         self.init_window = float(init_window)
         self.projection = projection_name(projection)
@@ -78,13 +89,18 @@ class Position:
         if nomap_mode not in ("line", "hold"):
             raise ValueError(f"nomap_mode {nomap_mode!r}: line | hold")
         self.nomap_mode = nomap_mode
-        # сдвиг «GNSS окна − карта» в якоре сохраняется в выходе (эталон судьи —
-        # тот же GNSS, у прогонов без RTK он смещён на метры). По горизонтали
+        # сдвиг «GNSS окна − карта» в якоре сохраняется в выходе, но только у
+        # решения без RTK (медиана NavSatFix.status точек master окна ≤
+        # keep_offset_max_status; 2 = GBAS/RTK у 30618): эталон судьи — тот же
+        # GNSS, без RTK он смещён от оси пути на метры, и смещение держится.
+        # У RTK сдвиг — шум окна (на train со сдвигом хуже). По горизонтали
         # это только поперечная часть (курсор притягивается к оси пути поперёк,
         # не дальше snap_r), по высоте — не больше OFFSET_Z_MAX
         self.keep_offset_xy = bool(keep_offset_xy)
         self.keep_offset_z = bool(keep_offset_z)
+        self.keep_offset_max_status = int(keep_offset_max_status)
         self.offset = (0.0, 0.0, 0.0)
+        self.window_status = None       # медиана статуса точек окна
         # MGRS с переносом по квадратам: ближе mgrs_guard_m к краю 100-км
         # квадрата положение не публикуется (pos_valid = False): выход и эталон
         # могли бы оказаться в разных квадратах (ошибка 100 км). 0 — выкл.
@@ -100,8 +116,10 @@ class Position:
         self.n_rejected = 0             # отброшено как негодные
         self._t0 = None
         self._q = []                    # точки окна, ждущие шага сетки
-        self._m = []                    # master: (метка, x, y, z, путь колёс)
-        self._r = []                    # rover:  (метка, x, y)
+        # точки окна: (метка, широта, долгота, высота, путь колёс, статус)
+        self._m = []                    # master
+        self._r = []                    # rover
+        self._frame_rover = False       # система пока от rover (master ещё нет)
         self._pairs = []                # база master→rover одной эпохи
         self._last_alt = None
         self._cursor = None
@@ -145,10 +163,20 @@ class Position:
             self._t0 = stamp
         if s is None:
             if len(self._q) < 1000:
-                self._q.append((stamp, antenna, lat, lon, alt))
+                self._q.append((stamp, antenna, lat, lon, alt, status))
             return True
-        self._apply(stamp, antenna, lat, lon, alt, s, v, t)
+        self._apply(stamp, antenna, lat, lon, alt, s, v, t, status)
         return True
+
+    def resync(self, t):
+        """Сетка ядра на t, а в выставку ещё ничего не вошло: точки с меткой
+        дальше MAX_SKEW от t — сбой метки (например, 0 или 1e10 у первой
+        точки, пришедшей до тележек). Они не должны открывать окно выставки:
+        окно — заново от первой разумной точки."""
+        if (self._t0 is not None and self.n_used == 0
+                and not abs(self._t0 - t) <= self.MAX_SKEW):
+            self._q = [q for q in self._q if abs(q[0] - t) <= self.MAX_SKEW]
+            self._t0 = min((q[0] for q in self._q), default=None)
 
     def _flush(self, t, s, v):
         """Точки из очереди с меткой не позже шага t сетки."""
@@ -156,39 +184,26 @@ class Position:
         if due:
             self._q = [q for q in self._q if q[0] > t + 1e-9]
             for q in due:
-                self._apply(*q, s, v, t)
+                self._apply(*q[:5], s, v, t, q[5])
 
-    def _apply(self, stamp, antenna, lat, lon, alt, s, v, t):
+    def _apply(self, stamp, antenna, lat, lon, alt, s, v, t, status=0):
         if alt is None or not math.isfinite(alt):
             alt = self._alt_fallback(lat, lon)
         else:
             self._last_alt = alt
-        if self.frame is None:
-            if antenna != "master":
-                return False
-            o = self.origin or (lat, lon, alt)
-            self.frame = Frame(*o, projection=self.projection,
-                               mgrs_grid=self.mgrs_grid, utm_zone=self.utm_zone)
-        x, y, z = self.frame.fwd(lat, lon, alt)
         dt = 0.0 if t is None else min(max(stamp - t, -0.5), 0.5)
-        s = float(s)
-        if antenna == "master":
-            self._m.append((stamp, x, y, z, s + v * dt))
-            for tr, rx, ry in self._r[-5:]:
-                self._pair(stamp, x, y, tr, rx, ry)
-        else:
-            self._r.append((stamp, x, y))
-            for tm, mx, my, _, _ in self._m[-5:]:
-                self._pair(tm, mx, my, stamp, x, y)
+        row = (stamp, lat, lon, alt, float(s) + v * dt, 0 if status is None else status)
+        (self._m if antenna == "master" else self._r).append(row)
         self.n_used += 1
         self._align()
         return True
 
-    def _pair(self, tm, mx, my, tr, rx, ry):
-        if abs(tm - tr) <= self.PAIR_TOL:
-            b = math.hypot(rx - mx, ry - my)
-            if self.BASE_MIN <= b <= self.BASE_MAX:
-                self._pairs.append((rx - mx, ry - my))
+    def _make_frame(self, row, from_rover):
+        o = self.origin or row[1:4]
+        self.frame = Frame(*o, projection=self.projection,
+                           mgrs_grid=self.mgrs_grid, utm_zone=self.utm_zone)
+        self._frame_rover = from_rover and self.origin is None
+        self._bound = False
 
     def _alt_fallback(self, lat, lon):
         """Высота вместо NaN: карта у точки, иначе последняя годная, иначе 0."""
@@ -198,24 +213,52 @@ class Position:
                 return h
         return self._last_alt if self._last_alt is not None else 0.0
 
+    def _project(self, rows):
+        """Точки окна -> массив (метка, x, y, z, путь колёс, статус)."""
+        A = np.array(rows, float)
+        P = self.frame.fwd_arr(A[:, 1], A[:, 2], A[:, 3])
+        return np.c_[A[:, 0], P, A[:, 4], A[:, 5]]
+
     def _align(self):
-        if not self._m:
+        if self._m:
+            from_rover = False
+            if self.frame is None or self._frame_rover:
+                self._make_frame(self._m[0], False)
+        elif self._r and (max(q[0] for q in self._r) - min(q[0] for q in self._r)
+                          >= self.ROVER_ONLY_AFTER):
+            # master нет уже ROVER_ONLY_AFTER с: выставка по rover
+            from_rover = True
+            if self.frame is None:
+                self._make_frame(self._r[0], True)
+        else:
             return
-        M = np.array(self._m)
+        M = self._project(self._r if from_rover else self._m)
+        pairs = np.zeros((0, 2))
+        if not from_rover and self._r:
+            R = self._project(self._r)
+            i, j = np.nonzero(np.abs(M[:, 0][:, None] - R[:, 0][None, :]) <= self.PAIR_TOL)
+            d = R[j, 1:3] - M[i, 1:3]
+            b = np.hypot(d[:, 0], d[:, 1])
+            pairs = d[(b >= self.BASE_MIN) & (b <= self.BASE_MAX)]
+        self._pairs = pairs
         k_last = int(np.argmax(M[:, 0]))
         moving = (M[:, 4].max() - M[:, 4].min()) > 0.3
         if moving:
             anchor = tuple(M[k_last, 1:4])
         else:
             med = np.median(M[:, 1:3], axis=0)
-            keep = np.hypot(M[:, 1] - med[0], M[:, 2] - med[1]) < 20.0
+            d = np.hypot(M[:, 1] - med[0], M[:, 2] - med[1])
+            keep = d < 20.0
+            if not keep.any():               # две точки или два облака дальше 40 м
+                keep = d <= d.min() + 1e-6
             anchor = tuple(M[keep, 1:4].mean(0))
+        if not all(math.isfinite(a) for a in anchor):
+            return
         s_ref = float(M[k_last, 4])
         first = M[int(np.argmin(M[:, 0]))]
         dx, dy = M[k_last, 1] - first[1], M[k_last, 2] - first[2]
-        if self._pairs:
-            P = np.array(self._pairs)
-            az = math.atan2(P[:, 0].sum(), P[:, 1].sum())
+        if len(pairs):
+            az = math.atan2(pairs[:, 0].sum(), pairs[:, 1].sum())
         elif math.hypot(dx, dy) > 5.0:
             az = math.atan2(dx, dy)                      # нет rover, но едем
         else:
@@ -225,6 +268,11 @@ class Position:
             self._bound = True
         if az is None and self.map is not None:
             az = self.map.heading_at(anchor[:2])
+        if from_rover and az is not None:
+            # rover впереди master на базу: якорь master — назад по курсу
+            anchor = (anchor[0] - self.ROVER_BASE * math.sin(az),
+                      anchor[1] - self.ROVER_BASE * math.cos(az), anchor[2])
+        self.window_status = float(np.median(M[:, 5]))
         self.xyz0, self.s_ref, self.fixed = anchor, s_ref, True
         self._s = 0.0
         self._s_anchor = 0.0
@@ -237,7 +285,7 @@ class Position:
             self._cursor = self.map.locate(anchor, az)
             c = self._cursor
             self.offset = (0.0, 0.0, 0.0)
-            if c.get("on_map"):
+            if c.get("on_map") and self.window_status <= self.keep_offset_max_status:
                 dz = anchor[2] - c["z"]
                 self.offset = ((anchor[0] - c["x"]) if self.keep_offset_xy else 0.0,
                                (anchor[1] - c["y"]) if self.keep_offset_xy else 0.0,
@@ -312,6 +360,8 @@ class Position:
         системе; None, пока нет якоря (ещё не было ни одной годной точки
         master) или точка у края 100-км квадрата MGRS (mgrs_guard_m). Сначала
         применяются точки GNSS из очереди с меткой ≤ t."""
+        if t is not None:
+            self.resync(t)
         if self._q and t is not None:
             self._flush(t, s, v)
         if not self.fixed:
@@ -342,7 +392,7 @@ class Runner:
                  **position_opts):
         """position_opts — параметры Position: init_window, projection,
         mgrs_grid, utm_zone, scale_adapt, nomap_mode, keep_offset_xy,
-        keep_offset_z, mgrs_guard_m."""
+        keep_offset_z, keep_offset_max_status, mgrs_guard_m, terminal_hold."""
         self.p = params
         self.core = Estimator(params)
         self.nw = self.core.nw
@@ -390,7 +440,13 @@ class Runner:
         дошедшем до её метки. Поэтому GNSS не влияет на скорость, а после
         окна — ни на что. Якорь и путь выставки пересчитываются только при
         точке, вошедшей в выставку. status — NavSatFix.status.status (< 0:
-        нет решения). Выходов не порождает: возвращает []."""
+        нет решения). Точка с меткой дальше Position.MAX_SKEW от сетки —
+        сбой метки, отбрасывается. Выходов не порождает: возвращает []."""
+        if self.t is not None:
+            if not abs(stamp - self.t) <= self.pos.MAX_SKEW:
+                self.pos.n_rejected += 1
+                return []
+            self.pos.resync(self.t)
         if self.pos.accepts(stamp, lat, lon, status):
             self.pos.on_fix(stamp, antenna, lat, lon, alt, status=status)
         return []

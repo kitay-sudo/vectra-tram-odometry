@@ -76,11 +76,13 @@ class TramEstimatorNode(Node):
         P("projection", "mgrs")
         P("mgrs_grid", "")
         P("utm_zone", 0)                   # 0 — по точке выставки
-        P("mgrs_guard_m", 0.0)             # у края квадрата не публиковать (0 — выкл.)
+        P("mgrs_guard_m", 5.0)             # ближе к краю 100-км квадрата не публиковать (0 — выкл.)
         P("scale_adapt", True)             # онлайн-масштаб пути по остановкам
         P("nomap_mode", "hold")            # без карты: hold (стоять в якоре) | line
-        P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе
-        P("keep_offset_z", True)
+        P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе,
+        P("keep_offset_z", True)           # только если медиана статуса окна
+        P("keep_offset_max_status", 1)     # ≤ этого (без RTK); 2 — всегда
+        P("terminal_hold", "terminals")    # тупик карты: terminals | off | any
         g = lambda n: self.get_parameter(n).value
 
         params = declare_core_params(self, include_dt=True)
@@ -102,7 +104,9 @@ class TramEstimatorNode(Node):
                              utm_zone=g("utm_zone"), mgrs_guard_m=g("mgrs_guard_m"),
                              scale_adapt=g("scale_adapt"), nomap_mode=g("nomap_mode"),
                              keep_offset_xy=g("keep_offset_xy"),
-                             keep_offset_z=g("keep_offset_z"))
+                             keep_offset_z=g("keep_offset_z"),
+                             keep_offset_max_status=g("keep_offset_max_status"),
+                             terminal_hold=g("terminal_hold"))
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
 
