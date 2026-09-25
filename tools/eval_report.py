@@ -1,0 +1,671 @@
+"""docs/EVAL.md и графики docs/img/eval_*.png по результатам tools/eval.py.
+
+Всё, что в документе, берётся из out/eval/*.json этого же прогона (плюс
+сводки tools/ros_probe.py для раздела «Реальное время», если они есть).
+"""
+
+import glob
+import json
+import math
+from pathlib import Path
+
+import numpy as np
+
+import eval_metrics as M
+import inject as I
+
+# палитра (dataviz, проверена validate_palette.js: CVD ΔE 9,2, норм. ΔE 27,6)
+C_MODEL = "#2a78d6"
+C_NAIVE = "#eb6834"
+C_REF = "#52514e"
+C_GRID = "#e4e3df"
+C_WASH = "#f0efec"
+C_TEXT = "#0b0b0b"
+C_TEXT2 = "#52514e"
+SURFACE = "#fcfcfb"
+
+PLOT_RUN = "30618_e9a34502"
+SUB15_JSON = dict(v_mae=0.0489, v_bias=0.0130, cov2s_v=0.756, p3d_mean=5.04,
+                  naive_v_mae=0.0483, naive_p3d_mean=3.93)
+KIND_SHORT = dict(front_zero="отказ передней (0)", rear_drop="отказ задней (30639)",
+                  both_zero="обе = 0, 20 с", both_stuck="обе залипли, 20 с",
+                  dropout="пропуск 2 с", gap_all="пропуск всех входов 2 с",
+                  skid_brake="юз −30 %", spin_traction="буксование +30 %",
+                  outliers="выбросы ×3", noise="шум ×5", nan="NaN", stamp_jump="скачок метки +30 с")
+
+
+# ------------------------------------------------------------------ форматирование
+
+def f(x, nd=2, sign=False):
+    if x is None or (isinstance(x, float) and not math.isfinite(x)):
+        return "—"
+    s = f"{x:+.{nd}f}" if sign else f"{x:.{nd}f}"
+    return s.replace(".", ",").replace("-", "−")
+
+
+def pct(x, nd=1):
+    return "—" if x is None or not math.isfinite(x) else f(100.0 * x, nd) + " %"
+
+
+def g(d, *keys, default=None):
+    for k in keys:
+        if d is None:
+            return default
+        d = d.get(k) if isinstance(d, dict) else None
+    return default if d is None else d
+
+
+def table(head, rows):
+    out = ["| " + " | ".join(head) + " |", "|" + "|".join("---" for _ in head) + "|"]
+    out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    return "\n".join(out)
+
+
+# ------------------------------------------------------------------ графики
+
+def _style(plt):
+    plt.rcParams.update({
+        "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
+        "axes.edgecolor": C_GRID, "axes.labelcolor": C_TEXT2, "xtick.color": C_TEXT2,
+        "ytick.color": C_TEXT2, "text.color": C_TEXT, "axes.grid": True, "grid.color": C_GRID,
+        "grid.linewidth": 0.8, "grid.linestyle": "-", "axes.spines.top": False,
+        "axes.spines.right": False, "font.size": 9, "axes.titlesize": 10,
+        "axes.titleweight": "semibold", "legend.frameon": False, "lines.linewidth": 1.4,
+        "lines.solid_capstyle": "round", "svg.hashsalt": "eval", "path.simplify": True,
+    })
+
+
+def _save(fig, path):
+    fig.savefig(path, dpi=110, metadata={"Software": None})
+
+
+def plot_speed(base, img, bag):
+    import matplotlib.pyplot as plt
+    r = base.get(bag)
+    if not r or "series" not in r["est"].get("model", {}):
+        return None
+    sm, sn = r["est"]["model"]["series"], r["est"]["naive"]["series"]
+    t0 = r["t_first"]
+    tm = (sm["tg"] - t0) / 60.0
+    tn = (sn["tg"] - t0) / 60.0
+    svm = sm["SV"][M.nearest(sm["T"], sm["tg"])[0]]
+    fig, ax = plt.subplots(2, 1, figsize=(10, 5.4), sharex=True,
+                           gridspec_kw=dict(height_ratios=[1, 1.4]))
+    ax[0].plot(tm, sm["vg"], color=C_REF, lw=1.2, label="GNSS master")
+    ax[0].set_ylabel("скорость, м/с")
+    ax[0].set_title(f"{bag}: скорость по GNSS и ошибка оценки (выход − GNSS)", loc="left")
+    ax[1].fill_between(tm, -2 * svm, 2 * svm, color=C_MODEL, alpha=0.10, lw=0, label="модель ±2σ")
+    ax[1].plot(tn, sn["ev"], color=C_NAIVE, lw=1.0, label="база «только колесо»")
+    ax[1].plot(tm, sm["ev"], color=C_MODEL, lw=1.0, label="модель")
+    lim = max(0.3, float(np.nanpercentile(np.abs(np.r_[sm["ev"], sn["ev"]]), 99.8)) * 1.2)
+    ax[1].set_ylim(-lim, lim)
+    ax[1].set_ylabel("ошибка, м/с")
+    ax[1].set_xlabel("время от начала записи, мин")
+    ax[1].legend(loc="upper right", ncol=3)
+    fig.tight_layout()
+    p = img / "eval_speed_error.png"
+    _save(fig, p)
+    plt.close(fig)
+    return p.name
+
+
+def plot_position(base, ids, img):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(2, 2, figsize=(10, 6.2), sharex=True, sharey="row")
+    for col, (est, color, title) in enumerate((("model", C_MODEL, "модель"),
+                                               ("naive", C_NAIVE, "база «только колесо»"))):
+        for b in ids:
+            s = base[b]["est"].get(est, {}).get("samples", {}).get("p")
+            if not s or "sref" not in s:
+                continue
+            x = np.asarray(s["sref"], float) / 1000.0
+            al, d3 = np.asarray(s["al"], float).copy(), np.asarray(s["d3"], float).copy()
+            back = np.r_[False, np.diff(x) < -0.001]      # скачок эталона назад: разрыв линии
+            x = x.copy()
+            x[back] = np.nan
+            ax[0, col].plot(x, al, color=color, lw=0.9, alpha=0.75)
+            ax[1, col].plot(x, d3, color=color, lw=0.9, alpha=0.75)
+        ax[0, col].set_title(f"{title}: {len(ids)} отложенных прогонов", loc="left")
+        ax[1, col].set_xlabel("путь по эталону GNSS, км")
+    ax[0, 0].set_ylabel("вдоль пути, м (+ — впереди)")
+    ax[1, 0].set_ylabel("3D, м")
+    fig.tight_layout()
+    p = img / "eval_position_error.png"
+    _save(fig, p)
+    plt.close(fig)
+    return p.name
+
+
+def plot_phases(pooled, img):
+    import matplotlib.pyplot as plt
+    ph = [k for k in M.PHASES if k in pooled["model"]["by_phase"]]
+    if not ph:
+        return None
+    x = np.arange(len(ph))
+    w = 0.34
+    fig, ax = plt.subplots(1, 2, figsize=(10, 3.4))
+    for k, (key, title) in enumerate((("bias", "смещение, м/с"), ("mae", "MAE, м/с"))):
+        for j, (est, color, lab) in enumerate((("model", C_MODEL, "модель"),
+                                               ("naive", C_NAIVE, "база"))):
+            vals = [pooled[est]["by_phase"].get(p, {}).get(key, np.nan) for p in ph]
+            ax[k].bar(x + (j - 0.5) * w, vals, width=w - 0.03, color=color, label=lab)
+        ax[k].axhline(0, color=C_TEXT2, lw=0.8)
+        ax[k].grid(axis="x", visible=False)
+        ax[k].set_xticks(x)
+        ax[k].set_xticklabels([M.PHASES_RU[p] for p in ph])
+        ax[k].set_title(title, loc="left")
+    ax[0].legend(loc="upper left")
+    fig.tight_layout()
+    p = img / "eval_phase.png"
+    _save(fig, p)
+    plt.close(fig)
+    return p.name
+
+
+def plot_inject(res, base, bag, kinds, img):
+    import matplotlib.pyplot as plt
+    cells = [(k, res.get(("inj", k, bag))) for k in kinds]
+    cells = [(k, r) for k, r in cells if r and not r.get("skipped")]
+    if not cells or bag not in base:
+        return []
+    names = []
+    for what, fname, ylab in (("v", "eval_inject_speed.png", "скорость, м/с"),
+                              ("al", "eval_inject_along.png", "ошибка вдоль пути, м")):
+        n = len(cells)
+        nc = 4
+        nr = int(math.ceil(n / nc))
+        fig, axs = plt.subplots(nr, nc, figsize=(12, 2.6 * nr), squeeze=False)
+        for ax in axs.flat[n:]:
+            ax.set_visible(False)
+        for ax, (kind, r) in zip(axs.flat, cells):
+            info = r["inject"]
+            t0, te = info["t0"], info["t0"] + I.eval_window(kind)
+            lo, hi = t0 - 30.0, te + 60.0
+            ax.axvspan(0, te - t0, color=C_WASH, lw=0)
+            for est, color in (("naive", C_NAIVE), ("model", C_MODEL)):
+                S = r["est"][est]["series"]
+                if what == "v":
+                    m = (S["T"] >= lo) & (S["T"] < hi)
+                    ax.plot(S["T"][m] - t0, S["V"][m], color=color, lw=1.2)
+                else:
+                    m = (S["tp"] >= lo) & (S["tp"] < hi)
+                    ax.plot(S["tp"][m] - t0, S["al"][m], color=color, lw=1.2)
+            if what == "v":
+                S = r["est"]["model"]["series"]
+                m = (S["tg"] >= lo) & (S["tg"] < hi)
+                ax.plot(S["tg"][m] - t0, S["vg"][m], color=C_REF, lw=1.0, ls="-", alpha=0.9)
+            crash = r["est"]["model"]["crash"]
+            ttl = KIND_SHORT.get(kind, kind) + (" — модель упала" if crash else "")
+            ax.set_title(ttl, loc="left", fontsize=9)
+            ax.set_xlim(lo - t0, hi - t0)
+        for ax in axs[:, 0]:
+            ax.set_ylabel(ylab)
+        for ax in axs[-1, :]:
+            ax.set_xlabel("с от начала аномалии")
+        from matplotlib.lines import Line2D
+        hs = [Line2D([], [], color=C_MODEL, lw=2), Line2D([], [], color=C_NAIVE, lw=2)]
+        labs = ["модель", "база «только колесо»"]
+        if what == "v":
+            hs.append(Line2D([], [], color=C_REF, lw=2))
+            labs.append("GNSS master")
+        fig.legend(hs, labs, loc="upper right", ncol=3)
+        fig.suptitle(f"Инъекции в {bag}; серая полоса — окно аномалии", x=0.01, ha="left",
+                     fontsize=10, fontweight="semibold")
+        fig.tight_layout(rect=(0, 0, 1, 0.95))
+        _save(fig, img / fname)
+        plt.close(fig)
+        names.append(fname)
+    return names
+
+
+# ------------------------------------------------------------------ реальное время
+
+def probe_rows(root, patterns):
+    rows = []
+    for pat in patterns.split(","):
+        for p in sorted(glob.glob(str(root / pat), recursive=True)):
+            try:
+                d = json.loads(Path(p).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            o = g(d, "outputs", "velocity") or {}
+            L = d.get("latency", {}) or {}
+            P = d.get("node_process", {}) or {}
+            i2o = L.get("in2out_vehicle_ms") or {}
+            cpu = P.get("cpu_pct_1core") or {}
+            rss = P.get("rss_mb_first_last_max")
+            rows.append([Path(p).parent.name, o.get("count", "—"), f(o.get("rate_stamp_hz"), 1),
+                         f(i2o.get("p50"), 1), f(i2o.get("p99"), 1), f(i2o.get("max"), 1),
+                         f(cpu.get("mean"), 1), f(cpu.get("max"), 1),
+                         f(rss[-1], 0) if isinstance(rss, list) and rss else "—",
+                         f(P.get("rss_slope_mb_per_min_after_30s"), 2)])
+    return rows
+
+
+# ------------------------------------------------------------------ документ
+
+def write(result, timing, base, res, args, root):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    _style(plt)
+    S = result["summary"]
+    meta = S["meta"]
+    ids = meta["runs"]
+    img = root / "docs" / "img"
+    img.mkdir(parents=True, exist_ok=True)
+    pics = {}
+    pics["speed"] = plot_speed(base, img, PLOT_RUN if PLOT_RUN in base else ids[0])
+    pics["pos"] = plot_position(base, ids, img)
+    pics["phase"] = plot_phases(S["pooled"], img)
+    inj_bag = result["inject"][0]["bag"] if result["inject"] else None
+    pics["inj"] = plot_inject(res, base, inj_bag, result["kinds"], img) if inj_bag else []
+    doc = render(result, timing, args, pics, root)
+    (root / args.doc).write_text(doc, encoding="utf-8")
+
+
+def _tot(S, grp, est):
+    return g(S, "totals", grp, est) or {}
+
+
+def render(result, timing, args, pics, root):
+    S = result["summary"]
+    meta = S["meta"]
+    ids = meta["runs"]
+    L = []
+    A = L.append
+    label = meta.get("label") or "без подписи"
+    A("# Оценка точности и устойчивости (tools/eval.py)")
+    A("")
+    A(f"> **Версия чисел: {label}.** Документ целиком сгенерирован `tools/eval.py` "
+      f"(не править руками). Код пакета: sha `{meta['pkg_src_sha']}`"
+      f"{', git ' + timing['git'] if timing.get('git') else ''}. "
+      f"Лист: {meta['sheet']['label']} (sha `{meta['sheet']['sha']}`). "
+      f"Карта: {meta['map']['label']}"
+      f"{' (sha `' + meta['map']['sha'] + '`)' if meta['map']['sha'] else ''}. "
+      f"GNSS в связку: {'весь прогон' if meta['gnss'] == 'full' else 'первые ' + meta['gnss'] + ' с'}. "
+      f"Прогонов: {len(ids)}{' (--quick, первые 300 с)' if meta['quick'] else ''}.")
+    for leak in (meta["sheet"].get("leak"), meta["map"].get("leak")):
+        if leak:
+            A(f">\n> **{leak}.** Эти числа не отчётные, пока нет оценочного листа.")
+    A("")
+    A("## 1. Как запустить")
+    A("")
+    A("Одна команда в Docker (PowerShell, из корня репозитория; кэш строится из `data/` сам):")
+    A("")
+    A("```powershell")
+    A("docker run --rm --cpus 4 -v ${PWD}:/repo -v <каталог с bag>:/repo/data:ro -w /repo `")
+    A("    vectra/tram:dev python3 tools/eval.py --label \"<подпись версии>\"")
+    A("```")
+    A("")
+    A("Основные ключи (полный список — `python3 tools/eval.py --help`):")
+    A("")
+    A(table(["ключ", "по умолчанию", "что делает"], [
+        ["`--sheet`", "`eval`", "лист: `eval` — `config/eval/tram_eval.yaml`, `tram.yaml` или "
+         "`tram_calibration.json` (только train); если их нет — `config/tram_calibration.json` с пометкой "
+         "об утечке; `jury` — боевой `config/tram.yaml` (не для отчёта); `json`; путь"],
+        ["`--set k=v,...`", "—", "переопределить поля листа (эксперименты)"],
+        ["`--map`", "`train`", "`train` — карта только по обучающим (`build_map.py train`, строится "
+         "сама в каталоге кэша); `jury` — боевая; `none` — без карты; путь"],
+        ["`--gnss`", "`3`", "секунд GNSS в связку от первой записи master; `full` — весь прогон"],
+        ["`--frame`", "`mgrs`", "система эталона: `mgrs` (судья), `enu`, `equirect`, `utm`"],
+        ["`--runner-frame`", "`auto`", "система выхода Runner: `auto` — параметр листа `projection`, "
+         "иначе `equirect` (код до правок), с проверкой по величине; `mgrs`, `utm`, `enu`, `equirect`"],
+        ["`--runner-grid`", "лист `mgrs_grid`", "квадрат MGRS выхода Runner: `\"\"` — перенос по точке, `37UDB`"],
+        ["`--judge-grid`", "`\"\"`", "соглашение судьи на границе квадратов для «взгляда судьи»"],
+        ["`--quick`", "—", "CI: 2 прогона по 300 с, 4 инъекции, без вариантов и GNSS-full"],
+        ["`--check-determinism`", "—", "второй проход и побайтное сравнение JSON (код выхода 2 при расхождении)"],
+        ["`--cache`, `--data`, `--out`", "`analysis/cache`, `data`, `out/eval`", "каталоги"],
+        ["`--no-inject`, `--no-variants`, `--no-gnss-full`, `--no-doc`", "—", "пропустить разделы"],
+    ]))
+    A("")
+    A(f"Результаты: `{args.out}/summary.json` (итоги), `runs.json` (по прогонам), `inject.json` "
+      "(инъекции), `timing.json` (время, sha256 JSON, git; не детерминирован). "
+      "Тесты инструментов: `python3 -m pytest tools/eval_selftest.py -q`.")
+    A("")
+    wall = timing.get("wall_all_s")
+    A(f"Этот прогон: {f(wall / 60 if wall else None, 1)} мин, процессов {timing.get('workers')} "
+      f"(на машине параллельно работали контейнеры других агентов — время предварительное).")
+    det = timing.get("determinism")
+    if det:
+        A(f"Детерминизм (`--check-determinism`): JSON двух проходов "
+          f"{'совпали побайтно' if det['identical'] else 'РАЗЛИЧАЮТСЯ: ' + str(det['files'])}.")
+    A("")
+
+    # ---------------- методика
+    A("## 2. Методика")
+    A("")
+    A(f"* **Прогоны.** `tools/split.json:holdout_scored` — {len(ids)} чистых отложенных записей "
+      "(без дублей и копий в обучении). Лист и карта для отчёта — только по `train`; боевые "
+      "(по всем данным, уходят жюри) для отчёта не используются.")
+    A("* **Связка.** Запись проигрывается в порядке записи в bag через `Runner` пакета так же, как "
+      "в ноде (`tools/eval_replay.py`: лист → `Params` + параметры ноды → `Runner(...)`). GNSS в "
+      "связку — только первые 3 с записи от первой точки master (как в проверочных bag); "
+      "`--gnss full` — весь прогон. Исключение в связке считается падением ноды: дальше выходов нет.")
+    A("* **Пары.** Выход ↔ эталон по ближайшей метке `header.stamp` в пределах 0,05 с (README, 5.1).")
+    A("* **Эталон скорости.** Официального эталона нет: источников четыре (2 тележки, 2 GNSS). "
+      "Основной — |v| GNSS master по (x, y); дополнительный — rover. Фаза: стоянка, если |v| GNSS "
+      "< 0,2 м/с, иначе по ручке: > 0 тяга, < 0 торможение, 0 выбег. Ложная стоянка: режим "
+      "STANDSTILL (у базы — v < 0,3 м/с) при |v| GNSS > 0,5 м/с.")
+    A("* **Эталон положения — система судьи.** Организаторы (25.09): плоские координаты **MGRS**; "
+      "по REP-103 x — восток, y — север, z — высота NavSatFix (абсолютная). Антенна эталона — "
+      "master (имена антенн — «антенна 1/2», это наше допущение). Ошибки считаются в непрерывных "
+      f"координатах UTM зоны {37} (зона начала выставки); это то же, что MGRS внутри одного квадрата.")
+    A("* **Граница квадратов 100 км.** Линия пересекает E = 400 км: запад (~1,2 км) в **37U CB**, "
+      "остальное в **37U DB**. Соглашение судьи на границе **неизвестно** до получения их карты: "
+      "(а) «перенос по точке» — координаты внутри квадрата, где лежит точка (Autoware "
+      "gnss_poser, lanelet2 MGRSProjector; x скачет на 100 км), или (б) непрерывно от одного "
+      "квадрата (`37UDB`, запад — отрицательный x). Поэтому отдельно считается «несовпадение "
+      "квадрата»: сколько пар при переносе по точке попали бы в другой квадрат, чем эталон (каждая "
+      "такая пара у судьи — ошибка ~100 км), и «взгляд судьи» — сырые x, y, z выхода против "
+      "эталона в соглашении `--judge-grid`.")
+    A("* **Перевод выхода.** Если выход Runner не в MGRS (код до правок — equirect от своей точки "
+      "начала), x, y, z переводятся обратно в широту/долготу через его же начало и формулу, затем в "
+      "UTM. Так ошибка перевода равна нулю, а «взгляд судьи» показывает, что увидел бы судья без "
+      "перевода.")
+    A("* **Вдоль/поперёк пути.** Проекция на ломаную эталона (медиана по 5 фиксам, шаг 1 м, окно "
+      "±1 км, то же направление движения; алгоритм `core_metrics.py`). Дрейф — ошибка **в конце "
+      "прогона**, отнесённая к длине пути (PDF, стр. 6): 3D и вдоль пути.")
+    A("* **Итоги.** Средние взвешены числом пар скорости прогона (как `critic_offline.py sub15`): "
+      "для MAE, смещения и RMSE это пул всех пар; максимумы — по всем прогонам; дрейф — среднее, "
+      "медиана и максимум по прогонам. Фазы — пулом всех пар.")
+    A("* **База «только колесо»** — причинная: среднее последних показаний тележек (не старше "
+      "1 с) × `meas_scale` / 3,6, путь — интеграл на той же сетке 50 мс, положение — **та же** "
+      "машинерия `Runner`/`Position`/карты, та же выставка и привязка к остановкам. Неконечные "
+      "показания база пропускает.")
+    A("* **Что утекает.** " + (
+        meta["sheet"]["leak"] + ". " if meta["sheet"].get("leak") else
+        "Лист — оценочный (только train). ") + (
+        meta["map"]["leak"] + ". " if meta["map"].get("leak") else
+        "Карта — только по train. ") +
+        "Множитель пути карты (`calibrate_scale`) считается с `meas_scale` из "
+        "`tram_calibration.json` (все данные) — утечка порядка 0,01 %.")
+    A("")
+
+    # ---------------- итоги
+    tm, tn = _tot(S, "all", "model"), _tot(S, "all", "naive")
+    A("## 3. Итог на отложенных")
+    A("")
+    A("### 3.1. Скорость")
+    A("")
+    rows = []
+    for name, t in (("модель", tm), ("база «только колесо»", tn)):
+        rows.append([name, f(t.get("v_rmse"), 4), f(t.get("v_mae"), 4), f(t.get("v_bias"), 4, True),
+                     f(t.get("v_max"), 2), pct(t.get("cov2s_v")) if "cov2s_v" in t else "—",
+                     pct(t.get("false_ss_rate"), 3), f(t.get("v_pairs"), 0) if t.get("v_pairs") else "—"])
+    A(table(["оценка", "RMSE, м/с", "MAE, м/с", "смещение, м/с", "макс, м/с", "±2σ", "ложные стоянки",
+             "пар"], rows))
+    A("")
+    rv = []
+    for name, est in (("модель", "model"), ("база", "naive")):
+        rr = [result["runs"][b][est] for b in ids if est in result["runs"].get(b, {})]
+        rows_r = [dict(v_pairs=r.get("rover_v_pairs", 0), v_mae=r.get("rover_v_mae"),
+                       v_rmse=r.get("rover_v_rmse"), v_bias=r.get("rover_v_bias"))
+                  for r in rr if r.get("rover_v_pairs")]
+        t = M.totals(rows_r) or {}
+        rv.append([name, f(t.get("v_rmse"), 4), f(t.get("v_mae"), 4), f(t.get("v_bias"), 4, True)])
+    A("Против GNSS **rover** (дополнительный эталон, итог взвешен парами rover):")
+    A("")
+    A(table(["оценка", "RMSE, м/с", "MAE, м/с", "смещение, м/с"], rv))
+    A("")
+    A("По фазам (пулом всех пар master):")
+    A("")
+    rows = []
+    for p in M.PHASES:
+        dm = g(S, "pooled", "model", "by_phase", p)
+        dn = g(S, "pooled", "naive", "by_phase", p)
+        if not dm:
+            continue
+        rows.append([M.PHASES_RU[p], pct(dm["share"], 0), f(dm.get("mae"), 4), f(dm.get("bias"), 4, True),
+                     pct(dm.get("cov2s")), f(dn.get("mae") if dn else None, 4),
+                     f(dn.get("bias") if dn else None, 4, True)])
+    A(table(["фаза", "доля", "модель MAE", "модель смещение", "модель ±2σ", "база MAE",
+             "база смещение"], rows))
+    A("")
+    rc = g(S, "pooled", "model", "ref_clean") or {}
+    rcn = g(S, "pooled", "naive", "ref_clean") or {}
+    A(f"Без выбросов самого эталона (GNSS против обеих согласных тележек > 1 м/с, "
+      f"{rc.get('glitch_samples', 0)} пар): модель MAE {f(rc.get('mae'), 4)}, RMSE "
+      f"{f(rc.get('rmse'), 4)}; база MAE {f(rcn.get('mae'), 4)}, RMSE {f(rcn.get('rmse'), 4)}.")
+    A("")
+    if pics.get("speed"):
+        A(f"![Ошибка скорости](img/{pics['speed']})")
+        A("")
+    if pics.get("phase"):
+        A(f"![Смещение и MAE по фазам](img/{pics['phase']})")
+        A("")
+    A("### 3.2. Положение (MGRS; ошибки в непрерывных координатах)")
+    A("")
+    rows = []
+    for name, t in (("модель", tm), ("база «только колесо»", tn)):
+        rows.append([name, f(t.get("p3d_mean")), f(t.get("p3d_rmse")), f(t.get("p3d_max"), 1),
+                     f(t.get("along_mean")), f(t.get("along_rmse")), f(t.get("along_max"), 1),
+                     f(t.get("cross_mean")), f(t.get("cross_max"), 1),
+                     f(t.get("drift_pct_3d_median"), 3) + " / " + f(t.get("drift_pct_3d_max"), 3),
+                     f(t.get("drift_pct_along_median"), 3) + " / " + f(t.get("drift_pct_along_max"), 3)])
+    A(table(["оценка", "3D ср.", "3D RMSE", "3D макс", "вдоль ср. абс.", "вдоль RMSE", "вдоль макс",
+             "поперёк ср.", "поперёк макс", "дрейф 3D, % мед./макс", "дрейф вдоль, % мед./макс"], rows))
+    A("")
+    A(f"Метры, кроме дрейфа. Высота: средняя |Δz| модели {f(tm.get('pz_mean'))} м, в плане "
+      f"(2D) {f(tm.get('p2d_mean'))} м. Покрытие |вдоль| ≤ 2σ_s: {pct(tm.get('cov2s_along'))}. "
+      f"Пар без проекции (оценка дальше 60 м от пути): {tm.get('along_undef', 0)}.")
+    A("")
+    A(f"**Квадраты MGRS.** Пар, где оценка при «переносе по точке» попала бы в другой квадрат "
+      f"100 км, чем эталон: модель {tm.get('sq_mismatch', 0)} из {tm.get('p_pairs', 0)}, база "
+      f"{tn.get('sq_mismatch', 0)}. «Взгляд судьи» (сырые x, y, z выхода против эталона MGRS "
+      f"{'с переносом по точке' if not meta['judge_grid'] else 'от ' + meta['judge_grid']}): "
+      f"средняя 3D **{f(tm.get('judge_raw_3d_mean'), 1)} м**, максимум {f(tm.get('judge_raw_3d_max'), 1)} м"
+      + (" — выход Runner сейчас локальный (equirect от начала), а не MGRS: без перевода судья увидел "
+         "бы ошибку ~100 км. Это закрывает поток «положение» (выход MGRS)."
+         if (tm.get("judge_raw_3d_mean") or 0) > 1000 else "."))
+    A("")
+    A("Чувствительность к системе эталона (тот же выход, другой эталон; 3D ср. / конец ср.):")
+    A("")
+    rows = [["MGRS (UTM)", f(tm.get("p3d_mean")) + " / " + f(tm.get("p3d_end_mean")),
+             f(tn.get("p3d_mean")) + " / " + f(tn.get("p3d_end_mean"))]]
+    for fr, lab in (("enu", "строгий ENU"), ("equirect", "equirect напарника")):
+        a_, b_ = g(S, "frame_sensitivity", fr) or {}, g(S, "frame_sensitivity", fr + "_naive") or {}
+        if a_:
+            rows.append([lab, f(a_.get("p3d_mean")) + " / " + f(a_.get("p3d_end_mean")),
+                         f(b_.get("p3d_mean")) + " / " + f(b_.get("p3d_end_mean"))])
+    A(table(["эталон", "модель, м", "база, м"], rows))
+    A("")
+    if pics.get("pos"):
+        A(f"![Ошибка положения по пути](img/{pics['pos']})")
+        A("")
+    A("### 3.3. По вагонам")
+    A("")
+    rows = []
+    for grp in ("30618", "30639"):
+        for name, est in (("модель", "model"), ("база", "naive")):
+            t = _tot(S, grp, est)
+            if not t:
+                continue
+            rows.append([grp, name, t.get("runs"), f(t.get("v_mae"), 4), f(t.get("v_bias"), 4, True),
+                         f(t.get("p3d_mean")), f(t.get("along_rmse")), f(t.get("drift_pct_3d_median"), 3)])
+    A(table(["вагон", "оценка", "прогонов", "MAE, м/с", "смещение", "3D ср., м", "вдоль RMSE, м",
+             "дрейф 3D, % мед."], rows))
+    A("")
+
+    # ---------------- по прогонам
+    A("### 3.4. По прогонам")
+    A("")
+    rows = []
+    for b in ids:
+        rm, rn = result["runs"][b].get("model", {}), result["runs"][b].get("naive", {})
+        rows.append([b, f(rm.get("path_m", 0) / 1000.0, 2), rm.get("v_pairs", "—"), f(rm.get("v_mae"), 4),
+                     f(rn.get("v_mae"), 4), f(rm.get("v_bias"), 4, True), pct(rm.get("cov2s_v"), 0),
+                     f(rm.get("p3d_mean")), f(rn.get("p3d_mean")), f(rm.get("p3d_end")),
+                     f(rm.get("along_end"), 1, True), f(rm.get("drift_pct_3d"), 3),
+                     rm.get("sq_mismatch", "—"), "упала" if rm.get("crash") else ""])
+    A(table(["прогон", "путь, км", "пар v", "MAE", "MAE база", "смещение", "±2σ", "3D ср.",
+             "3D база", "3D конец", "вдоль конец", "дрейф 3D, %", "квадрат ≠", ""], rows))
+    A("")
+
+    # ---------------- варианты листа
+    A("## 4. Заглушки крипа против подогнанных / нулевых")
+    A("")
+    rows = [["лист как есть", f"c_creep {f(meta['params']['c_creep'], 4)}, c_creep_drag "
+             f"{f(meta['params']['c_creep_drag'], 4)}", f(tm.get("v_mae"), 4), f(tm.get("v_bias"), 4, True),
+             pct(tm.get("cov2s_v")), f(tm.get("p3d_mean"))]]
+    for v in S.get("variants", []):
+        if v.get("same_as_base"):
+            rows.append([v["name"], v["overrides"], "= лист", "", "", ""])
+            continue
+        t = v.get("totals") or {}
+        rows.append([v["name"], v["overrides"], f(t.get("v_mae"), 4), f(t.get("v_bias"), 4, True),
+                     pct(t.get("cov2s_v")), f(t.get("p3d_mean"))])
+    if len(rows) == 1:
+        rows.append(["—", "не считалось (--no-variants или --quick)", "", "", "", ""])
+    A(table(["вариант", "поля", "MAE, м/с", "смещение", "±2σ", "3D ср., м"], rows))
+    A("")
+
+    # ---------------- GNSS весь прогон
+    A("## 5. GNSS весь прогон (bag жюри с полным GNSS)")
+    A("")
+    gf = S.get("gnss_full")
+    if gf:
+        a_, b_ = gf.get("model") or {}, gf.get("naive") or {}
+        A(table(["оценка", "MAE, м/с", "смещение", "3D ср., м", "3D конец ср., м", "3D макс, м"], [
+            ["модель", f(a_.get("v_mae"), 4), f(a_.get("v_bias"), 4, True), f(a_.get("p3d_mean"), 1),
+             f(a_.get("p3d_end_mean"), 1), f(a_.get("p3d_max"), 1)],
+            ["база", f(b_.get("v_mae"), 4), f(b_.get("v_bias"), 4, True), f(b_.get("p3d_mean"), 1),
+             f(b_.get("p3d_end_mean"), 1), f(b_.get("p3d_max"), 1)]]))
+        A("")
+        A(f"Для сравнения, GNSS 3 с: модель 3D ср. {f(tm.get('p3d_mean'))} м. Если числа сильно "
+          "разные — GNSS после окна выставки влияет на выход (дефект C2, WP1).")
+    else:
+        A("Не считалось (`--gnss full` уже основной режим, `--no-gnss-full` или `--quick`).")
+    A("")
+
+    # ---------------- инъекции
+    A("## 6. Инъекции аномалий")
+    A("")
+    inj = [x for x in result["inject"] if not x.get("skipped")]
+    bags = sorted({x["bag"] for x in result["inject"]})
+    A(f"Модуль `tools/inject.py` меняет входной поток реальной отложенной записи ({', '.join(bags)}); "
+      "GNSS не трогается. Окно — первое после 60 с от начала, где выполнено условие вида (скорость, "
+      "ручка), и до конца остаётся ≥ 120 с. Окна метрик: «до» — 30 с перед аномалией, «во время» — "
+      "окно оценки вида, «после» — 60 с после него. Восстановление — через сколько секунд после "
+      f"конца аномалии скорость совпадает с чистым прогоном (|Δv| ≤ {f(0.1, 1)} м/с не меньше 3 с). "
+      "Δ конца — изменение ошибки вдоль пути в конце прогона против чистого прогона.")
+    A("")
+    A(table(["вид", "описание", "длит., с"],
+            [[k, I.KINDS[k]["ru"], f(I.KINDS[k]["dur"], 1)] for k in result["kinds"]]))
+    A("")
+    rows = []
+    for x in inj:
+        em, en = x["est"].get("model", {}), x["est"].get("naive", {})
+        for name, e in (("модель", em), ("база", en)):
+            if not e:
+                continue
+            crash = e.get("crash")
+            dur = e.get("during", {})
+            flags = ""
+            if name == "модель" and dur.get("frac_valid") is not None:
+                flags = (f"valid {pct(dur.get('frac_valid'), 0)}, amb {pct(dur.get('frac_amb'), 0)}, "
+                         f"slip {pct(dur.get('frac_slip'), 0)}, σv≤{f(dur.get('sigma_v_max'), 1)}")
+            rows.append([
+                f"{x['kind']} · {x['bag'][-8:]}" if name == "модель" else "", name,
+                f(g(e, "before", "v_mae"), 3), f(g(e, "during", "v_mae"), 3), f(g(e, "after", "v_mae"), 3),
+                f(g(e, "during", "along_end"), 1, True) + " (" + f(g(e, "during", "along_end_clean"), 1, True) + ")",
+                f(g(e, "after", "along_end"), 1, True),
+                f(e.get("d_along_end_run"), 1, True),
+                f(e.get("recovery_s"), 1) if e.get("recovery_s") is not None else ("—" if crash else "нет"),
+                ("**упала** " + f(crash.get("after_t0_s"), 2) + " с: " + crash["error"][:60]) if crash else flags,
+                pct(dur.get("cov2s"), 0) if name == "модель" and dur.get("cov2s") is not None else "",
+            ])
+    A(table(["вид · прогон", "оценка", "MAE до", "MAE во время", "MAE после",
+             "вдоль, конец окна (чисто)", "вдоль, после", "Δ конца прогона, м", "восст., с",
+             "флаги / падение", "±2σ во время"], rows))
+    for x in result["inject"]:
+        if x.get("skipped"):
+            A(f"\n* {x['kind']} · {x['bag']}: {x['skipped']}")
+    A("")
+    for p in pics.get("inj", []):
+        A(f"![Инъекции](img/{p})")
+        A("")
+
+    # ---------------- реальное время
+    A("## 7. Реальное время")
+    A("")
+    pr = probe_rows(root, args.probe_glob)
+    if pr:
+        A("Сводки `tools/ros_probe.py` (найдены по `--probe-glob`): частота по меткам, задержка "
+          "in2out — от приёма входа `/vehicle/*` до приёма первого выхода, который его учёл "
+          "(стенные часы пробы, включая DDS), CPU — % одного ядра, RSS — МБ.")
+        A("")
+        A(table(["замер", "выходов", "Гц", "in2out p50, мс", "p99", "макс", "CPU ср., %", "CPU макс",
+                 "RSS, МБ", "рост RSS, МБ/мин"], pr))
+    else:
+        A("**Заглушка.** Сводок `tools/ros_probe.py` не найдено (`--probe-glob "
+          f"{args.probe_glob}`). Замер делает поток infra (`tools/measure_realtime.sh`, WP8): "
+          "полный bag ≥ 20 мин, `--cpus 2 --memory 512m`, машина без соседей. После замера "
+          "перезапустить `tools/eval.py` — таблица подставится сюда.")
+    A("")
+    A(f"Офлайн-скорость связки в этом прогоне (не замер ноды): {timing.get('events_per_s', '—')} "
+      "входных сообщений в секунду на процесс вместе с базой — предварительно, при соседних "
+      "контейнерах.")
+    A("")
+
+    # ---------------- сверка
+    A("## 8. Сверка с аудитом (critic_offline.py sub15)")
+    A("")
+    same_setup = (meta["sheet"]["path"].endswith("config/tram_calibration.json") and not meta["overrides"]
+                  and meta["map"]["label"].startswith("оценочная") and meta["gnss"] == "3"
+                  and not meta["quick"] and len(ids) == 15)
+    eq = g(S, "frame_sensitivity", "equirect") or {}
+    eqn = g(S, "frame_sensitivity", "equirect_naive") or {}
+    rows = [
+        ["MAE модели, м/с", f(SUB15_JSON["v_mae"], 4), f(tm.get("v_mae"), 4)],
+        ["смещение модели, м/с", f(SUB15_JSON["v_bias"], 4, True), f(tm.get("v_bias"), 4, True)],
+        ["±2σ модели", f(SUB15_JSON["cov2s_v"], 3), f(tm.get("cov2s_v"), 3)],
+        ["3D ср. модели (equirect), м", f(SUB15_JSON["p3d_mean"]), f(eq.get("p3d_mean"))],
+        ["MAE базы, м/с", f(SUB15_JSON["naive_v_mae"], 4), f(tn.get("v_mae"), 4)],
+        ["3D ср. базы (equirect), м", f(SUB15_JSON["naive_p3d_mean"]), f(eqn.get("p3d_mean"))],
+    ]
+    A(("Настройка совпадает с аудитом (json-лист, train-карта, GNSS 3 с, 15 прогонов, эталон "
+       "equirect для 3D): числа должны совпасть до округления." if same_setup else
+       "**Настройка отличается от аудита** (лист, карта, код или набор прогонов) — расхождение "
+       "ожидаемо, таблица для справки."))
+    A("")
+    A(table(["метрика", "sub15 (аудит 25.09, json_train)", "этот прогон"], rows))
+    A("")
+
+    # ---------------- пороги
+    A("## 9. Пороги приёмок, пересчитанные на 15 чистых (WP7 (г))")
+    A("")
+    zero = next((v for v in S.get("variants", []) if v["name"] == "zero"), None)
+    zt = (zero or {}).get("totals") or ({} if not zero or not zero.get("same_as_base") else tm)
+    rn = result["runs"]
+    ends = {b: g(rn, b, "model", "p3d_end") for b in ("30618_0652866c", "30618_49fe4c54", "30618_8158f0b0")}
+    others = [g(rn, b, "model", "p3d_end") for b in ids if b not in ends]
+    r92 = g(rn, "30639_92226df0", "model", "p3d_mean")
+    rows = [
+        ["WP5 крип", "MAE ≤ 0,045; смещение ≤ +0,005; 3D ≤ 4,1 м (17 прогонов, equirect)",
+         f"без крипа: MAE {f(zt.get('v_mae'), 4)}, смещение {f(zt.get('v_bias'), 4, True)}, "
+         f"3D {f(zt.get('p3d_mean'))} м (MGRS)" if zt else "не считалось",
+         (f"MAE ≤ {f(math.ceil(zt['v_mae'] * 1000 + 0.5) / 1000, 3)}; смещение ≤ "
+          f"{f(max(0.005, math.ceil(abs(zt['v_bias']) * 1000 + 1) / 1000), 3, True)}; "
+          f"3D ≤ {f(math.ceil(zt['p3d_mean'] * 10 + 1) / 10, 1)} м") if zt and zt.get("v_mae") else "—"],
+        ["WP11 конечные", "конец у 0652866c / 49fe4c54 / 8158f0b0 < 40 м (было 131 / 55 / 54)",
+         " / ".join(f(v, 1) for v in ends.values()) + " м (MGRS)",
+         "< 40 м у трёх; остальные не хуже > 0,5 м (сейчас макс конца у остальных "
+         f"{f(max([x for x in others if x is not None], default=None), 1)} м)"],
+        ["WP13 масштаб колёс", "3D ≤ 3,9 м; 92226df0 ≤ 6 м; 30618 не хуже > 1 м",
+         f"3D ср. {f(tm.get('p3d_mean'))} м; 92226df0 {f(r92)} м (MGRS)",
+         f"3D ≤ {f(math.floor(tm.get('p3d_mean', 0) * 0.85 * 10) / 10, 1)} м (−15 %); 92226df0 ≤ 6 м; "
+         "ни один 30618 не хуже > 1 м" if tm.get("p3d_mean") else "—"],
+    ]
+    A(table(["пакет", "порог в TODO (на 17)", "база на 15 чистых", "предлагаемый порог"], rows))
+    A("")
+    A("Пороги предлагаются от чисел этого прогона; если лист или карта меняются, пересчитать.")
+    A("")
+    A("## 10. Открытые вопросы")
+    A("")
+    A("* Соглашение судьи на границе квадратов 100 км (перенос по точке или непрерывно от "
+      "квадрата) — ждём карту организаторов. Инструмент считает оба: `--judge-grid \"\"` / `37UDB`.")
+    A("* Антенна эталона (master или rover) и tf между антеннами — обещаны позже; сейчас master.")
+    A("* Эталон скорости: официального нет; показываем master (основной) и rover.")
+    A("")
+    return "\n".join(L) + "\n"
