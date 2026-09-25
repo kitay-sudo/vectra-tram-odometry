@@ -899,7 +899,7 @@ def main():
         shown = dict(summary=json.loads(files["summary.json"]), runs=json.loads(files["runs.json"]),
                      inject=json.loads(files["inject.json"]), kinds=result["kinds"])
         eval_report.write(shown, json.loads(dumps(timing)), base, res, args, ROOT, out)
-        log(f"записано {args.doc} и docs/img/eval_*.png")
+        log(f"записано {args.doc} и {eval_report.img_dir(ROOT, args).relative_to(ROOT).as_posix()}/eval_*.png")
     log(f"готово за {time.perf_counter() - t_start:.0f} с; JSON в {out.relative_to(ROOT)}")
     timing["wall_with_doc_s"] = round(time.perf_counter() - t_start, 1)
     (out / "timing.json").write_text(dumps(timing), encoding="utf-8")
