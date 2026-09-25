@@ -1,0 +1,11 @@
+data/
+_incoming/
+analysis/cache/
+analysis/drive_samples.npz
+**/__pycache__/
+**/.pytest_cache/
+**/build/
+**/install/
+**/log/
+.git/
+out/

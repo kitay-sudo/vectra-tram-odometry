@@ -4,6 +4,8 @@
   <name>tram_vehicle_msgs</name>
   <version>0.0.0</version>
   <description>Tram control messages</description>
+  <!-- maintainer добавлен командой Vectra: без него colcon build в ROS 2 Humble падает (catkin_pkg) -->
+  <maintainer email="vectra@example.com">Vectra</maintainer>
   <license>MIT</license>
 
   <depend>std_msgs</depend>
