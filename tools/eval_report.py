@@ -524,7 +524,9 @@ def render(result, timing, args, pics, root):
     shas = timing.get("sha256") or {}
     if shas:
         A("sha256 JSON этого прогона: " + ", ".join(f"`{k}` {v[:12]}" for k, v in shas.items()) + ".")
-    A("Проверки воспроизводимости (25.09, код до правок): `--quick --check-determinism` — JSON двух "
+    A("Проверки воспроизводимости (25.09, код до правок): два полных прогона подряд дали "
+      "побайтно одинаковые `summary.json`, `runs.json`, `inject.json` (время 12,2 и 15,2 мин при "
+      "`--cpus 4` и соседних контейнерах, CPU ~32 мин); `--quick --check-determinism` — JSON двух "
       "проходов совпали побайтно; чистый `git clone` ветки с пустым кэшем (кэш 113 прогонов и карта "
       "собраны из `data/` за 5,7 мин) дал `runs.json` с тем же sha256 (6377ada2e5b0…), что и "
       "основной прогон. Карта напарника `analysis/cache/track_map_train.npz` (собрана на Windows) "
