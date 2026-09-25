@@ -17,6 +17,9 @@ import numpy as np
 from .estimator_core import (Estimator, IV, ID, IS, STANDSTILL, body_force,
                              resistance)
 
+import copy                                                     # noqa: E402
+from .estimator_core import sensor_to_speed                     # noqa: E402
+
 R_EARTH = 6378137.0
 
 
@@ -111,7 +114,71 @@ class Position:
         return (x0 + s * math.sin(self.az), y0 + s * math.cos(self.az), z0)
 
 
+def _num(x):
+    """Число из поля сообщения; всё, что числом не является, — NaN."""
+    try:
+        return float(x)
+    except (TypeError, ValueError, OverflowError):
+        return math.nan
+
+
 class Runner:
+    """Ядро + выставка + карта на потоке сообщений (нода и офлайн-оценка).
+
+    Защита входов и времени (устойчивость, WP3/WP4):
+      * метка не число или <= 0 — сообщение отбрасывается целиком;
+      * показание тележки не число или |z| > V_LIMIT·v_max_line (в единицах
+        датчика) — значение отбрасывается, метка сетку двигает;
+      * ручка не число — отбрасывается; вне ±HANDLE_LIMIT — ограничивается;
+      * одиночный скачок метки больше MAX_JUMP_S (вперёд или назад) —
+        сообщение отбрасывается и в t_wheel / t_notch не пишется; скачок,
+        подтверждённый вторым сообщением (новый bag, --loop), — полный сброс
+        reset(): ядро, выставка, s0, стоянка, сетка. Стартовый «хвост буфера»
+        bag (метки назад на 1,1–2,7 с) порог 10 с не задевает;
+      * не больше MAX_STEPS шагов сетки за вызов;
+      * неконечное состояние ядра — сброс ядра с сохранением пути.
+    Сетка (WP23): узлы кратны p.dt, t = (k0 + n)·dt по целому счётчику n —
+    совпадают с метками GNSS (кратны 0,1 с) и не дрейфуют.
+    Возраст показаний (WP6): свежее показание тележки приводится к моменту
+    шага по ускорению модели (age_comp).
+    """
+
+    MAX_JUMP_S = 10.0       # с: в данных разрыв между входами <= 1,05 с
+    MAX_STEPS = 200         # шагов за вызов: 10 с при dt = 50 мс
+    V_LIMIT = 1.5           # доля v_max_line: выше — показание невозможно
+    HANDLE_LIMIT = 15.0     # позиций ручки по ТЗ в каждую сторону
+    AGE_MAX_S = 0.3         # с: предел приведения показания к шагу
+    age_comp = True         # WP6: приводить показания к моменту шага
+    grid_align = True       # WP23: узлы сетки кратны dt
+    _POS_KEEP = ("init_window",)    # настройки выставки, заданные после __init__
+
+    def __new__(cls, *args, **kwargs):
+        # Аргументы конструктора запоминаются для reset(): новый прогон
+        # собирается тем же __init__, чем бы тот ни дополнялся.
+        self = super().__new__(cls)
+        self._ctor = (args, kwargs)
+        self._grid_state()
+        self.resets = 0             # полных сбросов (новый прогон)
+        self.core_resets = 0        # сбросов ядра (неконечное состояние)
+        self.rejected_stamps = 0    # сообщений с отброшенной меткой
+        self.rejected_values = 0    # отброшенных значений (метка принята)
+        self.skipped_steps = 0      # узлов сетки, пропущенных сверх MAX_STEPS
+        self.n_in = 0               # принятых сообщений (метка годна)
+        self.reset_reason = ""
+        self._vlim = None
+        return self
+
+    def _grid_state(self):
+        self._k0 = None             # номер первого узла сетки: t0 = k0·dt
+        self._t0g = None            # первая метка (сетка без выравнивания)
+        self._n = 0                 # шагов от первого узла
+        self._pend = None           # метка-кандидат разрыва времени
+        self.stamp_ok = False       # принята ли метка последнего сообщения
+        self.stamp_last = None      # метка последнего принятого сообщения
+        self.stamp_max = -math.inf  # наибольшая принятая метка
+        self._chg = None            # свежее показание отличается от прошлого
+        self._s_good = 0.0          # путь ядра на последнем конечном шаге
+
     def __init__(self, params, track_map=None, origin=None,
                  wheel_timeout=1.0, handle_timeout=0.5, stop_dwell=8.0):
         self.p = params
@@ -135,15 +202,31 @@ class Runner:
 
     def on_wheel(self, i, stamp, value):
         out = self._advance(stamp)
-        self.meas[i] = value
+        if not self.stamp_ok:
+            return out                  # метка отброшена: значение тоже
+        v = _num(value)
+        if not (0 <= i < self.nw and math.isfinite(v)
+                and abs(v) <= self._v_limit()):
+            self.rejected_values += 1   # значение отброшено, сетка идёт
+            return out
+        if self._chg is None:
+            self._chg = np.zeros(self.nw, dtype=bool)
+        self._chg[i] = v != self.meas[i]
+        self.meas[i] = v
         self.fresh[i] = True
-        self.t_wheel[i] = stamp
+        self.t_wheel[i] = self.stamp_last
         return out
 
     def on_handle(self, stamp, position):
         out = self._advance(stamp)
-        self.notch = float(position)
-        self.t_notch = stamp
+        if not self.stamp_ok:
+            return out
+        n = _num(position)
+        if not math.isfinite(n):
+            self.rejected_values += 1
+            return out
+        self.notch = min(self.HANDLE_LIMIT, max(-self.HANDLE_LIMIT, n))
+        self.t_notch = self.stamp_last
         return out
 
     def on_fix(self, stamp, antenna, lat, lon, alt):
@@ -159,15 +242,153 @@ class Runner:
     # ---------- шаги ----------
 
     def _advance(self, stamp):
-        dt = self.p.dt
-        if self.t is None:
-            self.t = stamp
+        """Шаги сетки до метки сообщения; возвращает их выходы.
+
+        self.stamp_ok — принята ли метка. Значение сообщения с отброшенной
+        меткой применять нельзя (метка-выброс не должна попасть в t_wheel)."""
+        self.stamp_ok = False
+        stamp = _num(stamp)
+        if not math.isfinite(stamp) or stamp <= 0.0:
+            self.rejected_stamps += 1
             return []
+        if self.t is None:
+            self._start(stamp)
+            return []
+        if abs(stamp - self.t) > self.MAX_JUMP_S:
+            if (self._pend is not None
+                    and abs(stamp - self._pend) <= self.MAX_JUMP_S):
+                self.reset(f"разрыв меток {stamp - self.t:+.1f} с, "
+                           f"подтверждён вторым сообщением: новый прогон")
+                self._start(stamp)
+                return []
+            self._pend = stamp          # одиночный выброс метки
+            self.rejected_stamps += 1
+            return []
+        self._pend = None
+        self.stamp_ok = True
+        self.stamp_last = stamp
+        self.n_in += 1
+        if stamp > self.stamp_max:
+            self.stamp_max = stamp
+        return self._run_to(stamp)
+
+    def _start(self, stamp):
+        """Первый узел сетки — кратный dt не позже первой метки (WP23);
+        grid_align = False — прежняя фаза: от первой метки."""
+        self._k0 = (math.floor(stamp / self.p.dt + 1e-6) if self.grid_align
+                    else None)
+        self._t0g = stamp
+        self._n = 0
+        self.t = self._node(0)
+        self.stamp_ok = True
+        self.stamp_last = self.stamp_max = stamp
+        self.n_in += 1
+
+    def _node(self, n):
+        if self._k0 is None:
+            return self._t0g + n * self.p.dt
+        return (self._k0 + n) * self.p.dt
+
+    def next_node(self):
+        """Метка следующего узла сетки (None до первого сообщения)."""
+        return None if self.t is None else self._node(self._n + 1)
+
+    def _run_to(self, stamp):
+        """Все узлы сетки <= stamp, но не больше MAX_STEPS за вызов: лишние
+        узлы пропускаются (при dt = 50 мс и MAX_JUMP_S = 10 с не бывает)."""
+        due = int(math.floor((stamp + 1e-6 - self._node(self._n)) / self.p.dt))
+        if due <= 0:
+            return []
+        if due > self.MAX_STEPS:
+            self.skipped_steps += due - self.MAX_STEPS
+            self._n += due - self.MAX_STEPS
+            due = self.MAX_STEPS
         outs = []
-        while self.t + dt <= stamp + 1e-9:
-            self.t += dt
-            outs.append(self._step())
+        for _ in range(due):
+            self._n += 1
+            self.t = self._node(self._n)
+            outs.append(self._step_safe())
         return outs
+
+    def tick(self, stamp):
+        """Узлы сетки до stamp без входного сообщения. Для прогноза на копии
+        fork() (пульс ноды при паузе входов); состояние копии меняется."""
+        stamp = _num(stamp)
+        if self.t is None or not math.isfinite(stamp):
+            return []
+        return self._run_to(stamp)
+
+    def fork(self):
+        """Независимая копия связки для прогноза: ядро, выставка и курсор
+        копируются, карта и лист общие (не меняются при шаге)."""
+        memo = {id(self.p): self.p, id(self.core.p): self.core.p}
+        tmap = getattr(self.pos, "map", None)
+        if tmap is not None:
+            memo[id(tmap)] = tmap
+        return copy.deepcopy(self, memo)
+
+    def reset(self, reason=""):
+        """Новый прогон (второй bag, --loop, подтверждённый разрыв времени):
+        ядро, выставка, s0, стоянка, сетка и отметки входов — заново. Карта,
+        лист и настройки прежние; выставка возьмётся по GNSS нового прогона."""
+        keep = {k: getattr(self.pos, k) for k in self._POS_KEEP
+                if hasattr(self.pos, k)}
+        args, kwargs = self._ctor
+        self.__init__(*args, **kwargs)
+        self._grid_state()
+        for k, v in keep.items():
+            setattr(self.pos, k, v)
+        self.resets += 1
+        self.reset_reason = reason
+
+    def _core_ok(self):
+        c = self.core
+        return bool(np.isfinite(c.x).all() and np.isfinite(c.P).all())
+
+    def _step_safe(self):
+        """Шаг с последним рубежом: если состояние ядра стало неконечным,
+        ядро пересоздаётся с сохранённым путём и шаг повторяется прогнозом."""
+        try:
+            o = self._step()
+            if self._core_ok():
+                self._s_good = float(self.core.x[IS])
+                return o
+            why = "неконечное состояние ядра"
+        except (ValueError, ArithmeticError, np.linalg.LinAlgError) as e:
+            if self._core_ok():
+                raise
+            why = f"неконечное состояние ядра ({type(e).__name__}: {e})"
+        s = self._s_good
+        self.core = Estimator(self.p)
+        self.core.x[IS] = s
+        self.fresh[:] = False
+        self.core_resets += 1
+        self.reset_reason = f"сброс ядра: {why}; путь {s:.1f} м сохранён"
+        o = self._step()
+        self._s_good = float(self.core.x[IS])
+        return o
+
+    def _v_limit(self):
+        """Предел модуля показания тележки в единицах датчика."""
+        if self._vlim is None:
+            per_unit = float(sensor_to_speed(1.0, self.p))   # м/с на единицу
+            self._vlim = self.V_LIMIT * self.p.v_max_line / per_unit
+        return self._vlim
+
+    def _meas_at_step(self):
+        """WP6: свежие показания тележек, приведённые к моменту шага t:
+        z + a·(t − метка). a — ускорение модели на прошлом шаге. Показание,
+        не изменившееся с прошлого (залипание), не трогается: иначе приведение
+        маскировало бы залипший датчик от диагностики ядра."""
+        if not self.age_comp or self.last is None or self._chg is None:
+            return self.meas
+        m = self.fresh & self._chg & (self.meas > 0.0)
+        if not m.any():
+            return self.meas
+        age = np.clip(self.t - self.t_wheel, 0.0, self.AGE_MAX_S)
+        per_unit = float(sensor_to_speed(1.0, self.p))
+        z = self.meas + self.last["a"] * age / per_unit
+        return np.where(m, np.maximum(z, 0.0), self.meas)
 
     def _step(self):
         c, t = self.core, self.t
@@ -176,8 +397,8 @@ class Runner:
         if wheels_stale:
             o = c.step_open_loop(self.notch)
         else:
-            o = c.step(self.notch, self.meas, fresh=self.fresh.copy(),
-                       handle_ok=handle_ok)
+            o = c.step(self.notch, self._meas_at_step(),
+                       fresh=self.fresh.copy(), handle_ok=handle_ok)
         self.fresh[:] = False
         s = float(c.x[IS])
         if self.pos.ready:
@@ -203,3 +424,40 @@ class Runner:
                  wheels_stale=bool(wheels_stale))
         self.last = o
         return o
+
+
+class StartSorter:
+    """WP24. Первые window секунд по часам прихода сообщения копятся и
+    отдаются по возрастанию метки, дальше — сквозной проход.
+
+    Стартовый всплеск bag идёт в порядке записи, а метки в нём скачут назад
+    на 1–3 с (хвост буфера записи, DATA п. 7): сетка, начатая с первого
+    обработанного сообщения, теряет выходы до самой ранней метки, а окно
+    выставки считается не от первой точки GNSS. Часы — любые монотонные:
+    в ноде time.monotonic(), офлайн — время записи bag."""
+
+    def __init__(self, window=0.3):
+        self.window = float(window)
+        self.done = not self.window > 0.0
+        self._t0 = None
+        self._buf = []
+
+    def push(self, now, stamp, item):
+        """Новое сообщение; возвращает список готовых к обработке."""
+        if self.done:
+            return [item]
+        if self._t0 is None:
+            self._t0 = now
+        s = _num(stamp)
+        self._buf.append((s if math.isfinite(s) else math.inf,
+                          len(self._buf), item))
+        return self.poll(now)
+
+    def poll(self, now):
+        """Окно истекло — всё накопленное по порядку меток (один раз)."""
+        if self.done or self._t0 is None or now - self._t0 < self.window:
+            return []
+        self.done = True
+        out = [it for _, _, it in sorted(self._buf, key=lambda e: e[:2])]
+        self._buf = []
+        return out
