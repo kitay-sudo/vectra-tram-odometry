@@ -432,6 +432,19 @@ def render(result, timing, args, pics, root):
         ["`--no-inject`, `--no-variants`, `--no-gnss-full`, `--no-doc`", "—", "пропустить разделы"],
     ]))
     A("")
+    A("Кэш и карта. Кэш прогонов (`analysis/cache/<bag>.npz`) строится из `data/` для нужных "
+      "прогонов, если его нет. Карта оценки `track_map_train.<ключ>.npz` строится "
+      "`analysis/build_map.py train` по 98 обучающим прогонам; ключ — хэш `build_map.py`, "
+      "`drive_model.json`, `track_map.py`, `runner.py`, `tram_calibration.json`, поэтому после "
+      "правок этих файлов карта пересобирается сама (в каталог кэша или `out/maps/`, если кэш "
+      "только для чтения). Из чистого клона: 15 отложенных — 0,5 мин, 98 обучающих — 3 мин, "
+      "карта — 2 мин (замер 25.09).")
+    A("")
+    A("После слияний потоков: `python3 tools/eval.py --label \"после слияний\"`. Лист `eval` "
+      "подхватится из `config/eval/`. Если выход Runner уже в MGRS, а в листе нет параметра "
+      "`projection`, указать `--runner-frame mgrs --runner-grid \"\"` (или код квадрата). "
+      "Проверка: «взгляд судьи» в разделе 3.2 должен стать равен ошибке в MGRS (без ~100 км).")
+    A("")
     A(f"Результаты: `{args.out}/summary.json` (итоги), `runs.json` (по прогонам), `inject.json` "
       "(инъекции), `timing.json` (время, sha256 JSON, git; не детерминирован). "
       "Тесты инструментов: `python3 -m pytest tools/eval_selftest.py -q`.")

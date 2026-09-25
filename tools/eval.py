@@ -50,6 +50,7 @@ import eval_replay as R         # noqa: E402
 import inject as I              # noqa: E402
 
 SPLIT = ROOT / "tools" / "split.json"
+MAPS_DIR = ROOT / "out" / "maps"         # карта оценки, если каталог кэша только для чтения
 INJECT_RUNS = ("30618_3e9f4952", "30639_d3c43d69", "30618_e9a34502")
 QUICK_RUNS = ("30618_e9a34502", "30639_d3c43d69")
 QUICK_S = 300.0
@@ -152,10 +153,10 @@ def resolve_map(spec, cache, train_ids, workers, rebuild, log, out):
         name = f"track_map_train.{key}.npz"
         # карта напарника analysis/cache/track_map_train.npz не используется: она собрана
         # на другой платформе и отличается множителем пути в 16-м знаке (числа — в 6-м)
-        cands = [cache / name, out / "maps" / name]
+        cands = [cache / name, MAPS_DIR / name]
         f = next((c for c in cands if c.exists()), None)
         if rebuild or f is None:
-            f = (cache if _writable(cache) else out / "maps") / name
+            f = (cache if _writable(cache) else MAPS_DIR) / name
             f.parent.mkdir(parents=True, exist_ok=True)
             build_train_map(f, train_ids, workers, log)
         return f, f"оценочная: только обучающие прогоны (build_map.py train, ключ кода {key})", None
