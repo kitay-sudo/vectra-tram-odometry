@@ -82,6 +82,7 @@ def main():
                           ["params"]).meas_scale
     tm = build(ids, which == "all" or len(ids) > 20)
     tm.stops = find_stops(ids)
+    tm.terminals = find_terminals(ids)
     tm.scale = calibrate_scale(tm, ids, ms, a.n_runs) * a.e2e_mult
     tm.scale_frame = "utm"
     bagio.Path(out).parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +186,39 @@ def find_stops(ids, dwell=8.0, join_r=8.0, min_runs=3, max_spread=4.0):
             out.append((float(E[g, 0].mean()), float(E[g, 1].mean()), h, max(spread, 1.0)))
     print(f"стоянок {len(E)}, устойчивых точек остановки {len(out)}")
     return np.array(out) if out else np.zeros((0, 4))
+
+
+def find_terminals(ids, join_r=50.0, min_runs=3):
+    """Известные конечные: места, где начинались или кончались записи не
+    меньше min_runs разных прогонов (первая и последняя годная точка master).
+    Дубликаты прогонов (та же точка до 1e-7°) считаются один раз. Тупик карты
+    рядом с конечной — настоящий тупик (удержание курсора, WP11), в других
+    местах — разрыв карты (track_map.py)."""
+    k = np.cos(np.radians(LAT0))
+    pts = {}
+    for b in ids:
+        m = bagio.load(b)["mfix"]
+        m = m[(m[:, 5] >= 0) & np.isfinite(m[:, 2])] if len(m) else m
+        if len(m) < 100:
+            continue
+        for row in (m[0], m[-1]):
+            pts[(round(float(row[2]), 7), round(float(row[3]), 7))] = b
+    P = np.array(list(pts.keys()))
+    run = np.array(list(pts.values()))
+    x = np.radians(P[:, 1] - LON0) * R * k
+    y = np.radians(P[:, 0] - LAT0) * R
+    used = np.zeros(len(P), bool)
+    out = []
+    for i in np.argsort(x):
+        if used[i]:
+            continue
+        grp = (~used) & (np.hypot(x - x[i], y - y[i]) <= join_r)
+        used |= grp
+        if len(set(run[grp])) >= min_runs:
+            out.append((float(P[grp, 0].mean()), float(P[grp, 1].mean())))
+    print(f"концов записей {len(P)}, известных конечных {len(out)}: "
+          + ", ".join(f"({la:.5f}, {lo:.5f})" for la, lo in out))
+    return np.array(out) if out else np.zeros((0, 2))
 
 
 def calibrate_scale(tm, ids, meas_scale, n_runs=30):
