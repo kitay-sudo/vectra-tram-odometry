@@ -107,6 +107,71 @@
   .k { font-size: 12px; opacity: .6; }
   .big { font-family: var(--font-heading); font-weight: 500; line-height: 1.1; }
   .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  /* ---------- режимы «Прогон данных комиссии» и «Живой ROS 2» (без Tailwind) ---------- */
+  #modeNav { flex: none; }
+  #modeNav button { padding: .3em .95em; }
+  #modeNav .sm { display: none; }
+  @media (max-width: 1099px) { #modeNav .lg { display: none; } #modeNav .sm { display: inline; } }
+  @media (max-width: 639px) {
+    header { flex-wrap: wrap; row-gap: 8px; }
+    #modeNav { order: 3; width: 100%; display: flex; }
+    #modeNav button { flex: 1; }
+    #dash { top: calc(env(safe-area-inset-top, 0px) + 112px) !important; }
+  }
+  body.rv-on { overflow: auto; }
+  body.rv-on header { background: var(--bg); border-bottom: 1px solid var(--line); z-index: 6; }
+  body.rv-on #scene, body.rv-on #dash, body.rv-on #trackBar, body.rv-on #map, body.rv-on #pres, body.rv-on #ctrl,
+  body.rv-on #presBtn, body.rv-on #recBtn, body.rv-on [data-open="metrics"] { display: none !important; }
+  #runView { position: fixed; inset: 0; z-index: 1; overflow-y: auto; background: var(--bg);
+    padding: calc(env(safe-area-inset-top, 0px) + 76px) 32px calc(env(safe-area-inset-bottom, 0px) + 28px); }
+  #runView[hidden] { display: none; }
+  @media (max-width: 767px) { #runView { padding-left: 16px; padding-right: 16px; } }
+  @media (max-width: 639px) { #runView { padding-top: calc(env(safe-area-inset-top, 0px) + 112px); } }
+  .rv-title { font-family: var(--font-heading); font-weight: 500; font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -.01em; }
+  .rv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; font-size: 13px; margin-top: 10px; }
+  .rv-grid { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr); gap: 16px; margin-top: 14px; }
+  @media (max-width: 1099px) { .rv-grid { grid-template-columns: minmax(0, 1fr); } }
+  .rv-col > .rv-card + .rv-card { margin-top: 16px; }
+  .rv-card { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 14px 16px; min-width: 0; }
+  .rv-h { font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 6px 12px; flex-wrap: wrap; }
+  .rv-h b { font-family: var(--font-heading); font-weight: 500; font-size: 14px; }
+  .rv-cv { position: relative; width: 100%; margin-top: 8px; }
+  .rv-cv canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .rv-cv.h-sp { height: 250px; } .rv-cv.h-er { height: 130px; } .rv-cv.h-map { height: 300px; }
+  @media (max-width: 767px) { .rv-cv.h-sp { height: 210px; } .rv-cv.h-er { height: 110px; } .rv-cv.h-map { height: 260px; } }
+  .rv-strip { display: block; width: 100%; height: 6px; margin-top: 6px; border-radius: 3px; }
+  .rv-lg { display: inline-flex; gap: 4px 12px; flex-wrap: wrap; font-size: 12px; opacity: .9; }
+  .rv-lg i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .rv-lg i.dash { height: 0; border-top: 1.5px dashed var(--fg); border-radius: 0; }
+  .rv-btn { border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .35em 1em; font-size: 13px; white-space: nowrap; }
+  .rv-btn:hover { border-color: var(--fg); }
+  .rv-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+  .rv-sel, .rv-in { border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 10px; padding: .35em .6em; font-size: 13px; max-width: 100%; }
+  .rv-in { min-width: 0; flex: 1 1 260px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .rv-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 9999px; padding: .25em .8em; font-size: 12px; border: 1px solid currentColor; white-space: nowrap; }
+  .rv-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .rv-scrub { flex: 1 1 220px; min-width: 150px; accent-color: var(--ok); }
+  .rv-note { font-size: 12px; opacity: .75; margin-top: 8px; line-height: 1.5; }
+  .rv-note b { font-weight: 500; }
+  .rv-warn { color: var(--warn); opacity: 1; }
+  .rv-tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  .rv-tbl td, .rv-tbl th { padding: 5px 8px 5px 0; text-align: left; font-weight: 400; vertical-align: top; }
+  .rv-tbl td + td, .rv-tbl th + th { text-align: right; white-space: nowrap; }
+  .rv-tbl tr + tr td { border-top: 1px solid var(--line); }
+  .rv-tbl th { font-size: 11px; opacity: .6; }
+  .rv-bogies { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .rv-bog { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; min-width: 0; }
+  .rv-bog .big { font-size: 22px; }
+  .rv-chip { display: inline-block; font-size: 11px; border-radius: 9999px; padding: .1em .55em; border: 1px solid currentColor; margin-top: 4px; white-space: nowrap; }
+  .rv-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; margin-top: 10px; font-size: 13px; }
+  .rv-kv .k { font-size: 11px; }
+  .rv-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .rv-flag { font-size: 11px; border-radius: 9999px; padding: .15em .6em; border: 1px solid var(--line); opacity: .75; }
+  .rv-flag.on { border-color: currentColor; opacity: 1; }
+  .rv-over { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 15px; color: var(--bad); pointer-events: none; }
+  .rv-over[hidden] { display: none; }
+  .rv-mode { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-family: var(--font-heading); font-weight: 500; font-size: 22px; }
+  .rv-mode .mode-ico { width: .9em; height: .9em; }
   @media (prefers-reduced-motion: reduce) {
     .cursor { animation: none; }
     .pills, .sheet, #board { transition: none; }
@@ -124,9 +189,14 @@
   <div class="flex items-center gap-4 sm:gap-9 min-w-0">
     <span class="flex items-center gap-3 flex-none">
       <span class="text-[21px] sm:text-[26px] tracking-tight" style="font-family: var(--font-heading); font-weight: 500;">Vectra</span>
-      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Резервная одометрия по модели</span>
+      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Песочница · упрощённое ядро (JS-порт от 25.09)</span>
     </span>
   </div>
+  <span id="modeNav" class="seg" role="radiogroup" aria-label="Режим страницы">
+    <button role="radio" aria-checked="true" data-mode="sandbox" title="Песочница: имитатор трамвая и упрощённое ядро (JS-порт от 25.09)">Песочница</button>
+    <button role="radio" aria-checked="false" data-mode="replay" title="Прогон данных комиссии: реальная запись, оценку считает пакет ROS 2"><span class="lg">Прогон данных комиссии</span><span class="sm">Прогон</span></button>
+    <button role="radio" aria-checked="false" data-mode="live" title="Живой ROS 2: выходы ноды через rosbridge">Живой ROS 2</button>
+  </span>
   <div class="flex items-center gap-1.5 sm:gap-2 flex-none">
     <button class="icon-btn" data-open="model" aria-pressed="false" aria-label="Как устроена модель" title="Как устроена модель">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15c2.5 0 3-8 6-8s3 5 6 5"/></svg>
@@ -199,7 +269,7 @@
         <button class="sw-btn" role="switch" aria-checked="false" id="swUrban" title="Плотная застройка, спутники пропадают" style="--sw: var(--warn);"><span class="sw-track"><span class="sw-knob"></span></span>Застройка</button>
         <button class="sw-btn" role="switch" aria-checked="false" id="swRush" title="Час пик: больше пассажиров, масса растёт" style="--sw: var(--ok);"><span class="sw-track"><span class="sw-knob"></span></span>Час пик</button>
       </div>
-      <div class="flex items-center gap-2 mt-2" title="Масса вагона с пассажирами: оценка модели и факт">
+      <div class="flex items-center gap-2 mt-2" title="Масса вагона в имитаторе (факт). Модель массу не оценивает: её поглощает масштаб тяги k_т">
         <span class="ctrl-l">Масса</span> <span id="bMass">0</span>
         <canvas id="massSpark" class="inline-block w-[56px] h-[14px] ml-auto" aria-hidden="true"></canvas>
       </div>
@@ -209,10 +279,12 @@
 
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 mt-4">
     <div><div class="k">Скорость, модель</div><div class="big text-[28px] sm:text-[34px]" style="color: var(--ok);"><span id="bV">0</span><span class="text-[13px] opacity-60"> км/ч</span></div><div class="k" title="Тормозной путь по верхней границе скорости">тормозной путь <span id="bBrake" style="color: var(--ok);">0 м</span></div></div>
-    <div><div class="k">Колесо, ось 1</div><div class="big text-[28px] sm:text-[34px]" style="color: var(--warn);"><span id="bW">0</span><span class="text-[13px] opacity-60"> км/ч</span></div><div class="k" title="Среднеквадратичная ошибка скорости: модель / только колесо">ошибка, км/ч <span id="bEm" style="color: var(--ok);">0.00</span> / <span id="bEb" style="color: var(--warn);">0.00</span></div></div>
+    <div><div class="k" title="Наивная база по ТЗ: среднее показаний всех датчиков колёс">Колесо, среднее осей</div><div class="big text-[28px] sm:text-[34px]" style="color: var(--warn);"><span id="bW">0</span><span class="text-[13px] opacity-60"> км/ч</span></div><div class="k" title="Среднеквадратичная ошибка скорости: модель / только колесо">ошибка, км/ч <span id="bEm" style="color: var(--ok);">0.00</span> / <span id="bEb" style="color: var(--warn);">0.00</span></div></div>
     <div><div class="k">Путь, модель</div><div class="big text-[28px] sm:text-[34px]"><span id="bS">0</span><span class="text-[13px] opacity-60"> м</span></div><div class="k">± <span id="bSig">0.5</span> м</div></div>
     <div><div class="k">Режим</div><div class="big text-[22px] sm:text-[26px] pt-[4px] flex items-center gap-2 whitespace-nowrap" id="bH">Стоянка</div><div class="k truncate" id="bHsub">вагон стоит, скорость ноль</div></div>
   </div>
+
+  <div class="k mt-2">Песочница: имитатор и упрощённое ядро (JS-порт от 25.09), не пакет ROS 2. Реальные записи — «Прогон данных комиссии».</div>
 
   <span hidden><span id="bAdh"></span><span id="bLo"></span><span id="bHi"></span><span id="bWsub"></span><span id="bAnc"></span><span id="bProf"></span><span id="bGrHat"></span><span id="bK"></span></span>
 
@@ -254,6 +326,78 @@
     <div id="mapTip" class="glass absolute pointer-events-none rounded-lg px-3 py-2 text-[12px]" style="display:none; min-width: 170px;"></div>
   </div>
 </aside>
+
+<!-- ПРОГОН ДАННЫХ КОМИССИИ / ЖИВОЙ ROS 2: общий экран, данные — из экспорта прогона или из rosbridge -->
+<section id="runView" hidden aria-label="Прогон данных комиссии">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 id="rvTitle" class="rv-title m-0">Прогон данных комиссии</h1>
+    <span id="rvSub" class="k"></span>
+  </div>
+  <div id="rvBarReplay" class="rv-bar">
+    <select id="rvSel" class="rv-sel" aria-label="Прогон и вариант"></select>
+    <button id="rvPlay" class="rv-btn" aria-pressed="false">Пуск</button>
+    <span class="seg" role="radiogroup" aria-label="Скорость проигрывания">
+      <button role="radio" aria-checked="false" data-rvsp="1">×1</button>
+      <button role="radio" aria-checked="true" data-rvsp="10">×10</button>
+      <button role="radio" aria-checked="false" data-rvsp="60">×60</button>
+    </span>
+    <input id="rvScrub" class="rv-scrub" type="range" min="0" max="1000" value="0" aria-label="Перемотка прогона">
+    <span id="rvTime" class="num">0:00 / 0:00</span>
+  </div>
+  <div id="rvBarLive" class="rv-bar" hidden>
+    <label for="rvUrl" class="k">rosbridge</label>
+    <input id="rvUrl" class="rv-in" type="text" spellcheck="false" autocomplete="off" aria-label="Адрес rosbridge (ws:// или wss://)">
+    <button id="rvConn" class="rv-btn" aria-pressed="false">Подключить</button>
+    <span id="rvLiveSt" class="rv-pill" style="color: var(--fg); opacity: .7;"><span class="dot"></span><span>не подключено</span></span>
+    <span id="rvRates" class="k num"></span>
+  </div>
+  <div class="rv-bar">
+    <span class="k">Окно графиков</span>
+    <span class="seg" role="radiogroup" aria-label="Окно графиков">
+      <button role="radio" aria-checked="false" data-rvwin="60">1 мин</button>
+      <button role="radio" aria-checked="true" data-rvwin="300">5 мин</button>
+      <button role="radio" aria-checked="false" data-rvwin="0">весь прогон</button>
+    </span>
+  </div>
+  <div id="rvNote" class="rv-note"></div>
+  <div class="rv-grid">
+    <div class="rv-col">
+      <div class="rv-card">
+        <div class="rv-h"><b>Скорость, км/ч</b>
+          <span class="rv-lg">
+            <span><i style="background:#0E9AA7"></i>модель ± 2σ</span>
+            <span><i style="background:#E89B0C"></i>база «только колесо»</span>
+            <span><i class="dash"></i>GNSS (эталон)</span>
+            <span><i style="background:#8a7fd0"></i>тележки (вход)</span>
+            <span><i style="background:rgba(214,68,58,.35)"></i>аномалия</span>
+          </span>
+        </div>
+        <div class="rv-cv h-sp"><canvas id="rvSpeed" aria-label="Скорость: модель, база, эталон"></canvas><div id="rvOver" class="rv-over" hidden></div></div>
+        <canvas id="rvStrip" class="rv-strip" aria-hidden="true" title="Полоса режимов оценщика"></canvas>
+      </div>
+      <div class="rv-card">
+        <div class="rv-h"><b>Ошибка скорости относительно GNSS, км/ч</b><span class="k">полоса — ±2σ модели</span></div>
+        <div class="rv-cv h-er"><canvas id="rvErrV" aria-label="Ошибка скорости"></canvas></div>
+        <div class="rv-h" style="margin-top:10px"><b id="rvErrSh">Ошибка пути вдоль трассы относительно GNSS, м</b><span class="k" id="rvErrSk">полоса — ±2σ пути</span></div>
+        <div class="rv-cv h-er"><canvas id="rvErrS" aria-label="Ошибка положения"></canvas></div>
+      </div>
+    </div>
+    <div class="rv-col">
+      <div class="rv-card" id="rvStatus" aria-live="off"></div>
+      <div class="rv-card" id="rvMetrics"></div>
+      <div class="rv-card">
+        <div class="rv-h"><b>План, м</b>
+          <span class="seg" role="radiogroup" aria-label="Масштаб плана">
+            <button role="radio" aria-checked="true" data-rvzoom="all">весь маршрут</button>
+            <button role="radio" aria-checked="false" data-rvzoom="near">у вагона</button>
+          </span>
+        </div>
+        <div class="rv-cv h-map"><canvas id="rvMap" aria-label="План: трасса GNSS, модель и база"></canvas></div>
+        <div id="rvMapNote" class="rv-note"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- INFO MODAL -->
 <div id="modal" class="fixed inset-0 z-40 items-center justify-center p-4" style="display:none; background: rgba(0,0,0,.38);">
@@ -669,6 +813,7 @@ const TramPlant = (() => {
       // Without it the plant lets a motored wheel spin up to hundreds of km/h on ice and even turn backwards under ED braking.
       this.protect = true;
       this.asr = new Array(this.nw).fill(1);
+      this.asrCut = new Array(this.nw).fill(false);   // срыв: момент снят до повторного сцепления
       this.wheel_scale = 1;   // global odometry scale (worn tyres)
     }
     _axle_of(i) { return Math.floor(i / 2); }
@@ -702,9 +847,13 @@ const TramPlant = (() => {
       for (let i = 0; i < this.nw; i++) {
         const ax = this._axle_of(i), mot = P.motored[ax], v_rail = this._rail_speed(i), dv = this.w[i] * P.r - v_rail;
         if (this.protect) {
+          // Защита (как на вагоне): при срыве момент (тяговый или тормозной) снимается
+          // до нуля и подаётся снова только после повторного сцепления колеса.
           const lim = Math.max(0.4, 0.08 * Math.abs(this.v));
           const slipping = (u > 0 && dv > lim) || (u < 0 && -dv > lim);
-          this.asr[i] = slipping ? Math.max(0.05, this.asr[i] - dt * 6) : Math.min(1, this.asr[i] + dt * 0.7);
+          if (slipping) this.asrCut[i] = true;
+          else if (Math.abs(dv) < 0.5 * lim) this.asrCut[i] = false;
+          this.asr[i] = this.asrCut[i] ? Math.max(0, this.asr[i] - dt * 8) : Math.min(1, this.asr[i] + dt * 0.7);
         }
         const g = this.protect ? this.asr[i] : 1;
         let mu_max = this.tr.mu(this.s, this.t);
@@ -773,44 +922,46 @@ const TramPlant = (() => {
 
   // ---------- info modal ----------
   const INFO = {
-    model: ['Как устроена модель', 'Состояние из пяти величин: путь, скорость, возмущение (уклон, масса, ветер) и масштабы тяги и торможения. Прогноз строится по ручке через физику вагона: привод с запаздыванием, сопротивление движению, сила ограничена сцеплением μ.\nКоррекция по колёсам в сигма-точечном фильтре (UKF). Каждое показание оси проходит проверку правдоподобия: невязка и физический предел ускорения колеса. Отвергнутое показание состояние не меняет, поэтому буксующая ось не тянет оценку за собой. Крип колеса предсказывается и вычитается.\nМасштабы привода и возмущение подстраиваются только там, где они наблюдаемы, сцепление оценивается по признакам срыва. На остановке ошибка скорости обнуляется.\nНа этой странице работает JS-порт ядра из пакета, совпадающий с Python-версией до 10⁻¹².'],
-    ros: ['Пакет ROS 2', ''],
-    demo: ['Как смотреть демо', 'Трамвай сам ездит по кольцу, «Стоп» его останавливает.\nПогода: в дождь через 100 метров появляются мокрые рельсы, в снег наледь, и так участок за участком, пока погода не сменится. Под тягой колёса боксуют, при торможении идут юзом.\n«Плотная застройка» глушит спутники. «Час пик» добавляет пассажиров, и модель на ходу подстраивает массу. «Износ колеса» показывает, как масштаб колеса калибруется по длинам перегонов. Датчики можно отключить по одной оси или все сразу, а в режиме «Ручное» ручкой управляете вы: W тяга, S тормоз.\n«Сценарий 60 с» в меню проведёт по всему этому сам и в конце покажет метрики.']
+    model: ['Как устроена модель', 'Состояние из пяти величин: путь, скорость, возмущение (уклон, масса, ветер) и масштабы тяги и торможения. Прогноз строится по ручке через физику вагона: привод с запаздыванием, сопротивление движению, сила ограничена сцеплением μ.\nКоррекция по колёсам в сигма-точечном фильтре (UKF). Каждое показание оси проходит проверку правдоподобия: невязка и физический предел ускорения колеса. Отвергнутое показание состояние не меняет, поэтому буксующая ось не тянет оценку за собой. Крип колеса предсказывается и вычитается.\nМасштабы привода и возмущение подстраиваются только там, где они наблюдаемы, сцепление оценивается по признакам срыва. На остановке ошибка скорости обнуляется.\nПесочница на этой странице работает на упрощённом ядре: JS-порт от 25.09. Он отстаёт от Python-ядра пакета: 4 оси по 2 датчика вместо 2 тележек, нет логики неоднозначности «стоим или скользим» и возврата датчиков, σ не откалибрована. Числа на реальных записях — в режиме «Прогон данных комиссии»: там оценку считает сам пакет ROS 2.'],
+    ros: ['Пакет ROS 2', '']
   };
   const typed = $('typed'), cursorEl = $('cursor'), ghost = $('ghost'), modal = $('modal');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let typeTimer = 0, current = null;
   const EXTRA = {
-    ros: [760, `<p class="text-[16px] leading-[1.5]">Ядро оценщика написано без зависимостей от ROS, нода только тонкая обёртка вокруг него. Поэтому ядро покрыто тестами и прогоняется на записях поездок.</p>
+    ros: [760, `<p class="text-[16px] leading-[1.5]">Ядро оценщика написано без зависимостей от ROS, нода только тонкая обёртка вокруг него. Та же связка считает офлайн-оценку по записям, поэтому числа оценки и работа ноды совпадают.</p>
       <div class="grid sm:grid-cols-2 gap-3 mt-4 text-[13px]">
         <div class="rounded-xl border border-[var(--line)] p-3">
-          <div class="text-[12px] opacity-60 mb-2">Вход</div>
-          <div class="flex justify-between"><span>tram/handle</span><span class="opacity-60">50 Гц, ручка</span></div>
-          <div class="flex justify-between mt-1"><span>tram/wheel_speeds</span><span class="opacity-60">100 Гц, скорость осей</span></div>
+          <div class="text-[12px] opacity-60 mb-2">Вход (по ТЗ)</div>
+          <div class="flex justify-between gap-2"><span>/vehicle/front_bogie_velocity</span><span class="opacity-60">~10 Гц, км/ч</span></div>
+          <div class="flex justify-between gap-2 mt-1"><span>/vehicle/rear_bogie_velocity</span><span class="opacity-60">~10 Гц, км/ч</span></div>
+          <div class="flex justify-between gap-2 mt-1"><span>/vehicle/driver_position_cmd</span><span class="opacity-60">20 Гц, ±15</span></div>
+          <div class="flex justify-between gap-2 mt-1 opacity-60"><span>/sensing/gnss/*/fix</span><span>только выставка, 3 с</span></div>
         </div>
         <div class="rounded-xl border border-[var(--line)] p-3">
           <div class="text-[12px] opacity-60 mb-2">Выход</div>
-          <div class="flex justify-between"><span>tram/velocity</span><span class="opacity-60">скорость и её разброс</span></div>
-          <div class="flex justify-between mt-1"><span>tram/odom</span><span class="opacity-60">пройденный путь</span></div>
-          <div class="flex justify-between mt-1"><span>tram/estimator_status</span><span class="opacity-60">режим, границы, оси</span></div>
+          <div class="flex justify-between gap-2"><span>/result/velocity</span><span class="opacity-60">скорость, м/с</span></div>
+          <div class="flex justify-between gap-2 mt-1"><span>/result/position</span><span class="opacity-60">x, y (MGRS), z, σ</span></div>
+          <div class="flex justify-between gap-2 mt-1"><span>/result/acceleration</span><span class="opacity-60">ускорение</span></div>
+          <div class="flex justify-between gap-2 mt-1"><span>/tram/estimator_status</span><span class="opacity-60">режим, μ, k, σ, тележки</span></div>
         </div>
       </div>
       <div class="flex flex-wrap gap-2 mt-3 text-[12px]">
-        <span class="rounded-full border border-[var(--line)] px-3 py-1">100 Гц</span>
+        <span class="rounded-full border border-[var(--line)] px-3 py-1">выход 20 Гц</span>
         <span class="rounded-full border border-[var(--line)] px-3 py-1">ROS 2 Humble</span>
-        <span class="rounded-full border border-[var(--line)] px-3 py-1">без аллокаций в цикле</span>
+        <span class="rounded-full border border-[var(--line)] px-3 py-1">шаг по меткам header.stamp</span>
         <span class="rounded-full border border-[var(--line)] px-3 py-1">UKF, состояние s, v, d, k_т, k_б</span>
       </div>
-      <div class="text-[12px] opacity-60 mt-6 mb-2">Схема пакета, сообщения идут в такт симуляции</div>
+      <div class="text-[12px] opacity-60 mt-6 mb-2">Схема пакета: топики по ТЗ, значения — из песочницы (упрощённое ядро, 4 оси)</div>
       <canvas id="rosC" class="block w-full h-[240px]"></canvas>
-      <div class="text-[12px] opacity-60 mt-6">Время шага вычислительного ядра</div>
+      <div class="text-[12px] opacity-60 mt-6">Время шага упрощённого JS-ядра в этом браузере</div>
       <div class="grid grid-cols-3 gap-4 mt-2">
         <div><div class="k">медиана</div><div class="big text-[24px] num"><span id="bMed">…</span> <span class="text-[13px] opacity-60">мкс</span></div></div>
         <div><div class="k">99 % шагов быстрее</div><div class="big text-[24px] num"><span id="bP99">…</span> <span class="text-[13px] opacity-60">мкс</span></div></div>
         <div><div class="k">занято от бюджета 100 Гц</div><div class="big text-[24px] num" style="color: var(--ok);"><span id="bLoad">…</span> <span class="text-[13px] opacity-60">%</span></div></div>
       </div>
       <canvas id="benchC" class="block w-full h-[64px] mt-3"></canvas>
-      <div class="text-[11px] opacity-50 mt-2">Замер настоящего шага оценщика (UKF, 5 состояний, 4 оси) в этом браузере: JS-порт ядра, на входах из текущей поездки. Бюджет шага при 100 Гц 10 000 мкс. В Python на ноутбуке напарника медиана 1,14 мс.</div>`],
+      <div class="text-[11px] opacity-50 mt-2">Замер шага упрощённого JS-ядра песочницы (UKF, 5 состояний, 4 оси, 100 Гц) на входах из текущей поездки. Это не замер пакета: Python-ядро ноды шагает 20 Гц, бюджет шага 50 000 мкс; его время — в docs/EVAL.md.</div>`],
     metrics: [880, '<div id="metTable"></div>'],
     replay: [940, `<canvas id="repC" class="block w-full h-[260px] cursor-crosshair"></canvas>
       <input id="repR" type="range" min="0" max="1" value="1" class="w-full mt-3" aria-label="Перемотка записи" style="accent-color: var(--ok);">
@@ -948,7 +1099,7 @@ const TramPlant = (() => {
   // ---------- metrics per condition ----------
   const COND = ['Сухо', 'Дождь', 'Наледь', 'Застройка', 'Отказ оси', 'Отказ всех осей', 'Час пик'];
   const MET = Object.fromEntries(COND.map(c => [c, { t: 0, sqM: 0, sqB: 0, maxM: 0, inInt: 0, segM: [], segB: [] }]));
-  const slipDelays = [];
+  const slipDelays = [], slipMissed = { n: 0, short: 0 };
   function currentConds(wk, vk) {
     const c = [];
     const wz = zones.wx && inZone(zones.wx, D) ? zones.wx.kind : null;
@@ -1005,6 +1156,7 @@ const TramPlant = (() => {
   }
   $('bRun').addEventListener('click', () => setRunning(!running));
   addEventListener('keydown', e => {
+    if ((window.__tvMode || 'sandbox') !== 'sandbox') return;
     if (e.target.closest && e.target.closest('input, select')) return;
     if (manual && ['ArrowUp', 'w', 'W', 'ц', 'Ц'].includes(e.key)) { e.preventDefault(); setHandle('TRACTION'); return; }
     if (manual && ['ArrowDown', 's', 'S', 'ы', 'Ы'].includes(e.key)) { e.preventDefault(); setHandle('BRAKE'); return; }
@@ -1124,14 +1276,16 @@ const TramPlant = (() => {
 
   // Driver: picks a controller notch (-4..+4) from what a driver sees (true speed and position).
   const NOTCH_DECEL = 0.53;                       // m/s² per brake notch on dry rail (plant: ~63 kN at full brake, 30 t)
-  let brakingForStop = false;
+  let brakingForStop = false, stallT = 0;
   function driver(sdt) {
     const ns = nextStop(), gr = gradeAt(s), vHere = vlimAt(s);
     const wz = zones.wx && inZone(zones.wx, plant.s) ? zones.wx.kind : null;
     sand = false;
     if (dwell > 0) return -2;
     if (manual) {
-      const hn = manualH === 'TRACTION' ? 4 : manualH === 'BRAKE' ? -3 : 0;
+      // тяга не выше скорости линии (72 км/ч): выше — выбег
+      const hn = manualH === 'TRACTION' ? (v < VMAX - 0.8 ? 4 : 0) : manualH === 'BRAKE' ? -3 : 0;
+      if (hn > 0 && wz && (gr > 0.015 || v < 3)) sand = true;
       if (hn < 0 && v < 0.05) {
         const q = PLATFORMS.find(q => Math.abs(q.p - s) < 14);
         if (q && q.n !== lastStop) arrive(q);
@@ -1164,11 +1318,17 @@ const TramPlant = (() => {
     const target = Math.min(V_CRUISE, vHere);
     if (curveBrk ? (curveNeed > 0.12 || v > target + 0.3) : (curveNeed > 0.35 || v > target + 1.2)) { curveBrk = true; return brakeFor(Math.max(0.4, curveNeed)); }
     curveBrk = false;
+    if (v < 1 && ns.d > 3 && ns.d <= 60) return 1; // встал, не доехав: подтянуться к платформе, а не ползти выбегом
     if (ns.d <= v * v / (2 * 0.6) + 60) return 0; // coast into the stop
     if (v < target - 2.5) cruising = false;
     if (v >= target) cruising = true;
     if (cruising) return 0;
-    if (wz) { sand = wz === 'ice'; return 2; }      // gentle traction on a slippery rail
+    // Трогание и подъём на скользком рельсе: песок (и в дождь), тяга по уклону.
+    // Вагон не едет под тягой дольше 3 с — песок и полная тяга.
+    stallT = v < 0.3 ? stallT + sdt : 0;
+    if (stallT > 3) { sand = true; return 4; }
+    if (wz) { sand = wz === 'ice' || gr > 0.015 || v < 3; return gr > 0.02 ? 4 : gr > 0.01 ? 3 : 2; }
+    if (gr > 0.02 && v < target - 1) return 4;
     return v < target - 4 ? 4 : 2;
   }
 
@@ -1192,7 +1352,7 @@ const TramPlant = (() => {
     const n = Math.round(sdt / plant.dt);
     for (let k = 0; k < n; k++) {
       plant.step(notch, sand);
-      if (notch <= 0 && plant.v < 0.02) {          // holding brake: a stopped tram does not roll back
+      if (plant.v < 0.02) {                        // удержание: стоящий вагон не катится назад (и под тягой на подъёме)
         plant.v = Math.max(0, plant.v);
         if (notch < 0 && plant.v < 0.005) { plant.v = 0; plant.w.fill(0); plant.wm.fill(0); }
       }
@@ -1204,13 +1364,21 @@ const TramPlant = (() => {
         notch = driver(0.01);
         lastOut = estimator.step(notch, m);
         BENCH_IN.push([notch, m]); if (BENCH_IN.length > 400) BENCH_IN.shift();
-        const wk = Math.abs((m[0] + m[1]) / 2 * TramPlant.P.r);
+        const wk = Math.abs(m.reduce((a, b) => a + b, 0) / m.length * TramPlant.P.r);   // база по ТЗ: среднее всех датчиков
         est.segM += lastOut.v * 0.01; est.segB += wk * 0.01;
-        // truth-side slip on a motored axle, for the detection delay metric
-        const slipTrue = Math.abs(plant.w[0] * TramPlant.P.r - plant.v) > Math.max(0.3, 0.05 * plant.v);
-        if (slipTrue && est.rampT < 0) est.rampT = simT;
-        if (!slipTrue && !lastOut.slip) est.rampT = -1;
-        if (lastOut.slip && est.rampT >= 0) { slipDelays.push((simT - est.rampT) * 1000); est.rampT = -2; }
+        // Задержка обнаружения срыва: от начала срыва по истине (любая моторная ось,
+        // |ω·r − v| > max(0,3; 0,05·v) м/с) до первого включения флага. Событие —
+        // только если флаг в начале срыва не горел; срыв, закончившийся раньше
+        // флага, считается пропущенным. Повторов нет: следующее событие — после
+        // окончания срыва по истине и погасшего флага.
+        const r_ = TramPlant.P.r, lim_ = Math.max(0.3, 0.05 * plant.v);
+        let slipTrue = false;
+        for (let i = 0; i < plant.nw; i++) if (TramPlant.P.motored[Math.floor(i / 2)] && Math.abs(plant.w[i] * r_ - plant.v) > lim_) slipTrue = true;
+        const tNow = simT - dt * TIME_SCALE + (k + 1) * plant.dt;
+        if (est.rampT === -1 && slipTrue && !lastOut.slip) est.rampT = tNow;          // начало события
+        else if (est.rampT >= 0 && lastOut.slip) { slipDelays.push((tNow - est.rampT) * 1000); est.rampT = -2; }
+        else if (est.rampT >= 0 && !slipTrue) { if (tNow - est.rampT >= 0.5) slipMissed.n++; else slipMissed.short++; est.rampT = -2; }   // срыв короче 0,5 с не учитывается
+        if (est.rampT === -2 && !slipTrue && !lastOut.slip) est.rampT = -1;          // готов к новому событию
       }
     }
     s = ((S0 + plant.s) % TOTAL + TOTAL) % TOTAL; v = plant.v; D = plant.s;
@@ -1238,7 +1406,7 @@ const TramPlant = (() => {
     if (lastOut) {
       const o = lastOut, sv = o.sigma_v;
       const m = plant.meas_hist.length ? plant.meas_hist[plant.meas_hist.length - 1] : [0, 0];
-      est.sensor = Math.abs((m[0] + m[1]) / 2 * TramPlant.P.r);
+      est.sensor = Math.abs(m.reduce((a, b) => a + b, 0) / m.length * TramPlant.P.r);
       est.st = TramEst.MODE_NAMES[o.mode];
       est.v = o.v * 3.6; est.lo = Math.max(0, (o.v - 2 * sv) * 3.6); est.hi = (o.v + 2 * sv) * 3.6;
       est.s = ((S0 + o.s) % TOTAL + TOTAL) % TOTAL; est.sig = o.sigma_s;
@@ -1840,6 +2008,7 @@ const TramPlant = (() => {
     STANDSTILL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M10 16V8h3a2.5 2.5 0 0 1 0 5h-3"/></svg>',
     DEGRADED: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>'
   };
+  window.__tvIcons = ST_ICO;
   const ST_COL = { TRANSITION: '#7E8B98', COAST: '#0E9AA7', TRACTION: '#9AA7B4', BRAKE: '#6B7785', SLIP: '#5AA9D6', STANDSTILL: '#3C4450', DEGRADED: '#D6443A' };
   const ST_KEYS = Object.keys(ST_COL);
   const HSUB = { COAST: 'колесо = точная скорость', TRACTION: 'колесо = верхняя граница', BRAKE: 'колесо = нижняя граница', STAND: 'скорость = 0' };
@@ -2080,7 +2249,7 @@ const TramPlant = (() => {
     $('bGrHat').textContent = `${(est.grHat * 1000).toFixed(0)} ‰`;
     $('bBrake').textContent = v > 0.3 ? `≤ ${Math.round(est.brake)} м` : '0 м';
     $('bBrake').style.color = est.st === 'SLIP' || (zones.wx && inZone(zones.wx, D)) ? 'var(--wet)' : 'var(--ok)';
-    $('bMass').textContent = `${mTrue.toFixed(1)} т, тяга k = ${est.kt.toFixed(2)}`;
+    $('bMass').textContent = `${mTrue.toFixed(1)} т (имитатор), k_т ${est.kt.toFixed(2)}`;
 
     drawMassSpark();
     $('bS').textContent = est.s.toFixed(1);
@@ -2129,9 +2298,9 @@ const TramPlant = (() => {
     { t: 9, txt: 'Дождь. Мокрые рельсы: под тягой колёса боксуют, при торможении юз. Колесо врёт, модель держит интервал.', act: () => setWeather('rain') },
     { t: 19, txt: 'Плотная застройка. Спутников нет, а оценке они и не нужны: только ручка и колёса.', act: () => toggleZone('urban', 'swUrban', true) },
     { t: 29, txt: 'Снег и наледь. Тормозной путь считается по верхней границе скорости и вытягивается на льду.', act: () => setWeather('snow') },
-    { t: 39, txt: 'Отказ оси 1. Датчик исключён, статус DEGRADED, оценка продолжается по остальным осям.', act: () => setSens('axle') },
-    { t: 47, txt: 'Отказ всех осей. Интервал честно расширяется: модель едет по физике и знает, насколько не уверена.', act: () => setSens('all') },
-    { t: 55, txt: 'Всё восстановлено. Итоговые метрики по каждому условию.', act: () => { setSens('ok'); setWeather('clear'); } },
+    { t: 39, txt: 'Отказ оси 1. Её датчики показывают ноль и исключаются, оценка идёт по остальным осям.', act: () => setSens('axle') },
+    { t: 47, txt: 'Отказ всех осей: все колёса показывают ноль. Упрощённое ядро песочницы со временем принимает нули за остановку. В пакете это закрыто защёлкой «стоим или скользим»: см. «Прогон данных комиссии», вариант «обе тележки 0 км/ч».', act: () => setSens('all') },
+    { t: 55, txt: 'Всё восстановлено. Итоговые метрики по каждому условию.', act: () => { setSens('ok'); setWeather('clear'); toggleZone('urban', 'swUrban', false); } },
     { t: 60, txt: '', act: () => { stopPres(); openInfo('metrics'); } }
   ];
   let presT = -1, presI = 0;
@@ -2173,42 +2342,20 @@ const TramPlant = (() => {
         <th class="pb-2 pr-3 font-normal" colspan="2">Ошибка скорости, км/ч<br><span style="color:var(--ok)">модель</span> / <span style="color:var(--warn)">только колесо</span></th>
         <th class="pb-2 pr-3 font-normal">Макс. ошибка<br>модели, км/ч</th>
         <th class="pb-2 pr-3 font-normal" colspan="2">Ошибка пути на конец<br>перегона, м: <span style="color:var(--ok)">модель</span> / <span style="color:var(--warn)">колесо</span></th>
-        <th class="pb-2 font-normal">Истина<br>в интервале</th></tr></thead>
+        <th class="pb-2 font-normal" title="Доля времени, когда истинная скорость внутри ±2σ оценки. У честной σ около 95 %">Истина в ±2σ<br><span class="opacity-60">цель ≈ 95 %</span></th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       <div class="flex flex-wrap gap-x-6 gap-y-1 mt-4 text-[13px]">
-        <span><span class="opacity-60">Задержка обнаружения юза, медиана:</span> ${med === null ? 'юза ещё не было' : Math.round(med) + ' мс'}</span>
+        <span title="От начала срыва колеса по истине до первого включения флага SLIP; событие засчитывается, только если флаг в начале срыва не горел"><span class="opacity-60">Обнаружение срыва, медиана:</span> ${med === null ? (slipMissed.n ? 'флаг не включался' : 'срывов ещё не было') : Math.round(med) + ' мс'} <span class="opacity-60">(обнаружено ${sd.length}, пропущено ${slipMissed.n}; срывы короче 0,5 с не считаются)</span></span>
         <span><span class="opacity-60">Масштаб тяги k<sub>т</sub> / торможения k<sub>б</sub>:</span> ${est.kt.toFixed(2)} / ${est.kb.toFixed(2)}</span>
         <span><span class="opacity-60">Сцепление μ, оценка:</span> ${est.mu.toFixed(3)}</span>
         <span><span class="opacity-60">Масса вагона:</span> ${mTrue.toFixed(1)} т</span>
       </div>
-      <div class="text-[11px] opacity-50 mt-3">Считается с начала сессии по живой поездке. На странице работает JS-порт ядра оценщика из пакета (совпадает с Python до 10⁻¹² на всех 15 сценариях) и порт имитатора plant.py с добавленной противобуксовочной и противоюзной защитой. «Истина в интервале» считается для ±2σ оценки скорости.</div>`;
+      <div class="text-[11px] opacity-50 mt-3">Считается с начала сессии по живой поездке в песочнице. Ядро здесь упрощённое (JS-порт от 25.09, 4 оси) и отстаёт от Python-ядра пакета; σ в нём не откалибрована, поэтому доля «в ±2σ» ниже цели 95 %. «Колесо» — среднее показаний всех датчиков (база по ТЗ). Имитатор — порт plant.py с противобуксовочной и противоюзной защитой и удержанием на подъёме. Числа на реальных записях — в режиме «Прогон данных комиссии».</div>`;
   }
 
   // ---------- ROS 2 live diagram and step-time benchmark ----------
-  const KB = (() => {
-    const n = 30, Pr = new Float64Array(n * n);
-    for (let i = 0; i < n; i++) Pr[i * n + i] = 100;
-    return { n, Pr, w: new Float64Array(n), phi: new Float64Array(n), Pphi: new Float64Array(n), x: new Float64Array(3), P: new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), samples: [] };
-  })();
-  function kernelStep(u, z, vv) {
-    // 3-state observer: predict and scalar update (s, v, d)
-    const x = KB.x, P = KB.P, dt = 0.01;
-    x[0] += x[1] * dt; x[1] += (u + x[2]) * dt;
-    const p00 = P[0] + dt * (P[3] + P[1]) + dt * dt * P[4], p01 = P[1] + dt * (P[4] + P[2]), p11 = P[4] + 2 * dt * P[5] + dt * dt * P[8] + 1e-4;
-    P[0] = p00; P[1] = P[3] = p01; P[4] = p11; P[8] += 1e-6;
-    const S = P[4] + 0.01, k0 = P[1] / S, k1 = P[4] / S, k2 = P[5] / S, r = z - x[1];
-    x[0] += k0 * r; x[1] += k1 * r; x[2] += k2 * r;
-    for (let i = 0; i < 9; i++) P[i] *= 0.999;
-    // recursive least squares on 30 weights (tractive characteristic basis)
-    const n = KB.n, phi = KB.phi, Pr = KB.Pr, Pphi = KB.Pphi;
-    for (let i = 0; i < n; i++) phi[i] = Math.exp(-((vv - i) ** 2) / 8) * ((i % 5) === u ? 1 : 0.2);
-    let den = 0.995;
-    for (let i = 0; i < n; i++) { let acc = 0; for (let j = 0; j < n; j++) acc += Pr[i * n + j] * phi[j]; Pphi[i] = acc; den += phi[i] * acc; }
-    let e = z; for (let i = 0; i < n; i++) e -= KB.w[i] * phi[i];
-    for (let i = 0; i < n; i++) KB.w[i] += Pphi[i] / den * e;
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) Pr[i * n + j] = (Pr[i * n + j] - Pphi[i] * Pphi[j] / den) / 0.995;
-  }
-  // step-time benchmark of the REAL estimator port, replaying recent inputs from the ride
+  const KB = { samples: [] };   // замеры шага упрощённого JS-ядра
+  // замер шага упрощённого JS-ядра на недавних входах поездки
   let benchTick = 0, benchEst = null, benchI = 0;
   function bench() {
     if (++benchTick % 6 || BENCH_IN.length < 50) return;
@@ -2266,19 +2413,19 @@ const TramPlant = (() => {
     };
     const iw = w * 0.2, ow = w * 0.22, mx = w * 0.29, mw = w * 0.42, pad = 16;
     const ys = [hh * 0.3, hh * 0.7], yo = [hh * 0.2, hh * 0.5, hh * 0.8];
-    box(0, ys[0] - 22, iw, 44, 'tram/handle', `50 Гц, ${HANDLE[handle].toLowerCase()}`);
-    box(0, ys[1] - 22, iw, 44, 'tram/wheel_speeds', `100 Гц, ${(est.sensor * 3.6).toFixed(1)} км/ч`, sensMode !== 'ok' ? '#D6443A' : null);
+    box(0, ys[0] - 22, iw, 44, '/vehicle/driver_position_cmd', `20 Гц, ${HANDLE[handle].toLowerCase()}`);
+    box(0, ys[1] - 22, iw, 44, '/vehicle/*_bogie_velocity', `~10 Гц, ${(est.sensor * 3.6).toFixed(1)} км/ч`, sensMode !== 'ok' ? '#D6443A' : null);
     // node
     c.strokeStyle = '#0E9AA7'; c.lineWidth = 1.5; c.beginPath(); c.roundRect(mx, 8, mw, hh - 16, 12); c.stroke();
-    c.fillStyle = '#0E9AA7'; c.font = '500 12px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('estimator_node', mx + pad, 16);
+    c.fillStyle = '#0E9AA7'; c.font = '500 12px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('tram_state_estimator', mx + pad, 16);
     const sw = (mw - pad * 2 - 10) / 2, sh = (hh - 16 - 30 - pad - 12) / 3;
     const subs = [['Привод и режим', `ручка ${notch > 0 ? '+' : ''}${notch}, ${ST_RU[est.st] ? ST_RU[est.st].toLowerCase() : ''}`], ['Проверка осей', lastOut ? `принято ${lastOut.n_accepted}, отвергнуто ${lastOut.n_rejected}` : ''], ['UKF: s, v, d', `v ${est.v.toFixed(1)} км/ч`], ['Масштабы привода', `k_т ${est.kt.toFixed(2)}, k_б ${est.kb.toFixed(2)}`], ['Сцепление μ', est.mu.toFixed(3)], ['Возмущение d', `${est.d.toFixed(2)} м/с²`]];
     subs.forEach(([t, sub], i) => box(mx + pad + (i % 2) * (sw + 10), 8 + 30 + Math.floor(i / 2) * (sh + 6), sw, sh, t, sub));
-    const labels = [['tram/velocity', `${est.v.toFixed(1)} ± ${((est.hi - est.lo) / 2).toFixed(1)} км/ч`], ['tram/odom', `${est.s.toFixed(0)} м`], ['tram/estimator_status', est.st]];
+    const labels = [['/result/velocity', `${est.v.toFixed(1)} ± ${((est.hi - est.lo) / 2).toFixed(1)} км/ч`], ['/result/position', `путь ${est.s.toFixed(0)} м`], ['/tram/estimator_status', est.st]];
     labels.forEach(([t, sub], i) => box(w - ow, yo[i] - 22, ow, 44, t, sub, i === 2 ? ST_COL[est.st] : null));
     flow(iw + 4, ys[0], mx - 4, ys[0], 50, fg);
     flow(iw + 4, ys[1], mx - 4, ys[1], 100, sensMode !== 'ok' ? '#D6443A' : fg);
-    yo.forEach(y => flow(mx + mw + 4, y, w - ow - 4, y, 100, '#0E9AA7'));
+    yo.forEach(y => flow(mx + mw + 4, y, w - ow - 4, y, 20, '#0E9AA7'));
   }
 
   // ---------- replay of the recorded ride ----------
@@ -2313,19 +2460,20 @@ const TramPlant = (() => {
   }
 
   function drawMassSpark() {
-    massHist.push([mTrue, 28 * est.kt ? mTrue : mTrue]); if (massHist.length > 600) massHist.shift();
+    massHist.push([mTrue]); if (massHist.length > 600) massHist.shift();
     const [c, w, hh] = fit($('massSpark'));
     c.clearRect(0, 0, w, hh);
-    let lo = 1e9, hi = -1e9; massHist.forEach(([a, b]) => { lo = Math.min(lo, a, b); hi = Math.max(hi, a, b); });
+    let lo = 1e9, hi = -1e9; massHist.forEach(([a]) => { lo = Math.min(lo, a); hi = Math.max(hi, a); });
     if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
     const X = i => i / 599 * w, Y = m => hh - 2 - (m - lo) / (hi - lo) * (hh - 4);
     const css = getComputedStyle(document.documentElement), fg = css.getPropertyValue('--fg').trim();
     c.lineWidth = 1; c.strokeStyle = fg; c.globalAlpha = .4; c.beginPath(); massHist.forEach(([a], i) => c.lineTo(X(i + 600 - massHist.length), Y(a))); c.stroke();
-    c.globalAlpha = 1; c.strokeStyle = '#0E9AA7'; c.lineWidth = 1.5; c.beginPath(); massHist.forEach(([, b], i) => c.lineTo(X(i + 600 - massHist.length), Y(b))); c.stroke();
+    c.globalAlpha = 1;
   }
   // ---------- loop ----------
   let last = performance.now();
   function frame(t) {
+    if ((window.__tvMode || 'sandbox') !== 'sandbox') { last = t; requestAnimationFrame(frame); return; }   // другой режим: песочница на паузе
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     const inT = step(dt);
     sampleAcc += dt;
@@ -2346,6 +2494,646 @@ const TramPlant = (() => {
   setMap(innerWidth >= 900);
   addEventListener('resize', () => { if (presT < 0) setMap(innerWidth >= 900); });
   requestAnimationFrame(frame);
+})();
+</script>
+<script>
+// ---- Режимы «Прогон данных комиссии» и «Живой ROS 2» ----
+// Данные прогона считает сам пакет (tools/export_replay.py: Runner как в ноде,
+// отложенная запись, карта только из обучающих) и кладёт в replays/*.js;
+// живой режим берёт те же поля из rosbridge (протокол v2, JSON поверх WebSocket,
+// без roslib). Экран у обоих режимов общий.
+(() => {
+  const $ = id => document.getElementById(id);
+  const MODES = ['COAST', 'TRACTION', 'BRAKE', 'TRANSITION', 'SLIP', 'STANDSTILL', 'DEGRADED'];
+  const M_RU = { COAST: 'Выбег', TRACTION: 'Тяга', BRAKE: 'Торможение', TRANSITION: 'Смена режима', SLIP: 'Срыв сцепления', STANDSTILL: 'Стоянка', DEGRADED: 'Нет данных колёс' };
+  const M_SUB = { COAST: 'колёса дают точную скорость', TRACTION: 'колесо может только завышать', BRAKE: 'колесо может только занижать', TRANSITION: 'привод набирает или сбрасывает момент', SLIP: 'показания сорвавшихся колёс отвергнуты', STANDSTILL: 'вагон стоит, скорость ноль', DEGRADED: 'нечему верить, скорость по модели' };
+  const M_COL = { TRANSITION: '#7E8B98', COAST: '#0E9AA7', TRACTION: '#9AA7B4', BRAKE: '#6B7785', SLIP: '#5AA9D6', STANDSTILL: '#3C4450', DEGRADED: '#D6443A' };
+  const BST = { 0: ['принята', '#0E9AA7'], 1: ['нет новых данных', ''], 2: ['отвергнута', '#E89B0C'], 3: ['исключена', '#D6443A'], 4: ['поток прерван', '#D6443A'],
+    5: ['принята', '#0E9AA7'], 6: ['отвергнута', '#E89B0C'], 7: ['1 из 2 отвергнута', '#E89B0C'], 9: ['нет данных', ''] };
+  const C_OK = '#0E9AA7', C_NAIVE = '#E89B0C', C_BOG = '#8a7fd0', C_BAD = '#D6443A';
+  const KEYS = ['t', 'v', 'sv', 's', 'ss', 'x', 'y', 'mode', 'fl', 'na', 'nr', 'b0', 'b1', 'kt', 'kb', 'mu', 'd', 'fr', 'rr', 'h', 'nv', 'ns', 'nx', 'ny', 'gv', 'gx', 'gy', 'gs', 'inj'];
+  const store = { get: k => { try { return localStorage.getItem(k); } catch (_) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} } };
+  const qs = new URLSearchParams(location.search);
+
+  // ---------------------------------------------------------------- состояние
+  let mode = 'sandbox';
+  let D = null;                       // текущие данные (прогон или живой буфер)
+  const RP = { key: null, t: 0, play: false, speed: 10, loading: false };
+  let winSec = 300, zoom = 'all';
+  const emptyData = () => { const d = { n: 0, pv: { t: [], em: [], en: [], c2: [] }, pp: { t: [], al: [], aln: [], h: [], hn: [], sr: [] }, meta: null, summary: null, track: null, live: false }; KEYS.forEach(k => d[k] = []); return d; };
+
+  // ---------------------------------------------------------------- режим страницы
+  function setMode(m) {
+    mode = m; window.__tvMode = m;
+    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-checked', b.dataset.mode === m));
+    document.body.classList.toggle('rv-on', m !== 'sandbox');
+    $('runView').hidden = m === 'sandbox';
+    $('rvBarReplay').hidden = m !== 'replay';
+    $('rvBarLive').hidden = m !== 'live';
+    $('rvTitle').textContent = m === 'live' ? 'Живой ROS 2' : 'Прогон данных комиссии';
+    $('runView').setAttribute('aria-label', $('rvTitle').textContent);
+    const bs = document.querySelector('header .badge-sub');
+    if (bs) bs.textContent = m === 'sandbox' ? 'Песочница · упрощённое ядро (JS-порт от 25.09)' : m === 'live' ? 'Пакет ROS 2 через rosbridge' : 'Запись комиссии · оценку считает пакет';
+    store.set('tv.mode', m);
+    if (m === 'replay') { liveStop(); D = RP.data || null; enterReplay(); }
+    else if (m === 'live') { RP.play = false; D = LV.data; enterLive(); }
+    else { RP.play = false; liveStop(); }
+    renderPanels(true);
+  }
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  // ---------------------------------------------------------------- прогон: загрузка
+  function loadScript(src) {
+    return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error(src)); document.head.appendChild(el); });
+  }
+  function decodeArr(arr, sc, isDelta) {
+    const out = new Array(arr.length); let acc = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const x = arr[i];
+      if (x === null) { out[i] = NaN; continue; }
+      if (isDelta) { acc += x; out[i] = acc * sc; } else out[i] = x * sc;
+    }
+    return out;
+  }
+  function decode(doc) {
+    const M = doc.meta, d = emptyData(), dl = new Set(M.delta.cols);
+    d.meta = M; d.summary = doc.summary; d.n = M.n;
+    for (const k of KEYS) d[k] = doc.cols[k] ? decodeArr(doc.cols[k], M.scale[k] ?? 1, dl.has(k)) : new Array(M.n).fill(NaN);
+    for (const g of ['v', 'p']) {
+      const src = doc.pairs[g], dst = g === 'v' ? d.pv : d.pp, ps = M.pair_scale[g], pd = new Set(M.delta[g]);
+      for (const k of Object.keys(src)) dst[k] = decodeArr(src[k], ps[k] ?? 1, pd.has(k));
+    }
+    d.track = { x: decodeArr(M.track.x, 0.1, false), y: decodeArr(M.track.y, 0.1, false) };
+    prefix(d);
+    return d;
+  }
+  function prefix(d) {           // накопленные суммы для метрик «с начала до курсора»
+    const pv = d.pv, pp = d.pp;
+    pv.cm = [0]; pv.cn = [0]; pv.cc = [0];
+    for (let i = 0; i < pv.t.length; i++) { pv.cm.push(pv.cm[i] + Math.abs(pv.em[i])); pv.cn.push(pv.cn[i] + Math.abs(pv.en[i])); pv.cc.push(pv.cc[i] + pv.c2[i]); }
+    pp.ch = [0]; pp.chn = [0]; pp.kn = [0];
+    for (let i = 0; i < pp.t.length; i++) {
+      pp.ch.push(pp.ch[i] + (isFinite(pp.h[i]) ? pp.h[i] : 0));
+      const f = isFinite(pp.hn[i]); pp.chn.push(pp.chn[i] + (f ? pp.hn[i] : 0)); pp.kn.push(pp.kn[i] + (f ? 1 : 0));
+    }
+  }
+  let INDEX = null;
+  async function enterReplay() {
+    if (!INDEX) {
+      try { await loadScript('replays/index.js'); INDEX = window.TV_REPLAY_INDEX || []; }
+      catch (_) { INDEX = []; }
+      const sel = $('rvSel'); sel.innerHTML = '';
+      INDEX.forEach(e => { const o = document.createElement('option'); o.value = e.key; o.textContent = `${e.run} · ${e.ru}`; sel.appendChild(o); });
+      if (!INDEX.length) { $('rvNote').innerHTML = '<span class="rv-warn">Нет экспортированных прогонов: запустите <b>tools/export_replay.py</b> (см. README симулятора).</span>'; return; }
+    }
+    const want = RP.key || qs.get('run') || store.get('tv.run');
+    const key = INDEX.some(e => e.key === want) ? want : INDEX[0].key;
+    if (key !== RP.key || !RP.data) await selectReplay(key);
+  }
+  async function selectReplay(key) {
+    const e = INDEX.find(x => x.key === key); if (!e) return;
+    RP.loading = true; $('rvSel').value = key; RP.key = key; store.set('tv.run', key);
+    $('rvNote').textContent = 'Загрузка прогона…';
+    const reg = window.TV_REPLAYS = window.TV_REPLAYS || {};
+    try { if (!reg[key]) await loadScript('replays/' + e.file); }
+    catch (_) { $('rvNote').innerHTML = `<span class="rv-warn">Не удалось загрузить replays/${e.file}</span>`; RP.loading = false; return; }
+    RP.data = decode(reg[key]); RP.entry = e;
+    if (mode === 'replay') D = RP.data;
+    const inj = RP.data.meta.inject;
+    RP.t = qs.has('t') && !RP.tInit ? Math.max(0, +qs.get('t')) : (inj && inj.t0 != null ? Math.max(0, inj.t0 - RP.data.meta.t0 - 30) : 0);
+    RP.tInit = true;
+    RP.loading = false;
+    replayNote(); renderPanels(true);
+  }
+  $('rvSel').addEventListener('change', e => selectReplay(e.target.value));
+  function replayNote() {
+    const M = D.meta, S = D.summary, eval_ = /\/eval\//.test(M.sheet || '');
+    const sheetW = eval_ ? '' : ` <span class="rv-warn">Лист боевой: таблица привода подогнана по всем записям, включая эту; оценочный лист (только обучающие) — config/eval/, после слияния калибровки прогон перегенерировать.</span>`;
+    const inj = M.inject && M.inject.t0 != null ? ` Аномалия: <b>${M.inject.ru.toLowerCase()}</b>, с ${fmtT(M.inject.t0 - M.t0)}; внесена в записанные входы тележек (${M.inject.src}).` : '';
+    $('rvNote').innerHTML = `Запись <b>${M.run}</b> (${fmtT(M.dur)}, ${(S.path_m / 1000).toFixed(2)} км) — ${M.split === 'holdout_scored' ? 'отложенная: в подборе карты и разбиения не участвовала' : 'обучающая'}. `
+      + `Оценку посчитал пакет ROS 2 офлайн той же связкой, что нода (Runner, лист ${M.sheet}, карта ${M.map || 'нет'}); сообщения в порядке записи, GNSS в оценщик — только первые 3 с, дальше он только эталон.${inj}${sheetW}`;
+    $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране — метры от первой точки GNSS master (x — восток, y — север). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
+    $('rvSub').textContent = `экспорт ${M.made || ''}${M.git ? ', git ' + M.git : ''}`;
+  }
+
+  // ---------------------------------------------------------------- проигрыватель
+  $('rvPlay').addEventListener('click', () => { if (!D || mode !== 'replay') return; if (RP.t >= D.meta.dur - 0.05) RP.t = 0; RP.play = !RP.play; syncPlay(); });
+  function syncPlay() { $('rvPlay').textContent = RP.play ? 'Пауза' : 'Пуск'; $('rvPlay').setAttribute('aria-pressed', RP.play); }
+  document.querySelectorAll('[data-rvsp]').forEach(b => b.addEventListener('click', () => { RP.speed = +b.dataset.rvsp; document.querySelectorAll('[data-rvsp]').forEach(x => x.setAttribute('aria-checked', x === b)); }));
+  document.querySelectorAll('[data-rvwin]').forEach(b => b.addEventListener('click', () => { winSec = +b.dataset.rvwin; document.querySelectorAll('[data-rvwin]').forEach(x => x.setAttribute('aria-checked', x === b)); renderPanels(true); }));
+  document.querySelectorAll('[data-rvzoom]').forEach(b => b.addEventListener('click', () => { zoom = b.dataset.rvzoom; document.querySelectorAll('[data-rvzoom]').forEach(x => x.setAttribute('aria-checked', x === b)); }));
+  $('rvScrub').addEventListener('input', e => { if (!D || mode !== 'replay') return; RP.t = +e.target.value / 1000 * D.meta.dur; renderPanels(true); });
+  addEventListener('keydown', e => {
+    if (mode !== 'replay' || (e.target.closest && e.target.closest('input, select, textarea'))) return;
+    if (e.key === ' ') { e.preventDefault(); $('rvPlay').click(); }
+    if (e.key === 'ArrowRight') RP.t = Math.min(D ? D.meta.dur : 0, RP.t + 10);
+    if (e.key === 'ArrowLeft') RP.t = Math.max(0, RP.t - 10);
+  });
+
+  // ---------------------------------------------------------------- помощники
+  const fmtT = s => { s = Math.max(0, s); const m = Math.floor(s / 60), x = Math.floor(s % 60); return `${m}:${String(x).padStart(2, '0')}`; };
+  const f = (x, d = 2) => (x === null || x === undefined || !isFinite(x)) ? '—' : x.toFixed(d);
+  function upper(arr, t) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= t) lo = m + 1; else hi = m; } return lo; }   // число элементов <= t
+  function fit(c) {
+    const dpr = Math.min(2, devicePixelRatio || 1), w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return [x, w, h];
+  }
+  const css = () => { const cs = getComputedStyle(document.documentElement); return { fg: cs.getPropertyValue('--fg').trim() || '#000', line: cs.getPropertyValue('--line').trim() || 'rgba(0,0,0,.12)' }; };
+  const FONT = '11px system-ui, "Segoe UI", Roboto, sans-serif';
+  function nowT() { return !D || !D.n ? 0 : mode === 'live' ? D.t[D.n - 1] : RP.t; }
+  function viewRange() {
+    if (!D || !D.n) return [0, 60];
+    const tc = nowT(), tEnd = D.t[D.n - 1];
+    if (winSec === 0) return mode === 'live' ? [D.t[0], Math.max(tEnd, D.t[0] + 10)] : [0, D.meta.dur];
+    const tMin = mode === 'live' ? D.t[0] : 0;
+    return tc - winSec < tMin ? [tMin, tMin + winSec] : [tc - winSec, tc];
+  }
+  function strokeSeries(c, T, Y, i0, i1, X, Yp, stride) {
+    c.beginPath(); let pen = false;
+    for (let i = i0; i < i1; i += stride) {
+      const y = Y[i];
+      if (!isFinite(y) || !isFinite(T[i])) { pen = false; continue; }
+      const px = X(T[i]), py = Yp(y);
+      if (pen) c.lineTo(px, py); else { c.moveTo(px, py); pen = true; }
+    }
+    c.stroke();
+  }
+  function timeAxis(c, t0, t1, X, y, w) {
+    const span = t1 - t0, steps = [10, 30, 60, 120, 300, 600];
+    const st = steps.find(s => span / s <= 6) || 1200;
+    c.textAlign = 'center'; c.textBaseline = 'top'; c.globalAlpha = .55;
+    for (let t = Math.ceil(t0 / st) * st; t <= t1; t += st) { const x = X(t); if (t >= 0 && x > 30 && x < w - 16) c.fillText(fmtT(t), x, y); }
+    c.globalAlpha = 1;
+  }
+  function injSpans(i0, i1) {
+    const out = []; let a = -1;
+    for (let i = i0; i < i1; i++) { const on = D.inj[i] === 1; if (on && a < 0) a = i; if (!on && a >= 0) { out.push([a, i - 1]); a = -1; } }
+    if (a >= 0) out.push([a, i1 - 1]);
+    return out;
+  }
+
+  // ---------------------------------------------------------------- графики
+  function drawSpeed() {
+    const [c, w, h] = fit($('rvSpeed')), { fg, line } = css();
+    c.clearRect(0, 0, w, h);
+    const PL = 34, PR = 8, PT = 8, PB = 18, pw = w - PL - PR, ph = h - PT - PB;
+    const [t0, t1] = viewRange();
+    const X = t => PL + (t - t0) / Math.max(1e-6, t1 - t0) * pw;
+    let i0 = 0, i1 = 0;
+    if (D && D.n) { i0 = Math.max(0, upper(D.t, t0) - 1); i1 = Math.min(D.n, upper(D.t, t1) + 1); }
+    let top = 20;
+    for (let i = i0; i < i1; i++) { const a = [(D.v[i] + 2 * D.sv[i]) * 3.6, D.gv[i] * 3.6, D.nv[i] * 3.6, D.fr[i], D.rr[i]]; for (const x of a) if (isFinite(x) && x < 120) top = Math.max(top, x); }
+    const ymax = Math.ceil((top + 3) / 10) * 10, Y = k => PT + ph - Math.min(ymax, Math.max(0, k)) / ymax * ph;
+    c.font = FONT; c.strokeStyle = line; c.lineWidth = 1; c.fillStyle = fg;
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (let y = 0; y <= ymax; y += ymax > 60 ? 20 : 10) { c.beginPath(); c.moveTo(PL, Y(y) + .5); c.lineTo(w - PR, Y(y) + .5); c.stroke(); c.globalAlpha = .55; c.fillText(y, PL - 6, Y(y)); c.globalAlpha = 1; }
+    timeAxis(c, t0, t1, X, h - PB + 4, w);
+    if (!D || !D.n) return;
+    c.save(); c.beginPath(); c.rect(PL, PT - 2, pw, ph + 4); c.clip();
+    for (const [a, b] of injSpans(i0, i1)) { c.fillStyle = 'rgba(214,68,58,0.12)'; c.fillRect(X(D.t[a]), PT, Math.max(2, X(D.t[b]) - X(D.t[a])), ph); }
+    const stride = Math.max(1, Math.floor((i1 - i0) / (pw * 1.5)));
+    // полоса ±2σ модели
+    c.beginPath(); let started = false;
+    for (let i = i0; i < i1; i += stride) { if (!isFinite(D.v[i])) continue; const px = X(D.t[i]), py = Y((D.v[i] + 2 * D.sv[i]) * 3.6); if (started) c.lineTo(px, py); else { c.moveTo(px, py); started = true; } }
+    for (let i = i1 - 1; i >= i0; i -= stride) { if (!isFinite(D.v[i])) continue; c.lineTo(X(D.t[i]), Y((D.v[i] - 2 * D.sv[i]) * 3.6)); }
+    c.closePath(); c.fillStyle = 'rgba(14,154,167,0.20)'; c.fill();
+    c.lineJoin = 'round';
+    c.strokeStyle = C_BOG; c.lineWidth = 1; c.globalAlpha = .55; c.setLineDash([2, 3]);
+    strokeSeries(c, D.t, D.fr, i0, i1, X, Y, stride); strokeSeries(c, D.t, D.rr, i0, i1, X, Y, stride);
+    c.setLineDash([]); c.globalAlpha = 1;
+    c.strokeStyle = C_NAIVE; c.lineWidth = 1.5; strokeSeries(c, D.t, D.nv, i0, i1, X, k => Y(k * 3.6), stride);
+    c.strokeStyle = C_OK; c.lineWidth = 2.2; strokeSeries(c, D.t, D.v, i0, i1, X, k => Y(k * 3.6), stride);
+    c.strokeStyle = fg; c.lineWidth = 1.3; c.globalAlpha = .85; c.setLineDash([5, 4]); strokeSeries(c, D.t, D.gv, i0, i1, X, k => Y(k * 3.6), stride); c.setLineDash([]); c.globalAlpha = 1;
+    c.restore();
+    const tc = nowT();
+    if (tc >= t0 && tc <= t1) { c.strokeStyle = fg; c.globalAlpha = .45; c.beginPath(); c.moveTo(X(tc) + .5, PT); c.lineTo(X(tc) + .5, PT + ph); c.stroke(); c.globalAlpha = 1; }
+  }
+  function drawStrip() {
+    const [c, w, h] = fit($('rvStrip'));
+    c.clearRect(0, 0, w, h);
+    if (!D || !D.n) return;
+    const PL = 34, PR = 8, pw = w - PL - PR, [t0, t1] = viewRange(), X = t => PL + (t - t0) / Math.max(1e-6, t1 - t0) * pw;
+    const i0 = Math.max(0, upper(D.t, t0) - 1), i1 = Math.min(D.n, upper(D.t, t1) + 1);
+    let a = i0;
+    for (let i = i0 + 1; i <= i1; i++) {
+      if (i < i1 && D.mode[i] === D.mode[a]) continue;
+      const m = MODES[D.mode[a]] || 'DEGRADED';
+      c.fillStyle = M_COL[m]; const x0 = Math.max(PL, X(D.t[a])), x1 = Math.min(PL + pw, X(D.t[Math.min(i, D.n - 1)]));
+      if (x1 > x0) c.fillRect(x0, 0, Math.max(1, x1 - x0), h);
+      a = i;
+    }
+  }
+  function drawErr(id, T, A, B, bandT, bandK, unitK, minR, capR = 1e9) {
+    const [c, w, h] = fit($(id)), { fg, line } = css();
+    c.clearRect(0, 0, w, h);
+    const PL = 34, PR = 8, PT = 6, PB = 16, pw = w - PL - PR, ph = h - PT - PB;
+    const [t0, t1] = viewRange(), X = t => PL + (t - t0) / Math.max(1e-6, t1 - t0) * pw;
+    let j0 = 0, j1 = 0;
+    if (T && T.length) { j0 = Math.max(0, upper(T, t0) - 1); j1 = Math.min(T.length, upper(T, t1) + 1); }
+    const vals = [];
+    for (let j = j0; j < j1; j++) { for (const arr of [A, B]) { const x = arr[j] * unitK; if (isFinite(x)) vals.push(Math.abs(x)); } }
+    vals.sort((p, q) => p - q);
+    const p98 = vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.98))] : 0;
+    const pmax = vals.length ? vals[vals.length - 1] : 0;
+    const R = Math.max(minR, niceCeil(Math.max(p98 * 1.15, Math.min(pmax, capR))));
+    const Y = v => PT + ph / 2 - Math.max(-R, Math.min(R, v)) / R * ph / 2;
+    c.font = FONT; c.fillStyle = fg; c.strokeStyle = line; c.lineWidth = 1; c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (const v of [-R, 0, R]) { c.beginPath(); c.moveTo(PL, Y(v) + .5); c.lineTo(w - PR, Y(v) + .5); c.stroke(); c.globalAlpha = .55; c.fillText((v > 0 ? '+' : '') + fmtNum(v), PL - 6, Y(v)); c.globalAlpha = 1; }
+    timeAxis(c, t0, t1, X, h - PB + 3, w);
+    if (!D || !D.n) return;
+    c.save(); c.beginPath(); c.rect(PL, PT, pw, ph); c.clip();
+    const i0 = Math.max(0, upper(D.t, t0) - 1), i1 = Math.min(D.n, upper(D.t, t1) + 1);
+    for (const [a, b] of injSpans(i0, i1)) { c.fillStyle = 'rgba(214,68,58,0.12)'; c.fillRect(X(D.t[a]), PT, Math.max(2, X(D.t[b]) - X(D.t[a])), ph); }
+    if (bandK) {
+      const st = Math.max(1, Math.floor((i1 - i0) / (pw * 1.5)));
+      c.beginPath(); let s0 = false;
+      for (let i = i0; i < i1; i += st) { const b = D[bandK][i] * 2 * bandT; if (!isFinite(b)) continue; const px = X(D.t[i]); if (s0) c.lineTo(px, Y(b)); else { c.moveTo(px, Y(b)); s0 = true; } }
+      for (let i = i1 - 1; i >= i0; i -= st) { const b = D[bandK][i] * 2 * bandT; if (!isFinite(b)) continue; c.lineTo(X(D.t[i]), Y(-b)); }
+      c.closePath(); c.fillStyle = 'rgba(14,154,167,0.16)'; c.fill();
+    }
+    const stride = Math.max(1, Math.floor((j1 - j0) / (pw * 1.5)));
+    c.lineJoin = 'round';
+    c.strokeStyle = C_NAIVE; c.lineWidth = 1.4; strokeSeries(c, T, B, j0, j1, X, v => Y(v * unitK), stride);
+    c.strokeStyle = C_OK; c.lineWidth = 1.8; strokeSeries(c, T, A, j0, j1, X, v => Y(v * unitK), stride);
+    c.restore();
+    const tc = nowT();
+    if (tc >= t0 && tc <= t1) { c.strokeStyle = fg; c.globalAlpha = .45; c.beginPath(); c.moveTo(X(tc) + .5, PT); c.lineTo(X(tc) + .5, PT + ph); c.stroke(); c.globalAlpha = 1; }
+  }
+  function niceCeil(x) { if (!(x > 0)) return 0; const e = Math.pow(10, Math.floor(Math.log10(x))), m = x / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e; }
+  function fmtNum(v) { const a = Math.abs(v); return a >= 10 ? v.toFixed(0) : a >= 1 ? v.toFixed(1).replace(/\.0$/, '') : v.toFixed(2); }
+  function drawMap() {
+    const [c, w, h] = fit($('rvMap')), { fg, line } = css();
+    c.clearRect(0, 0, w, h);
+    if (!D || !D.n) return;
+    const i = Math.max(0, upper(D.t, nowT()) - 1);
+    // границы: весь маршрут — по трассе GNSS (прогон) или по накопленным точкам (живой)
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    const acc = (x, y) => { if (isFinite(x) && isFinite(y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } };
+    const TR = D.track || { x: [], y: [] };
+    if (zoom === 'near' && isFinite(D.x[i])) { const r = 220; acc(D.x[i] - r, D.y[i] - r); acc(D.x[i] + r, D.y[i] + r); }
+    else {
+      for (let k = 0; k < TR.x.length; k += 3) acc(TR.x[k], TR.y[k]);
+      if (!isFinite(x0)) for (let k = 0; k < D.n; k += 5) { acc(D.x[k], D.y[k]); acc(D.gx[k], D.gy[k]); }
+    }
+    if (!isFinite(x0)) { c.fillStyle = fg; c.globalAlpha = .5; c.font = FONT; c.textAlign = 'center'; c.fillText('положение ещё не выставлено', w / 2, h / 2); c.globalAlpha = 1; return; }
+    const pad = 14, sc = Math.min((w - 2 * pad) / Math.max(1, x1 - x0), (h - 2 * pad) / Math.max(1, y1 - y0));
+    const ox = (w - (x1 - x0) * sc) / 2 - x0 * sc, oy = (h + (y1 - y0) * sc) / 2 + y0 * sc;
+    const P = (x, y) => [ox + x * sc, oy - y * sc];
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    // трасса GNSS
+    c.strokeStyle = fg; c.globalAlpha = .16; c.lineWidth = 6; c.beginPath();
+    let pen = false;
+    for (let k = 0; k < TR.x.length; k++) { const [px, py] = P(TR.x[k], TR.y[k]); if (pen) c.lineTo(px, py); else { c.moveTo(px, py); pen = true; } }
+    if (!TR.x.length) { for (let k = 0; k <= i; k++) { if (!isFinite(D.gx[k])) continue; const [px, py] = P(D.gx[k], D.gy[k]); if (pen) c.lineTo(px, py); else { c.moveTo(px, py); pen = true; } } }
+    c.stroke(); c.globalAlpha = 1;
+    const trail = (XA, YA, col, lw) => {
+      const st = Math.max(1, Math.floor(i / 3000)); c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); let p = false;
+      for (let k = 0; k <= i; k += st) { if (!isFinite(XA[k])) { p = false; continue; } const [px, py] = P(XA[k], YA[k]); if (p) c.lineTo(px, py); else { c.moveTo(px, py); p = true; } }
+      c.stroke();
+    };
+    trail(D.nx, D.ny, C_NAIVE, 1.6);
+    trail(D.x, D.y, C_OK, 2.2);
+    // текущие точки: эталон, модель, база; ошибка модели — отрезок до эталона
+    let gi = i; while (gi > 0 && !isFinite(D.gx[gi]) && i - gi < 30) gi--;
+    const gOk = isFinite(D.gx[gi]), mOk = isFinite(D.x[i]), nOk = isFinite(D.nx[i]);
+    if (gOk && mOk) { const [a, b] = P(D.gx[gi], D.gy[gi]), [p, q] = P(D.x[i], D.y[i]); c.strokeStyle = C_BAD; c.lineWidth = 1.2; c.beginPath(); c.moveTo(a, b); c.lineTo(p, q); c.stroke(); }
+    if (nOk) { const [p, q] = P(D.nx[i], D.ny[i]); c.fillStyle = C_NAIVE; c.beginPath(); c.arc(p, q, 4, 0, 7); c.fill(); }
+    if (mOk) { const [p, q] = P(D.x[i], D.y[i]); c.fillStyle = C_OK; c.beginPath(); c.arc(p, q, 5, 0, 7); c.fill(); }
+    if (gOk) { const [p, q] = P(D.gx[gi], D.gy[gi]); c.strokeStyle = fg; c.lineWidth = 1.5; c.beginPath(); c.arc(p, q, 7, 0, 7); c.stroke(); }
+    // масштабная линейка и север
+    const want = (w - 2 * pad) * 0.25 / sc, L = niceCeil(want) / (niceCeil(want) / want > 1.8 ? 2 : 1);
+    c.strokeStyle = fg; c.fillStyle = fg; c.lineWidth = 1.5; c.globalAlpha = .7;
+    c.beginPath(); c.moveTo(pad, h - pad); c.lineTo(pad + L * sc, h - pad); c.stroke();
+    c.font = FONT; c.textAlign = 'left'; c.textBaseline = 'bottom'; c.fillText(`${L >= 1000 ? (L / 1000) + ' км' : L + ' м'}`, pad, h - pad - 3);
+    c.textAlign = 'right'; c.textBaseline = 'top'; c.fillText('С ↑', w - 6, 6); c.globalAlpha = 1;
+  }
+
+  // ---------------------------------------------------------------- панели
+  function statusHTML() {
+    if (!D || !D.n) return '<div class="rv-h"><b>Состояние оценщика</b></div><div class="rv-note">нет данных</div>';
+    const i = Math.max(0, upper(D.t, nowT()) - 1);
+    const m = MODES[D.mode[i]] || 'DEGRADED', fl = D.fl[i] | 0;
+    const flag = (on, txt, col, title) => `<span class="rv-flag ${on ? 'on' : ''}" style="${on ? `color:${col}` : ''}" title="${title}">${txt}</span>`;
+    const ico = (window.__tvIcons || {})[m] || '';
+    const bog = (name, val, st) => {
+      const [txt, col] = BST[st] || BST[9];
+      return `<div class="rv-bog"><div class="k">${name}</div><div class="big num">${f(val, 1)} <span class="k">км/ч</span></div><span class="rv-chip" style="${col ? `color:${col}` : 'opacity:.6'}">${txt}</span></div>`;
+    };
+    const live = D.live;
+    return `<div class="rv-h"><b>Состояние оценщика</b><span class="k num">t = ${fmtT(D.t[i])}${D.inj[i] ? ' · <span style="color:#D6443A">аномалия</span>' : ''}</span></div>
+      <div class="rv-mode" style="color:${m === 'STANDSTILL' ? 'var(--fg)' : M_COL[m]}">${ico ? `<span class="mode-ico">${ico}</span>` : ''}<span>${M_RU[m]}</span></div>
+      <div class="k">${M_SUB[m]}</div>
+      <div class="rv-flags">
+        ${flag(fl & 1, fl & 1 ? 'достоверно' : 'недостоверно', fl & 1 ? C_OK : C_BAD, 'valid: оценка достоверна (есть принятые показания колёс)')}
+        ${flag(fl & 2, 'срыв', '#5AA9D6', 'slip: признак срыва сцепления')}
+        ${flag(fl & 4, 'стоим или скользим?', '#5AA9D6', 'ambiguous: все колёса в срыве, скорость по колёсам не различить')}
+        ${flag(!(fl & 8), 'нет ручки', C_BAD, 'handle_ok = false: нет свежей команды ручки')}
+        ${flag(fl & 16, 'колёса молчат', C_BAD, 'wheels_stale: нет показаний тележек дольше 1 с — только модель')}
+        ${flag(fl & 32, 'положение выставлено', C_OK, 'pos_ready: выставка по GNSS прошла')}
+      </div>
+      <div class="rv-bogies">${bog('Передняя тележка', D.fr[i], D.b0[i])}${bog('Задняя тележка', D.rr[i], D.b1[i])}</div>
+      <div class="rv-kv num">
+        <div><div class="k">модель, км/ч</div><div style="color:${C_OK}">${f(D.v[i] * 3.6, 1)} ± ${f(2 * D.sv[i] * 3.6, 1)}</div></div>
+        <div><div class="k">база, км/ч</div><div style="color:${C_NAIVE}">${f(D.nv[i] * 3.6, 1)}</div></div>
+        <div><div class="k">GNSS, км/ч</div><div>${f(D.gv[i] * 3.6, 1)}</div></div>
+        <div><div class="k">путь, м</div><div>${f(D.s[i], 0)} ± ${f(2 * D.ss[i], 1)}</div></div>
+        <div><div class="k">ручка</div><div>${isFinite(D.h[i]) ? (D.h[i] > 0 ? '+' : '') + D.h[i] : '—'}</div></div>
+        <div><div class="k">принято / отвергнуто</div><div>${isFinite(D.na[i]) ? D.na[i] : '—'} / ${isFinite(D.nr[i]) ? D.nr[i] : '—'}</div></div>
+        <div><div class="k">сцепление μ</div><div>${f(D.mu[i], 3)}</div></div>
+        <div><div class="k">масштаб k<sub>т</sub> / k<sub>б</sub></div><div>${f(D.kt[i], 2)} / ${f(D.kb[i], 2)}</div></div>
+        <div><div class="k">возмущение d, м/с²</div><div>${f(D.d[i], 2)}</div></div>
+      </div>
+      <div class="rv-note">${live ? 'Тележки: «принята/отвергнута» выведены из n_accepted, n_rejected и wheel_healthy статуса (по тележкам причины в сообщении пока нет).' : 'Состояние тележек — последнее решение фильтра по её показанию: принята, отвергнута проверкой правдоподобия или срывом, исключена как неисправная.'}</div>`;
+  }
+  function metricsAt(tc) {
+    const pv = D.pv, pp = D.pp, k = upper(pv.t, tc), r = {};
+    r.nv = k; r.mae = k ? pv.cm[k] / k : NaN; r.maeN = k ? pv.cn[k] / k : NaN; r.cov = k ? pv.cc[k] / k : NaN;
+    const kp = upper(pp.t, tc);
+    r.np = kp; r.h = kp ? pp.ch[kp] / kp : NaN; r.hn = pp.kn[kp] ? pp.chn[kp] / pp.kn[kp] : NaN;
+    // дрейф на курсоре: ошибка на последней паре (вдоль трассы; если оценка ушла с
+    // трассы — в плане) / путь по эталону до неё; в конце прогона — «накопленный дрейф» ТЗ
+    const j = kp - 1, e = x => isFinite(x);
+    r.drift = j >= 0 && pp.sr[j] > 100 ? 100 * (e(pp.al[j]) ? Math.abs(pp.al[j]) : pp.h[j]) / pp.sr[j] : NaN;
+    r.driftN = j >= 0 && pp.sr[j] > 100 ? 100 * (e(pp.aln[j]) ? Math.abs(pp.aln[j]) : pp.hn[j]) / pp.sr[j] : NaN;
+    r.al = j >= 0 ? pp.al[j] : NaN; r.aln = j >= 0 ? pp.aln[j] : NaN;
+    const inj = D.meta && D.meta.inject;
+    if (inj && inj.t0 != null) {
+      const w0 = inj.t0 - D.meta.t0, w1 = w0 + Math.max(inj.dur, inj.eval || 0), te = Math.min(tc, w1);
+      const a = upper(pv.t, w0 - 1e-9), b = upper(pv.t, te);
+      if (b > a) { r.wMae = (pv.cm[b] - pv.cm[a]) / (b - a); r.wMaeN = (pv.cn[b] - pv.cn[a]) / (b - a); }
+      r.w0 = w0; r.w1 = w1;
+    }
+    return r;
+  }
+  function metricsHTML() {
+    if (!D || !D.n) return '<div class="rv-h"><b>Метрики</b></div><div class="rv-note">нет данных</div>';
+    const tc = nowT(), r = metricsAt(tc), S = D.summary, live = D.live;
+    const row = (name, a, b, title) => `<tr title="${title || ''}"><td>${name}</td><td style="color:${C_OK}">${a}</td><td style="color:${C_NAIVE}">${b}</td></tr>`;
+    let rows = row('Скорость: MAE, м/с', f(r.mae, 4), f(r.maeN, 4), 'Средняя абсолютная ошибка против |v| GNSS master, пары по ближайшей метке ≤ 0,05 с')
+      + (live ? '' : row('Дрейф пути, % дистанции', f(r.drift, 3), f(r.driftN, 3), 'Ошибка вдоль трассы на момент курсора / путь по эталону; в конце прогона — «накопленный дрейф» по ТЗ'))
+      + row('Ошибка в плане, средняя, м', f(r.h, 2), f(r.hn, 2), 'Средняя ошибка x, y против GNSS master')
+      + row('Истина в ±2σ скорости', isFinite(r.cov) ? (100 * r.cov).toFixed(1) + ' %' : '—', '—', 'Доля пар, где |ошибка| ≤ 2σ_v. У честной σ около 95 %');
+    if (r.w0 !== undefined) rows += row(tc < r.w0 ? 'В окне аномалии: MAE, м/с (окно впереди)' : 'В окне аномалии: MAE, м/с', f(r.wMae, 3), f(r.wMaeN, 3), 'Ошибка скорости только в окне аномалии');
+    let foot = '';
+    if (!live && S) {
+      const w = S.window;
+      foot = `<div class="rv-note"><b>Итог прогона</b> (tools/export_replay.py, все ${S.pairs_v} пар): MAE ${f(S.v_mae, 4)} / ${f(S.naive_v_mae, 4)} м/с, дрейф ${f(S.drift_pct, 3)} / ${f(S.naive_drift_pct, 3)} %, в плане ${f(S.p2d_mean, 2)} / ${f(S.naive_p2d_mean, 2)} м, в ±2σ ${f(100 * S.cov2s_v, 1)} %.`
+        + (w ? ` В окне аномалии: MAE ${f(w.v_mae, 3)} / ${f(w.naive_v_mae, 3)} м/с; ошибка пути к концу окна ${f(w.along_end, 1)} / ${f(w.naive_along_end, 1)} м.` : '')
+        + ` Против скорости rover: MAE модели ${f(S.v_mae_vs_rover, 4)} м/с.</div>`;
+    } else if (live) foot = '<div class="rv-note">По живому потоку с троттлингом 10 Гц: пары с эталоном GNSS — по совпадению меток ≤ 0,05 с, числа приблизительные. Точные — в режиме «Прогон данных комиссии».</div>';
+    return `<div class="rv-h"><b>Метрики</b><span class="k">${live ? 'с подключения' : 'с начала прогона до курсора'}</span></div>
+      <table class="rv-tbl num"><thead><tr><th></th><th>модель</th><th>база «колесо»</th></tr></thead><tbody>${rows}</tbody></table>${foot}`;
+  }
+  let lastPanel = 0;
+  function renderPanels(force) {
+    const now = performance.now();
+    if (!force && now - lastPanel < 100) return;
+    lastPanel = now;
+    $('rvStatus').innerHTML = statusHTML();
+    $('rvMetrics').innerHTML = metricsHTML();
+    if (mode === 'replay' && D && D.meta) {
+      $('rvTime').textContent = `${fmtT(RP.t)} / ${fmtT(D.meta.dur)}`;
+      if (document.activeElement !== $('rvScrub')) $('rvScrub').value = Math.round(RP.t / D.meta.dur * 1000);
+    }
+    const live = mode === 'live';
+    $('rvErrSh').textContent = live ? 'Ошибка в плане относительно GNSS, м' : 'Ошибка пути вдоль трассы относительно GNSS, м';
+    $('rvErrSk').textContent = live ? '' : 'полоса — ±2σ пути';
+  }
+
+  // ---------------------------------------------------------------- живой ROS 2 (rosbridge v2)
+  const SUBS = [
+    ['/result/velocity', 'tram_vehicle_msgs/msg/VelocitySensor', 100],
+    ['/result/position', 'nav_msgs/msg/Odometry', 100],
+    ['/tram/estimator_status', 'tram_msgs/msg/EstimatorStatus', 100],
+    ['/vehicle/front_bogie_velocity', 'tram_vehicle_msgs/msg/VelocitySensor', 100],
+    ['/vehicle/rear_bogie_velocity', 'tram_vehicle_msgs/msg/VelocitySensor', 100],
+    ['/vehicle/driver_position_cmd', 'tram_vehicle_msgs/msg/DriverControllerCommand', 100],
+    ['/sensing/gnss/master/vel', 'geometry_msgs/msg/TwistStamped', 100],
+    ['/sensing/gnss/master/fix', 'sensor_msgs/msg/NavSatFix', 200],
+  ];
+  const LV = { ws: null, want: false, retry: 0, timer: 0, state: 'idle', last: {}, cnt: {}, rateT: 0, rates: {}, lastMsg: 0, data: null, T0: null, fc: null, nodeHz: null, rowT: -1, frame: null, gnssPath: 0, gPrev: null, err: '' };
+  function defaultUrl() {
+    const q = qs.get('ros'); if (q) return q;
+    const st = store.get('tv.ros'); if (st) return st;
+    if (location.protocol === 'https:') return `wss://${location.host}/ros`;
+    if (location.protocol === 'http:' && !/^(localhost|127\.|\[::1\])/.test(location.hostname)) return `ws://${location.host}/ros`;
+    return 'ws://localhost:9090';
+  }
+  $('rvUrl').value = defaultUrl();
+  $('rvUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { liveStop(); liveStart(); } });
+  $('rvConn').addEventListener('click', () => { if (LV.want) liveStop(); else liveStart(); });
+  function setLiveState(st, txt) {
+    LV.state = st;
+    const el = $('rvLiveSt'), col = st === 'on' ? 'var(--ok)' : st === 'wait' ? 'var(--warn)' : st === 'off' ? 'var(--bad)' : 'var(--fg)';
+    el.style.color = col; el.style.opacity = st === 'idle' ? '.7' : '1';
+    el.lastElementChild.textContent = txt;
+    $('rvConn').textContent = LV.want ? 'Отключить' : 'Подключить';
+    $('rvConn').setAttribute('aria-pressed', LV.want);
+  }
+  function enterLive() {
+    if (!LV.data) { LV.data = emptyData(); LV.data.live = true; D = LV.data; }
+    $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master (только эталон для показа: нода берёт GNSS лишь в окне выставки) через rosbridge, 10 Гц на топик. Адрес — поле выше или <b>?ros=wss://хост/ros</b>.';
+    $('rvMapNote').textContent = 'Плоскость: выход ноды (MGRS/UTM переводится в метры от первой точки GNSS; разрыв квадрата 100 км снимается).';
+    $('rvSub').textContent = '';
+    if (!LV.want && (qs.has('ros') || store.get('tv.liveAuto') === '1')) liveStart();
+    else if (!LV.want) setLiveState('idle', 'не подключено');
+  }
+  function liveStart() {
+    const url = $('rvUrl').value.trim();
+    if (!/^wss?:\/\//.test(url)) { setLiveState('off', 'адрес должен начинаться с ws:// или wss://'); return; }
+    store.set('tv.ros', url); store.set('tv.liveAuto', '1');
+    LV.want = true; LV.retry = 0; liveConnect(url);
+  }
+  function liveStop() {
+    LV.want = false; clearTimeout(LV.timer);
+    if (LV.ws) { try { LV.ws.onclose = null; LV.ws.close(); } catch (_) {} LV.ws = null; }
+    store.set('tv.liveAuto', '0');
+    if ($('rvLiveSt')) setLiveState('idle', 'не подключено');
+  }
+  function liveConnect(url) {
+    clearTimeout(LV.timer);
+    setLiveState('wait', 'подключение…');
+    let ws;
+    try { ws = new WebSocket(url); } catch (e) { LV.err = String(e.message || e); scheduleRetry(url); return; }
+    LV.ws = ws;
+    ws.onopen = () => {
+      LV.retry = 0; LV.lastMsg = performance.now();
+      setLiveState('on', 'на связи, ждём данных');
+      for (const [topic, type, thr] of SUBS) ws.send(JSON.stringify({ op: 'subscribe', id: 'tv:' + topic, topic, type, throttle_rate: thr, queue_length: 1 }));
+    };
+    ws.onmessage = ev => { if (typeof ev.data === 'string') onRos(ev.data); };
+    ws.onerror = () => { LV.err = 'ошибка соединения'; };
+    ws.onclose = () => { LV.ws = null; if (LV.want) scheduleRetry(url); };
+  }
+  function scheduleRetry(url) {
+    const wait = Math.min(15, Math.pow(2, LV.retry++));
+    let left = wait;
+    const tick = () => { if (!LV.want) return; setLiveState('off', `нет связи, повтор через ${left} с`); if (left-- <= 0) liveConnect(url); else LV.timer = setTimeout(tick, 1000); };
+    tick();
+  }
+  const stampOf = h => h && h.stamp ? h.stamp.sec + h.stamp.nanosec * 1e-9 : NaN;
+  function onRos(raw) {
+    let m; try { m = JSON.parse(raw); } catch (_) { return; }
+    if (m.op === 'status' && m.level === 'error') { LV.err = m.msg; return; }
+    if (m.op !== 'publish') return;
+    LV.lastMsg = performance.now();
+    LV.cnt[m.topic] = (LV.cnt[m.topic] || 0) + 1;
+    const x = m.msg, L = LV.last;
+    switch (m.topic) {
+      case '/result/velocity': L.vel = { t: stampOf(x.header), v: x.velocity }; break;
+      case '/result/position': { const p = x.pose.pose.position; L.pos = { t: stampOf(x.header), x: p.x, y: p.y, z: p.z, ss: Math.sqrt(Math.max(0, x.pose.covariance[0] || 0)) }; break; }
+      case '/tram/estimator_status':
+        L.st = x;
+        if (LV.fc && x.frame_count > LV.fc.n) { const dt = (performance.now() - LV.fc.w) / 1000; if (dt > 1.5) { LV.nodeHz = (x.frame_count - LV.fc.n) / dt; LV.fc = { n: x.frame_count, w: performance.now() }; } }
+        else LV.fc = { n: x.frame_count, w: performance.now() };
+        break;
+      case '/vehicle/front_bogie_velocity': L.fr = { t: stampOf(x.header), v: x.velocity }; break;
+      case '/vehicle/rear_bogie_velocity': L.rr = { t: stampOf(x.header), v: x.velocity }; break;
+      case '/vehicle/driver_position_cmd': L.h = { t: stampOf(x.header), v: x.position }; break;
+      case '/sensing/gnss/master/vel': {
+        const t = stampOf(x.header), v = Math.hypot(x.twist.linear.x, x.twist.linear.y);
+        L.gv = { t, v };
+        if (L.vel && Math.abs(L.vel.t - t) <= 0.05 && LV.T0 !== null) livePairV(t - LV.T0, L.vel.v - v, naiveNow() - v, L.st ? Math.abs(L.vel.v - v) <= 2 * L.st.sigma_v : 0);
+        break;
+      }
+      case '/sensing/gnss/master/fix': {
+        if (!isFinite(x.latitude) || !isFinite(x.longitude)) break;
+        const t = stampOf(x.header), g = geoLocal(x.latitude, x.longitude);
+        L.gf = { t, x: g[0], y: g[1], U: g[2] };
+        if (LV.gPrev) { const d = Math.hypot(g[0] - LV.gPrev[0], g[1] - LV.gPrev[1]); if (d > 0.3 && d < 50) { LV.gnssPath += d; LV.gPrev = g; } } else LV.gPrev = g;
+        // ошибка в плане — только когда выход ноды в абсолютной системе (MGRS/UTM): у локальной
+        // системы ноды начало (первая точка master в записи) странице неизвестно
+        if (L.pos && Math.abs(L.pos.t - t) <= 0.1 && LV.T0 !== null) { const q = posLocal(L.pos.x, L.pos.y, g); if (q && !GEO.local) livePairP(t - LV.T0, Math.hypot(q[0] - g[0], q[1] - g[1])); }
+        break;
+      }
+    }
+  }
+  // Плоскость: выход ноды — MGRS/UTM (абсолютные метры, возможен перенос квадрата
+  // 100 км) или локальная система от первой точки master. GNSS переводится в UTM той
+  // же зоны; на экран — метры от первой точки GNSS, которую увидела страница.
+  const GEO = { zone: null, U0: null, K: null, prev: null, unw: [0, 0], local: null, sh: [0, 0], shSet: false };
+  function utmEN(lat, lon, zone) {
+    const a = 6378137, fl = 1 / 298.257223563, n = fl / (2 - fl);
+    const A = a / (1 + n) * (1 + n * n / 4 + n ** 4 / 64);
+    const al = [n / 2 - 2 * n * n / 3 + 5 * n ** 3 / 16 + 41 * n ** 4 / 180, 13 * n * n / 48 - 3 * n ** 3 / 5 + 557 * n ** 4 / 1440, 61 * n ** 3 / 240 - 103 * n ** 4 / 140, 49561 * n ** 4 / 161280];
+    const phi = lat * Math.PI / 180, dl = (lon - (zone * 6 - 183)) * Math.PI / 180, c = 2 * Math.sqrt(n) / (1 + n);
+    const t = Math.sinh(Math.atanh(Math.sin(phi)) - c * Math.atanh(c * Math.sin(phi)));
+    const xi = Math.atan(t / Math.cos(dl)), eta = Math.atanh(Math.sin(dl) / Math.sqrt(1 + t * t));
+    let E = eta, N = xi;
+    for (let j = 1; j <= 4; j++) { E += al[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta); N += al[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta); }
+    return [500000 + 0.9996 * A * E, 0.9996 * A * N];
+  }
+  function geoLocal(lat, lon) {
+    if (GEO.zone === null) { GEO.zone = Math.floor((lon + 180) / 6) + 1; GEO.U0 = utmEN(lat, lon, GEO.zone); GEO.ll0 = [lat, lon]; }
+    const U = utmEN(lat, lon, GEO.zone);
+    return [U[0] - GEO.U0[0], U[1] - GEO.U0[1], U];
+  }
+  function posLocal(x, y, gref) {
+    if (!isFinite(x) || !isFinite(y)) return null;
+    const absFrame = Math.max(Math.abs(x), Math.abs(y)) > 20000;
+    if (!absFrame) {                                    // локальная система ноды (ENU/equirect от первой точки master)
+      GEO.local = true;
+      return [x, y];
+    }
+    GEO.local = false;
+    // снять перенос квадрата MGRS (скачок на ±100 км между соседними кадрами)
+    if (GEO.prev) { for (const k of [0, 1]) { const d = (k ? y : x) - GEO.prev[k]; if (Math.abs(d) > 50000) GEO.unw[k] -= Math.round(d / 1e5) * 1e5; } }
+    GEO.prev = [x, y];
+    const ux = x + GEO.unw[0], uy = y + GEO.unw[1];
+    if (GEO.K === null && gref && gref[2]) GEO.K = [Math.round((gref[2][0] - ux) / 1e5) * 1e5, Math.round((gref[2][1] - uy) / 1e5) * 1e5];
+    if (GEO.K === null || GEO.U0 === null) return null;
+    return [ux + GEO.K[0] - GEO.U0[0], uy + GEO.K[1] - GEO.U0[1]];
+  }
+  function naiveNow() {
+    const L = LV.last, now = L.vel ? L.vel.t : 0, vals = [];
+    for (const k of ['fr', 'rr']) if (L[k] && isFinite(L[k].v) && now - L[k].t <= 1.0) vals.push(L[k].v);
+    return vals.length ? Math.max(0, vals.reduce((a, b) => a + b, 0) / vals.length / 3.6) : NaN;
+  }
+  function livePairV(t, em, en, c2) { const pv = LV.data.pv, k = pv.t.length; pv.t.push(t); pv.em.push(em); pv.en.push(en); pv.c2.push(c2 ? 1 : 0); pv.cm.push(pv.cm[k] + Math.abs(em)); pv.cn.push(pv.cn[k] + (isFinite(en) ? Math.abs(en) : 0)); pv.cc.push(pv.cc[k] + (c2 ? 1 : 0)); }
+  function livePairP(t, h) { const pp = LV.data.pp, k = pp.t.length; pp.t.push(t); pp.al.push(NaN); pp.aln.push(NaN); pp.h.push(h); pp.hn.push(NaN); pp.sr.push(LV.gnssPath); pp.ch.push(pp.ch[k] + h); pp.chn.push(pp.chn[k]); pp.kn.push(pp.kn[k]); }
+  function liveRow() {
+    const L = LV.last, d = LV.data;
+    if (!L.vel || L.vel.t === LV.rowT) return;
+    if (LV.T0 === null) { LV.T0 = L.vel.t; prefix(d); }
+    if (d.n && L.vel.t < LV.rowT - 5) { LV.data = emptyData(); LV.data.live = true; LV.T0 = L.vel.t; prefix(LV.data); D = LV.data; Object.assign(GEO, { prev: null, unw: [0, 0], K: null, sh: [0, 0], shSet: false }); LV.gnssPath = 0; LV.gPrev = null; return liveRow(); }   // запись пошла заново (--loop)
+    LV.rowT = L.vel.t;
+    const st = L.st || {}, t = L.vel.t - LV.T0, dd = LV.data;
+    const pos = L.pos ? posLocal(L.pos.x, L.pos.y, L.gf ? [L.gf.x, L.gf.y, L.gf.U] : null) : null;
+    // локальная система ноды: для показа трасса GNSS совмещается с моделью по первой паре
+    if (GEO.local && pos && L.gf && !GEO.shSet && Math.abs(L.gf.t - L.vel.t) < 0.2) { GEO.sh = [pos[0] - L.gf.x, pos[1] - L.gf.y]; GEO.shSet = true;
+      $('rvMapNote').textContent = 'Выход ноды в локальной системе (от первой точки GNSS master записи): для показа трасса GNSS совмещена с моделью по первой точке, ошибка в плане не считается. С выходом в MGRS/UTM совмещение точное.'; }
+    const nv = naiveNow(), prevT = dd.n ? dd.t[dd.n - 1] : t, prevNs = dd.n ? dd.ns[dd.n - 1] : 0;
+    const fresh = (o, w) => o && L.vel.t - o.t <= w;
+    const healthy = st.wheel_healthy || [true, true];
+    const bs = k => !healthy[k] ? 3 : (st.n_accepted > 0 && !st.n_rejected) ? 5 : (!st.n_accepted && st.n_rejected > 0) ? 6 : (st.n_accepted > 0 && st.n_rejected > 0) ? 7 : 9;
+    const row = {
+      t, v: L.vel.v, sv: st.sigma_v ?? NaN, s: st.s ?? NaN, ss: L.pos ? L.pos.ss : (st.sigma_s ?? NaN),
+      x: pos ? pos[0] : NaN, y: pos ? pos[1] : NaN, mode: st.mode ?? 6,
+      fl: (st.valid ? 1 : 0) | (st.slip ? 2 : 0) | (st.ambiguous ? 4 : 0) | (fresh(L.h, 0.6) ? 8 : 0) | (!fresh(L.fr, 1) && !fresh(L.rr, 1) ? 16 : 0) | (pos ? 32 : 0),
+      na: st.n_accepted ?? NaN, nr: st.n_rejected ?? NaN, b0: bs(0), b1: bs(1), kt: st.k_traction ?? NaN, kb: st.k_brake ?? NaN, mu: st.mu ?? NaN, d: st.d ?? NaN,
+      fr: fresh(L.fr, 1) ? L.fr.v : NaN, rr: fresh(L.rr, 1) ? L.rr.v : NaN, h: fresh(L.h, 1) ? L.h.v : NaN,
+      nv, ns: prevNs + (isFinite(nv) ? nv * Math.max(0, t - prevT) : 0), nx: NaN, ny: NaN,
+      gv: fresh(L.gv, 0.3) ? L.gv.v : NaN, gx: fresh(L.gf, 0.3) ? L.gf.x + GEO.sh[0] : NaN, gy: fresh(L.gf, 0.3) ? L.gf.y + GEO.sh[1] : NaN, gs: LV.gnssPath, inj: 0,
+    };
+    for (const k of KEYS) dd[k].push(row[k]);
+    dd.n++;
+    if (dd.n > 24000) {                                  // держим последние ~40 мин при 10 Гц
+      const cut = 4000;
+      for (const k of KEYS) dd[k].splice(0, cut);
+      dd.n -= cut;
+    }
+  }
+  function liveTick(now) {
+    if (LV.want && LV.state !== 'wait') {
+      if (now - LV.rateT > 2000) {
+        const dt = (now - LV.rateT) / 1000; LV.rates = {};
+        for (const [k, n] of Object.entries(LV.cnt)) LV.rates[k] = n / dt;
+        LV.cnt = {}; LV.rateT = now;
+        const rv = LV.rates['/result/velocity'] || 0;
+        $('rvRates').textContent = `нода ${LV.nodeHz ? LV.nodeHz.toFixed(1) : '—'} Гц (frame_count) · на странице /result/velocity ${rv.toFixed(1)} Гц, тележки ${((LV.rates['/vehicle/front_bogie_velocity'] || 0)).toFixed(1)} Гц${LV.last.st ? ` · шаг ${f(LV.last.st.step_time_us / 1000, 2)} мс` : ''}`;
+      }
+      const silent = LV.ws && LV.ws.readyState === 1 && now - LV.lastMsg > 3000;
+      if (LV.ws && LV.ws.readyState === 1) setLiveState('on', silent ? 'на связи, но нода молчит' : `на связи · ${new URL($('rvUrl').value).host}`);
+    }
+    const over = $('rvOver');
+    const noLink = !LV.ws || LV.ws.readyState !== 1, silent = !noLink && now - LV.lastMsg > 3000;
+    over.hidden = !(noLink || silent);
+    over.textContent = noLink ? (LV.want ? 'нет связи с ROS 2' : 'не подключено к rosbridge') : 'нет данных: нода или запись молчит';
+    if (LV.want) liveRow();
+  }
+
+  // ---------------------------------------------------------------- цикл
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.25, (now - last) / 1000); last = now;
+    if (mode !== 'sandbox') {
+      if (mode === 'replay' && D && D.meta && RP.play) {
+        RP.t += dt * RP.speed;
+        if (RP.t >= D.meta.dur) { RP.t = D.meta.dur; RP.play = false; syncPlay(); }
+      }
+      if (mode === 'live') liveTick(now); else $('rvOver').hidden = true;
+      drawSpeed(); drawStrip();
+      drawErr('rvErrV', D ? D.pv.t : [], D ? D.pv.em : [], D ? D.pv.en : [], 3.6, 'sv', 3.6, 1, 40);
+      if (mode === 'live') drawErr('rvErrS', D ? D.pp.t : [], D ? D.pp.h : [], D ? D.pp.hn : [], 0, null, 1, 2);
+      else drawErr('rvErrS', D ? D.pp.t : [], D ? D.pp.al : [], D ? D.pp.aln : [], 1, 'ss', 1, 2, 500);
+      drawMap();
+      renderPanels(false);
+    }
+    requestAnimationFrame(frame);
+  }
+  // значки режимов берутся у песочницы (одинаковые)
+  window.__tvRun = {
+    setMode, select: k => selectReplay(k), state: () => ({ mode, key: RP.key, t: RP.t, play: RP.play, n: D ? D.n : 0, live: LV.state, rates: LV.rates, nodeHz: LV.nodeHz, rows: LV.data ? LV.data.n : 0, pairsV: D ? D.pv.t.length : 0 }),
+    metrics: () => D ? metricsAt(nowT()) : null, summary: () => D ? D.summary : null, seek: t => { RP.t = t; renderPanels(true); }, play: (on, sp) => { if (sp) RP.speed = sp; RP.play = on; syncPlay(); },
+  };
+  const m0 = qs.get('mode') || store.get('tv.mode');
+  requestAnimationFrame(frame);
+  setMode(m0 === 'replay' || m0 === 'live' ? m0 : 'sandbox');
+  if (qs.get('play') === '1') { RP.play = true; syncPlay(); }
+  if (qs.has('sp')) { const b = document.querySelector(`[data-rvsp="${qs.get('sp')}"]`); if (b) b.click(); }
+  if (qs.has('win')) { const b = document.querySelector(`[data-rvwin="${qs.get('win')}"]`); if (b) b.click(); }
 })();
 </script>
 </body>

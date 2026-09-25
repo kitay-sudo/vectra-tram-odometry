@@ -40,6 +40,7 @@ const TramPlant = (() => {
       // Without it the plant lets a motored wheel spin up to hundreds of km/h on ice and even turn backwards under ED braking.
       this.protect = true;
       this.asr = new Array(this.nw).fill(1);
+      this.asrCut = new Array(this.nw).fill(false);   // срыв: момент снят до повторного сцепления
       this.wheel_scale = 1;   // global odometry scale (worn tyres)
     }
     _axle_of(i) { return Math.floor(i / 2); }
@@ -73,9 +74,13 @@ const TramPlant = (() => {
       for (let i = 0; i < this.nw; i++) {
         const ax = this._axle_of(i), mot = P.motored[ax], v_rail = this._rail_speed(i), dv = this.w[i] * P.r - v_rail;
         if (this.protect) {
+          // Защита (как на вагоне): при срыве момент (тяговый или тормозной) снимается
+          // до нуля и подаётся снова только после повторного сцепления колеса.
           const lim = Math.max(0.4, 0.08 * Math.abs(this.v));
           const slipping = (u > 0 && dv > lim) || (u < 0 && -dv > lim);
-          this.asr[i] = slipping ? Math.max(0.05, this.asr[i] - dt * 6) : Math.min(1, this.asr[i] + dt * 0.7);
+          if (slipping) this.asrCut[i] = true;
+          else if (Math.abs(dv) < 0.5 * lim) this.asrCut[i] = false;
+          this.asr[i] = this.asrCut[i] ? Math.max(0, this.asr[i] - dt * 8) : Math.min(1, this.asr[i] + dt * 0.7);
         }
         const g = this.protect ? this.asr[i] : 1;
         let mu_max = this.tr.mu(this.s, this.t);

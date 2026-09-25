@@ -569,7 +569,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     fin = np.isfinite(al)
     finn = np.isfinite(aln)
     last = lambda x: float(x[np.isfinite(x)][-1]) if np.isfinite(x).any() else float("nan")  # noqa: E731
-    last_at = lambda s_, x: float(s_[np.isfinite(x)][-1]) if np.isfinite(x).any() else 0.0  # noqa: E731
+    end_err = lambda a_, h_: float(abs(a_[-1])) if math.isfinite(a_[-1]) else float(h_[-1])  # noqa: E731
     summ = dict(
         pairs_v=int(ok.sum()), pairs_p=int(len(idx)),
         v_mae=float(np.mean(np.abs(em))), v_rmse=float(np.sqrt(np.mean(em ** 2))),
@@ -583,10 +583,12 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         p2d_end=float(d2[-1]), naive_p2d_mean=float(np.nanmean(d2n)), naive_p2d_end=float(d2n[-1]),
         along_end=last(al), naive_along_end=last(aln),
         along_mean_abs=float(np.nanmean(np.abs(al))) if fin.any() else None,
-        # «накопленный дрейф» по ТЗ: ошибка вдоль трассы в конце / путь по эталону до
-        # той же точки (дуговая координата sref последней пары; ≈ path)
-        drift_pct=100.0 * abs(last(al)) / last_at(sref, al) if last_at(sref, al) > 100 else None,
-        naive_drift_pct=100.0 * abs(last(aln)) / last_at(sref, aln) if last_at(sref, aln) > 100 else None,
+        # «накопленный дрейф» по ТЗ: ошибка положения в конце прогона / пройденный путь.
+        # Ошибка — вдоль трассы эталона на последней паре; если оценка там ушла с
+        # трассы (вдоль не определено) — ошибка в плане. Путь — дуговая координата
+        # эталона sref последней пары (≈ path).
+        drift_pct=100.0 * end_err(al, d2) / sref[-1] if len(sref) and sref[-1] > 100 else None,
+        naive_drift_pct=100.0 * end_err(aln, d2n) / sref[-1] if len(sref) and sref[-1] > 100 else None,
         modes_pct={n_: round(100.0 * float(np.mean(O("mode", dtype=int) == i)), 2)
                    for i, n_ in enumerate(EC.MODE_NAMES)},
         frac_valid=float(np.mean([bool(o["valid"]) and not o.get("wheels_stale", False) for o in mo])),
