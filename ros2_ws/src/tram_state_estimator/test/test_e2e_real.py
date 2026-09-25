@@ -169,17 +169,19 @@ def test_output_frame_is_mgrs_by_default(run_map):
 def test_projection_switch(fx, over, expect, xr):
     """Параметр projection/mgrs_grid переключает систему без правки кода; в
     каждой системе точность та же. Эталон — независимая refgeo. Средняя 3D —
-    по выходам после выставки (заглушку до неё ловит отдельный тест)."""
+    по опубликованным положениям, без развёртки на границе квадратов (как у
+    судьи): выход в чужом соглашении о квадратах дал бы ~100 км."""
     if not _has_projection_param():
         pytest.xfail("параметра projection у Runner ещё нет (поток position, WP10)")
     outs = E.replay(fx, use_map=True, gnss="window", **over)
     m = E.metrics(outs, fx, frame=expect[0])        # эталон в заказанной системе
     auto = E.metrics(outs, fx)                        # система, ближайшая к выходу
-    assert m["p_mean3d_aligned"] < MEAN3D_MAX, m
+    assert m["p_mean3d"] < MEAN3D_MAX, m
+    assert m["p_square_mismatch"] == 0, m
     # enu и equirect на куске 0,7 км расходятся меньше метра: достаточно, чтобы
     # заказанная система была не хуже лучшей больше чем на 0,5 м
-    assert auto["p_frame"] in expect or m["p_mean3d_aligned"] - auto["p_mean3d_aligned"] < 0.5, (m, auto)
-    x = np.array([o["x"] for o in outs if o.get("pos_ready")])
+    assert auto["p_frame"] in expect or m["p_mean3d"] - auto["p_mean3d"] < 0.5, (m, auto)
+    x = np.array([o["x"] for o in outs if o.get("pos_ready") and o.get("pos_valid", True)])
     assert len(x) and xr[0] < x.min() and x.max() < xr[1], (over, x.min(), x.max())
     assert m["nonfinite"] == 0
 
