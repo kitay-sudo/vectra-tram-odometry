@@ -236,6 +236,7 @@ class Position:
         if self.map is not None:
             self._cursor = self.map.locate(anchor, az)
             c = self._cursor
+            self.offset = (0.0, 0.0, 0.0)
             if c.get("on_map"):
                 dz = anchor[2] - c["z"]
                 self.offset = ((anchor[0] - c["x"]) if self.keep_offset_xy else 0.0,

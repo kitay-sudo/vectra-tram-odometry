@@ -15,7 +15,15 @@
     python3 analysis/build_map.py eval   # -> config/eval/track_map.npz
     python3 analysis/build_map.py jury   # -> config/track_map.npz
     python3 analysis/build_map.py --set train --split tools/split.json --out F
-    опции: --calib <tram_calibration.json> (meas_scale колёс), --n-runs 30
+    опции: --calib <tram_calibration.json> (meas_scale колёс), --n-runs 30,
+           --e2e-mult 0.999 (поправка множителя по сквозной оценке, см. ниже)
+
+Поправка --e2e-mult выбрана ТОЛЬКО по обучающим прогонам: полная связка
+(выставка, карта, привязки, онлайн-масштаб) на 68 обучающих прогонах с GNSS,
+множитель карты × 0,997 / 0,998 / 0,999 / 1,000 / 1,001 даёт ср. 3D
+3,95 / 3,84 / 3,69 / 3,81 / 4,75 м (tools/position_eval.py, теги tr_*).
+Перебег курсора вреднее недобега: привязка к остановке ловит остановку
+в окне впереди хуже, чем позади.
 
 Множитель зависит от meas_scale листа: после смены листа карты пересобрать.
 """
@@ -65,6 +73,7 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--calib", default=str(CALIB))
     ap.add_argument("--n-runs", type=int, default=30)
+    ap.add_argument("--e2e-mult", type=float, default=0.999)
     a = ap.parse_args()
     which = a.set or {"eval": "train", "jury": "all", None: "train"}[a.preset]
     out = a.out or (OUT_JURY if (a.preset == "jury" or which == "all") else OUT_EVAL)
@@ -73,13 +82,14 @@ def main():
                           ["params"]).meas_scale
     tm = build(ids, which == "all" or len(ids) > 20)
     tm.stops = find_stops(ids)
-    tm.scale = calibrate_scale(tm, ids, ms, a.n_runs)
+    tm.scale = calibrate_scale(tm, ids, ms, a.n_runs) * a.e2e_mult
     tm.scale_frame = "utm"
     bagio.Path(out).parent.mkdir(parents=True, exist_ok=True)
     tm.save(out, source=np.array(f"{which}: {len(ids)} прогонов; split {bagio.Path(a.split).name}"),
-            meas_scale=np.array(ms))
+            meas_scale=np.array(ms), e2e_mult=np.array(a.e2e_mult))
     print(f"набор {which}: прогонов {len(ids)}, точек карты {len(tm.lat)}, "
-          f"остановок {len(tm.stops)}, множитель пути {tm.scale:.5f} (UTM), записано {out}")
+          f"остановок {len(tm.stops)}, множитель пути {tm.scale:.5f} (UTM, с поправкой "
+          f"×{a.e2e_mult}), записано {out}")
 
 
 def build(ids, min2):
