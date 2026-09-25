@@ -85,10 +85,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       mae: [m.mae, s.v_mae], mae_naive: [m.maeN, s.naive_v_mae], drift: [m.drift, s.drift_pct], drift_naive: [m.driftN, s.naive_drift_pct],
       p2d: [m.h, s.p2d_mean], cov2s: [m.cov, s.cov2s_v],
     };
-    const ok = same(m.mae, s.v_mae, 4) && same(m.maeN, s.naive_v_mae, 4) && same(m.drift, s.drift_pct, 3) && same(m.driftN, s.naive_drift_pct, 3) && same(m.h, s.p2d_mean, 2) && same(m.cov, s.cov2s_v, 3);
+    // точность показа на странице: MAE 4 знака, дрейф 3, план 2, доля 3; допуск — квантование файла
+    const near = (a, b, tol) => isFinite(a) && isFinite(b) && Math.abs(a - b) <= tol;
+    const ok = near(m.mae, s.v_mae, 2e-5) && near(m.maeN, s.naive_v_mae, 2e-5) && near(m.drift, s.drift_pct, 2e-5) && near(m.driftN, s.naive_drift_pct, 2e-5)
+      && near(m.h, s.p2d_mean, 2e-3) && near(m.cov, s.cov2s_v, 1e-6);
+    const shown = same(m.mae, s.v_mae, 4) && same(m.maeN, s.naive_v_mae, 4) && same(m.drift, s.drift_pct, 3) && same(m.driftN, s.naive_drift_pct, 3) && same(m.h, s.p2d_mean, 2) && same(m.cov, s.cov2s_v, 3);
+    cmp.shown_equal = [shown, true];
     report.replays[e.key] = { played_s_in_3s_x60: +(t1 - t0).toFixed(1), cmp };
     check(`прогон ${e.key}: проигрывается (×60)`, t1 - t0 > 60, { dt: +(t1 - t0).toFixed(1) });
-    check(`прогон ${e.key}: метрики страницы = итог экспортёра`, ok, Object.fromEntries(Object.entries(cmp).map(([k, [a, b]]) => [k, [a === null ? null : +a.toFixed(5), b === null ? null : +b.toFixed(5)]])));
+    check(`прогон ${e.key}: метрики страницы = итог экспортёра`, ok, Object.fromEntries(Object.entries(cmp).map(([k, [a, b]]) => [k, [typeof a === 'number' ? +a.toFixed(6) : a, typeof b === 'number' ? +b.toFixed(6) : b]])));
     await page.close();
   }
   // телефон и окно «весь прогон»

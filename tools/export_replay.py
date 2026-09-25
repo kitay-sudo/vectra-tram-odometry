@@ -475,6 +475,41 @@ def detect_frame(xyz, T, ready, m):
                 zone=zone, origin=o, medians=med, U0=U0)
 
 
+def selftest(bag):
+    """Проверка определения системы выхода на синтетике из GNSS прогона: выход
+    модели = эталон + шум 0,5 м в разных системах (MGRS с переносом квадрата,
+    MGRS от 37UDB, UTM, ENU, equirect). После перевода на экран ошибка в плане
+    должна остаться ~шумом, а система — определиться верно."""
+    a = bagio.load(bag)
+    m = a["mfix"]
+    T = m[:, 1]
+    lat, lon, alt = m[:, 2], m[:, 3], m[:, 4]
+    o = (lat[0], lon[0], alt[0])
+    zone = utm_zone(o[1])
+    U = utm_en(lat, lon, zone)
+    rng = np.random.default_rng(0)
+    nz = rng.normal(0.0, 0.5, U.shape)
+    cases = {
+        "mgrs_wrap": (np.c_[np.mod(U + nz, 1e5), alt], "utm_abs"),
+        "mgrs_37UDB": (np.c_[U + nz - (4e5, 61e5), alt], "utm_abs"),
+        "utm_abs": (np.c_[U + nz, alt], "utm_abs"),
+        "utm_rel": (np.c_[U + nz - U[0], alt - o[2]], "utm_rel"),
+        "enu": (proj_enu(lat, lon, alt, o) + np.c_[nz, np.zeros(len(nz))], "enu"),
+        "equirect": (proj_equirect(lat, lon, alt, o) + np.c_[nz, np.zeros(len(nz))], "equirect"),
+    }
+    wraps = int(np.sum(np.abs(np.diff(np.mod(U[:, 0], 1e5))) > 5e4))
+    ok_all = True
+    for name, (X, want) in cases.items():
+        fr = detect_frame(X, T, np.ones(len(T), bool), m)
+        e = np.hypot(*(fr["disp"] - fr["ref"]).T)
+        ok = fr["name"] == want and float(np.median(e)) < 1.0 and float(np.max(e)) < 5.0
+        ok_all &= ok
+        print(f"{'OK  ' if ok else 'FAIL'} {name:<10} -> {fr['name']:<9} ({fr['label']}); "
+              f"ошибка на экране: медиана {np.median(e):.2f} м, макс {np.max(e):.2f} м")
+    print(f"переходов через границу квадрата 100 км в прогоне: {wraps}")
+    return ok_all
+
+
 # ------------------------------------------------------------------ метрики
 
 def along_cross(ref_xy, idx, est_xy):
@@ -697,10 +732,10 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     pairs = {
         "v": {"t": q(g[ok, 1] - t0, 100), "em": q(em, 10000), "en": q(en, 10000),
               "c2": [int(x) for x in cov]},
-        # 1 см: на стоянках ошибка постоянна тысячи пар подряд, и округление до 0,1 м
+        # 1 мм: на стоянках ошибка постоянна тысячи пар подряд, и грубое округление
         # давало бы смещение среднего (страница считает метрики по этим парам)
-        "p": {"t": q(m[idx, 1] - t0, 100), "al": q(al, 100), "aln": q(aln, 100),
-              "h": q(d2, 100), "hn": q(d2n, 100), "sr": q(sref, 10)},
+        "p": {"t": q(m[idx, 1] - t0, 100), "al": q(al, 1000), "aln": q(aln, 1000),
+              "h": q(d2, 1000), "hn": q(d2n, 1000), "sr": q(sref, 10)},
     }
     # плавные колонки — разностями (страница восстанавливает накопленной суммой)
     dcols = ("t", "s", "ss", "x", "y", "ns", "nx", "ny", "gx", "gy", "gs", "fr", "rr", "v", "nv", "gv",
@@ -713,7 +748,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         run=bag, variant=kind, variant_ru=info["ru"], inject=info,
         delta=dict(cols=list(dcols), v=["t"], p=["t", "sr"]),
         pair_scale=dict(v=dict(t=0.01, em=1e-4, en=1e-4, c2=1),
-                        p=dict(t=0.01, al=0.01, aln=0.01, h=0.01, hn=0.01, sr=0.1)),
+                        p=dict(t=0.01, al=0.001, aln=0.001, h=0.001, hn=0.001, sr=0.1)),
         t0=t0, dur=float(T[-1] - T[0]), n=len(TR), dt=float(np.median(np.diff(TR))), scale=scale,
         frame=dict(model=fr["name"], label=fr["label"], naive=frn["name"] if frn else None,
                    zone=fr["zone"], z_abs=fr["z_abs"], origin=list(fr["origin"]),
@@ -746,7 +781,7 @@ def sha1(path):
         return hashlib.sha1(fh.read()).hexdigest()[:12]
 
 
-def rounded(x, nd=4):
+def rounded(x, nd=6):
     if isinstance(x, float):
         return None if not math.isfinite(x) else round(x, nd)
     if isinstance(x, dict):
@@ -796,7 +831,14 @@ def main():
     ap.add_argument("--sheet", default=None, help="yaml ноды; по умолчанию config/eval/tram.yaml, "
                                                   "если есть, иначе config/tram.yaml")
     ap.add_argument("--allow-train", action="store_true", help="разрешить прогон не из holdout_scored")
+    ap.add_argument("--out", default=None, help="каталог вывода (по умолчанию simulator/replays)")
+    ap.add_argument("--selftest", action="store_true", help="проверить определение системы выхода и выйти")
     args = ap.parse_args()
+    global OUT_DIR
+    if args.out:
+        OUT_DIR = os.path.abspath(args.out)
+    if args.selftest:
+        raise SystemExit(0 if selftest(args.run) else 1)
 
     split = json.load(open(os.path.join(ROOT, "tools", "split.json"), encoding="utf-8"))
     if args.run not in split["holdout_scored"] and not args.allow_train:

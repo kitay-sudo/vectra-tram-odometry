@@ -2520,7 +2520,10 @@ const TramPlant = (() => {
   let D = null;                       // текущие данные (прогон или живой буфер)
   const RP = { key: null, t: 0, play: false, speed: 10, loading: false };
   let winSec = 300, zoom = 'all';
-  const emptyData = () => { const d = { n: 0, pv: { t: [], em: [], en: [], c2: [] }, pp: { t: [], al: [], aln: [], h: [], hn: [], sr: [] }, meta: null, summary: null, track: null, live: false }; KEYS.forEach(k => d[k] = []); return d; };
+  const emptyData = () => {
+    const d = { n: 0, pv: { t: [], em: [], en: [], c2: [], cm: [0], cn: [0], cc: [0] }, pp: { t: [], al: [], aln: [], h: [], hn: [], sr: [], ch: [0], chn: [0], kn: [0] }, meta: null, summary: null, track: null, live: false };
+    KEYS.forEach(k => d[k] = []); return d;
+  };
 
   // ---------------------------------------------------------------- режим страницы
   function setMode(m) {
