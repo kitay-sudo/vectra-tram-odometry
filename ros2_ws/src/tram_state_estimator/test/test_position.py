@@ -167,10 +167,11 @@ class Route:
         la, lo = g.utm_inv(e, n, 37)
         return float(la), float(lo)
 
-    def track_map(self, end=None):
+    def track_map(self, end=None, terminals=False):
         P = self.P if end is None else self.P[self.s <= end]
         return TrackMap.from_polylines([np.c_[P, np.full(len(P), 150.0)]], crs="utm",
-                                       zone=37, bidirectional=False)
+                                       zone=37, bidirectional=False,
+                                       find_terminals=terminals)
 
 
 def _feed(r, t0, t_end, v_of_t, route=None, s_of_t=None, gnss_until=2.0,
@@ -231,7 +232,11 @@ def test_position_follows_map_in_mgrs():
     assert math.hypot(E - e, N - n) < 0.02 * s_true + 3.0
     assert o["z"] == pytest.approx(150.0, abs=0.5)                   # абсолютная высота
     assert 0.0 <= o["x"] < 1e5 and 0.0 <= o["y"] < 1e5
-    assert all(q["pos_valid"] for q in outs if q["stamp"] > 0.2)
+    # положение есть всегда, кроме полосы mgrs_guard_m = 5 м у E = 400 км
+    for q in outs:
+        if q["stamp"] > 0.2 and not q["pos_valid"]:
+            e, _ = route.en(s_of_t(q["stamp"]))
+            assert abs(e - 400000.0) < 12.0          # 5 м + ошибка оценки
 
 
 def test_whole_run_gnss_does_not_freeze_or_shift_outputs():
@@ -361,7 +366,7 @@ def test_mgrs_wrap_vs_fixed_grid_across_boundary():
     v_of_t, s_of_t = _profile(5.0, 3.0)
     res = {}
     for grid in ("", "37UDB"):
-        r = Runner(_tram(), track_map=route.track_map(), mgrs_grid=grid)
+        r = Runner(_tram(), track_map=route.track_map(), mgrs_grid=grid, mgrs_guard_m=0.0)
         res[grid] = (r, _feed(r, 0.0, 70.0, v_of_t, route, s_of_t))
     (ra, a), (rb, b) = res[""], res["37UDB"]
     xa = np.array([o["x"] for o in a if o["pos_valid"]])
@@ -377,22 +382,27 @@ def test_mgrs_wrap_vs_fixed_grid_across_boundary():
 
 
 def test_terminal_hold_at_dead_end():
-    """Карта кончается (тупик), а вагон едет ещё 60 м: курсор стоит в
-    последней точке пути, а не уходит по прямой за конец."""
+    """Карта кончается у известной конечной (тупик), а вагон едет ещё 60 м:
+    курсор стоит в последней точке пути, а не уходит по прямой за конец. Без
+    известной конечной там же (или terminal_hold off) — уходит по прямой."""
     route = Route(L1=400.0)
-    end = 200.0
+    end = 150.0
     v_of_t, s_of_t = _profile(5.0, 3.0)
-    r = Runner(_tram(), track_map=route.track_map(end=end))
-    outs = _feed(r, 0.0, 3.0 + (end + 60.0) / 5.0, v_of_t, route, s_of_t)
-    E, N = _continuous(outs[-1], r.pos.frame)
     e_end, n_end = route.en(end)
-    assert math.hypot(E - e_end, N - n_end) < 3.0
-    # без удержания — ушёл бы по прямой на ~60 м дальше
-    r2 = Runner(_tram(), track_map=route.track_map(end=end))
-    r2.pos.map.terminal_hold = False
-    outs2 = _feed(r2, 0.0, 3.0 + (end + 60.0) / 5.0, v_of_t, route, s_of_t)
-    E2, N2 = _continuous(outs2[-1], r2.pos.frame)
-    assert math.hypot(E2 - e_end, N2 - n_end) > 40.0
+    t_end = 3.0 + (end + 60.0) / 5.0
+
+    def last(tm, **kw):
+        r = Runner(_tram(), track_map=tm, **kw)
+        o = [q for q in _feed(r, 0.0, t_end, v_of_t, route, s_of_t) if q["pos_valid"]][-1]
+        E, N = _continuous(o, r.pos.frame)
+        return math.hypot(E - e_end, N - n_end)
+
+    tm = route.track_map(end=end, terminals=True)
+    assert len(tm.terminals) == 2                    # оба конца ломаной
+    assert Runner(_tram(), track_map=tm).pos.map.terminal_hold == "terminals"
+    assert last(tm) < 3.0
+    assert last(route.track_map(end=end, terminals=True), terminal_hold="off") > 40.0
+    assert last(route.track_map(end=end)) > 40.0     # конечных нет — не тупик
 
 
 def test_map_gap_is_not_a_dead_end():
@@ -411,6 +421,50 @@ def test_map_gap_is_not_a_dead_end():
     E, N = _continuous(outs[-1], r.pos.frame)
     e, n = route.en(s_of_t(outs[-1]["stamp"]))
     assert math.hypot(E - e, N - n) < 6.0
+
+
+def test_map_gap_curved():
+    """Разрыв карты 300 м на кривой (R = 1000 м) далеко от конечных — такой
+    бывает, если по участку прошёл только один обучающий прогон. Курсор не
+    должен встать на краю разрыва: идёт по прямой, находит путь снова и
+    дальше идёт по карте. Удержание «где угодно» (any) здесь встаёт до конца
+    прогона — поэтому по умолчанию только у известных конечных."""
+    Rc, L1, arc, L2 = 1000.0, 300.0, 700.0, 400.0
+    pts = [(E_B + x, N_B) for x in np.arange(0.0, L1, 1.0)]
+    for a in np.arange(0.0, arc, 1.0) / Rc:           # поворот налево на 40°
+        pts.append((E_B + L1 + Rc * np.sin(a), N_B + Rc - Rc * np.cos(a)))
+    a1 = arc / Rc
+    ex, ey = pts[-1]
+    pts += [(ex + d * np.cos(a1), ey + d * np.sin(a1)) for d in np.arange(1.0, L2, 1.0)]
+    P = np.array(pts)
+    sg = np.r_[0.0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
+
+    class Curved(Route):
+        def __init__(self):
+            self.P, self.s = P, sg
+
+    route = Curved()
+    gap = (sg > L1 + 100.0) & (sg < L1 + 400.0)       # 300 м посреди дуги
+    parts = [P[(sg <= L1 + 100.0)], P[sg >= L1 + 400.0]]
+    v, t0 = 10.0, 3.0
+    v_of_t, s_of_t = _profile(v, t0)
+    t_end = t0 + (sg[-1] - 50.0) / v
+    res = {}
+    for mode in ("terminals", "any"):
+        tm = TrackMap.from_polylines([np.c_[q, np.full(len(q), 150.0)] for q in parts],
+                                     crs="utm", zone=37, bidirectional=False)
+        la, lo = zip(*(route.latlon(s) for s in (0.0, sg[-1])))
+        tm.terminals = np.c_[la, lo]                  # конечные — концы линии
+        assert gap.sum() > 250 and len(tm.lat) < len(P)
+        r = Runner(_tram(), track_map=tm, terminal_hold=mode)
+        o = _feed(r, 0.0, t_end, v_of_t, route, s_of_t)[-1]
+        E, N = _continuous(o, r.pos.frame)
+        e, n = route.en(s_of_t(o["stamp"]))
+        res[mode] = (math.hypot(E - e, N - n), r.pos._cursor["on_map"])
+    # прошёл разрыв по прямой и снова на карте (ошибка вдоль пути — от
+    # точки возврата на карту: ~25 м), а не стоит у края разрыва
+    assert res["terminals"][0] < 40.0 and res["terminals"][1]
+    assert res["any"][0] > 200.0                      # «где угодно» — встал у разрыва
 
 
 def test_online_scale_is_slow_bounded_and_self_disabling():
@@ -464,10 +518,15 @@ def test_external_map_loaders_agree(tmp_path):
     assert d.heading_at((50.0, 0.0)) is not None
 
 
-def test_window_offset_gnss_minus_map_is_kept():
-    """Прогон без RTK: GNSS окна сдвинут от оси пути на 1,5 м вбок и на +4 м
-    по высоте. Эталон судьи — тот же GNSS, поэтому сдвиг сохраняется в
-    выходе (keep_offset_xy/z, по умолчанию); без него выход — ось пути."""
+@pytest.mark.parametrize("status,max_status,kept", [
+    (0, 1, True),        # без RTK (30639): сдвиг сохраняется (по умолчанию)
+    (2, 1, False),       # RTK/GBAS (30618): сдвиг — шум окна, не переносится
+    (2, 2, True),        # keep_offset_max_status 2 — всегда
+])
+def test_window_offset_gnss_minus_map_kept_only_without_rtk(status, max_status, kept):
+    """GNSS окна сдвинут от оси пути на 1,5 м вбок. Эталон судьи — тот же
+    GNSS: у решения без RTK смещение держится весь прогон, и сдвиг сохраняется
+    в выходе; у RTK (статус 2) выход — ось пути. Правило выбрано по train."""
     route = Route()
     v_of_t, s_of_t = _profile(5.0, 3.0)
 
@@ -477,22 +536,91 @@ def test_window_offset_gnss_minus_map_is_kept():
             la, lo = g.utm_inv(e, n + 1.5, 37)            # на север, поперёк пути
             return float(la), float(lo)
 
-    sh = Shifted()
-    res = {}
-    for keep in (True, False):
-        r = Runner(_tram(), track_map=route.track_map(), keep_offset_xy=keep,
-                   keep_offset_z=keep)
-        outs = []
-        ev = _feed(r, 0.0, 20.0, v_of_t, sh, s_of_t, fix_status=0)
-        outs += ev
-        res[keep] = (r, outs[-1])
-    r, o = res[True]
+    r = Runner(_tram(), track_map=route.track_map(), keep_offset_max_status=max_status)
+    o = _feed(r, 0.0, 20.0, v_of_t, Shifted(), s_of_t, fix_status=status)[-1]
+    assert r.pos.window_status == status
     E, N = _continuous(o, r.pos.frame)
     e, n = route.en(s_of_t(o["stamp"]))
-    assert N - n == pytest.approx(1.5, abs=0.3)
-    r, o = res[False]
+    assert N - n == pytest.approx(1.5 if kept else 0.0, abs=0.3)
+    r = Runner(_tram(), track_map=route.track_map(), keep_offset_xy=False,
+               keep_offset_z=False, keep_offset_max_status=max_status)
+    o = _feed(r, 0.0, 20.0, v_of_t, Shifted(), s_of_t, fix_status=status)[-1]
     E, N = _continuous(o, r.pos.frame)
     assert N - n == pytest.approx(0.0, abs=0.3)
+
+
+def test_degenerate_window_gives_finite_anchor():
+    """Стоим, в окне две точки master в 50 м друг от друга (или два облака):
+    медианный фильтр выбросов пуст — якорь не NaN, а середина; положение
+    конечно на каждом выходе."""
+    lat0, lon0 = 55.8, 37.45
+    dlon = math.degrees(50.0 / (g.A_WGS * math.cos(math.radians(lat0))))
+    for fixes in ([(1.0, lon0), (1.1, lon0 + dlon)],
+                  [(1.0 + 0.1 * k, lon0 + (dlon if k % 2 else 0.0)) for k in range(4)]):
+        r = Runner(_tram())
+        outs = []
+        ev = [(k / 9.4, 0) for k in range(94)] + [(k / 20 + 0.02, 1) for k in range(200)]
+        ev += [(t, 2, lo) for t, lo in fixes]
+        for e in sorted(ev):
+            if e[1] == 0:
+                outs += r.on_wheel(0, e[0], 0.0) + r.on_wheel(1, e[0] + 0.01, 0.0)
+            elif e[1] == 1:
+                outs += r.on_handle(e[0], 0)
+            else:
+                outs += r.on_fix(e[0], "master", lat0, e[2], 150.0)
+        ok = [o for o in outs if o["pos_valid"]]
+        assert ok and all(math.isfinite(o["x"]) and math.isfinite(o["y"]) for o in ok)
+        assert all(math.isfinite(v) for v in r.pos.xyz0)
+
+
+@pytest.mark.parametrize("bad", [1e10, 0.0])
+def test_skewed_fix_stamp_does_not_block_alignment(bad):
+    """Первая точка GNSS со сбитой меткой (0 или 1e10) приходит до тележек:
+    она не должна открыть окно выставки (иначе положения нет весь прогон или
+    выставка по одной точке). Та же точка при идущей сетке отбрасывается."""
+    route = Route()
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+    la, lo = route.latlon(0.0)
+    r = Runner(_tram(), track_map=route.track_map())
+    r.on_fix(bad, "master", la, lo, 150.0)            # сетки ещё нет
+    outs = _feed(r, 100.0, 130.0, lambda t: v_of_t(t - 100.0), route,
+                 lambda t: s_of_t(t - 100.0), gnss_until=2.0)
+    assert r.pos.fixed and r.pos.ready and r.pos.n_used > 20
+    assert sum(o["pos_valid"] for o in outs) > 0.9 * len(outs)
+    n = r.pos.n_rejected
+    assert r.on_fix(bad, "master", la, lo, 150.0) == [] and r.pos.n_rejected == n + 1
+
+
+def test_rover_only_window():
+    """В окне нет master, есть rover: якорь — rover, сдвинутый назад по курсу
+    на базу 12,42 м (rover впереди); курс — по смещению rover или по карте."""
+    route = Route(L1=400.0)
+    for v, t_start in ((0.0, 99.0), (8.0, -1.0)):     # стоим / едем с начала
+        v_of_t = (lambda t, v=v: v)
+        s_of_t = (lambda t, v=v: 20.0 + v * t)
+        r = Runner(_tram(), track_map=route.track_map())
+        ev = []
+        for k in range(int(40 * 9.4)):
+            t = k / 9.4
+            ev += [(t, 0), (t + 0.037, 1)]
+        ev += [(k * 0.05, 2) for k in range(800)]
+        ev += [(k * 0.1 + 0.013, 3) for k in range(25)]
+        outs = []
+        for t, kind in sorted(ev):
+            if kind == 2:
+                outs += r.on_handle(t, 0)
+            elif kind < 2:
+                outs += r.on_wheel(kind, t, v_of_t(t) * 3.6)
+            else:
+                la, lo = route.latlon(s_of_t(t) + 12.42)
+                outs += r.on_fix(t, "rover", la, lo, 150.0)
+        assert r.pos.fixed and r.pos.ready and r.pos._frame_rover
+        err = []
+        for o in outs[-100:]:
+            E, N = _continuous(o, r.pos.frame)
+            e, n = route.en(s_of_t(o["stamp"]))
+            err.append(math.hypot(E - e, N - n))
+        assert max(err) < 4.0
 
 
 def test_grid_nodes_are_multiples_of_dt():
@@ -513,13 +641,18 @@ def test_mgrs_guard_band_suppresses_position_near_square_edge():
     (pos_valid = False), чтобы выход и эталон не оказались в разных квадратах."""
     route = Route()
     v_of_t, s_of_t = _profile(5.0, 3.0)
-    r = Runner(_tram(), track_map=route.track_map(), mgrs_guard_m=5.0)
+    r = Runner(_tram(), track_map=route.track_map())       # по умолчанию 5 м
+    assert r.pos.mgrs_guard_m == 5.0
     outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
     bad = [o for o in outs if not o["pos_valid"] and o["stamp"] > 1.0]
     assert 10 <= len(bad) <= 60                     # ~10 м при 5 м/с — около 2 с
     for o in outs:
         if o["pos_valid"] and o["stamp"] > 1.0:
             assert 5.0 <= o["x"] <= 1e5 - 5.0
+    # защита только для MGRS с переносом: от фиксированного квадрата — нет
+    r = Runner(_tram(), track_map=route.track_map(), mgrs_grid="37UDB")
+    outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
+    assert all(o["pos_valid"] for o in outs if o["stamp"] > 1.0)
 
 
 @pytest.mark.parametrize("mode", ["hold", "line"])
