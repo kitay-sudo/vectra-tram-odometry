@@ -462,3 +462,61 @@ def test_external_map_loaders_agree(tmp_path):
     assert len(d.lat) == 2 * len(a.lat)              # обе стороны по умолчанию
     d.bind(g.Frame(float(la[0]), float(lo[0]), 0.0))
     assert d.heading_at((50.0, 0.0)) is not None
+
+
+def test_window_offset_gnss_minus_map_is_kept():
+    """Прогон без RTK: GNSS окна сдвинут от оси пути на 1,5 м вбок и на +4 м
+    по высоте. Эталон судьи — тот же GNSS, поэтому сдвиг сохраняется в
+    выходе (keep_offset_xy/z, по умолчанию); без него выход — ось пути."""
+    route = Route()
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+
+    class Shifted(Route):
+        def latlon(self, s):
+            e, n = self.en(s)
+            la, lo = g.utm_inv(e, n + 1.5, 37)            # на север, поперёк пути
+            return float(la), float(lo)
+
+    sh = Shifted()
+    res = {}
+    for keep in (True, False):
+        r = Runner(_tram(), track_map=route.track_map(), keep_offset_xy=keep,
+                   keep_offset_z=keep)
+        outs = []
+        ev = _feed(r, 0.0, 20.0, v_of_t, sh, s_of_t, fix_status=0)
+        outs += ev
+        res[keep] = (r, outs[-1])
+    r, o = res[True]
+    E, N = _continuous(o, r.pos.frame)
+    e, n = route.en(s_of_t(o["stamp"]))
+    assert N - n == pytest.approx(1.5, abs=0.3)
+    r, o = res[False]
+    E, N = _continuous(o, r.pos.frame)
+    assert N - n == pytest.approx(0.0, abs=0.3)
+
+
+def test_grid_nodes_are_multiples_of_dt():
+    """WP23: узлы сетки кратны dt (совпадают с метками GNSS, кратными 0,1 с),
+    какое бы сообщение ни пришло первым."""
+    r = Runner(_tram())
+    outs = []
+    for k in range(40):
+        t = 100.037 + k * 0.1063
+        outs += r.on_wheel(0, t, 0.0) + r.on_handle(t + 0.011, 0)
+    T = np.array([o["stamp"] for o in outs])
+    assert len(T) > 50
+    assert np.abs(T / 0.05 - np.round(T / 0.05)).max() < 1e-6
+
+
+def test_mgrs_guard_band_suppresses_position_near_square_edge():
+    """mgrs_guard_m: ближе g к краю 100-км квадрата положение не публикуется
+    (pos_valid = False), чтобы выход и эталон не оказались в разных квадратах."""
+    route = Route()
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+    r = Runner(_tram(), track_map=route.track_map(), mgrs_guard_m=5.0)
+    outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
+    bad = [o for o in outs if not o["pos_valid"] and o["stamp"] > 1.0]
+    assert 10 <= len(bad) <= 60                     # ~10 м при 5 м/с — около 2 с
+    for o in outs:
+        if o["pos_valid"] and o["stamp"] > 1.0:
+            assert 5.0 <= o["x"] <= 1e5 - 5.0

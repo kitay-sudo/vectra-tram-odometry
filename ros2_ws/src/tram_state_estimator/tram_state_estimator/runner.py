@@ -58,11 +58,12 @@ class Position:
     SCALE_GATE_K, SCALE_GATE_C = 0.01, 2.0   # принимать сдвиг |δ| < 1 %·L + 2 м
     SCALE_MIN_L = 100.0          # м: короче — отрезок не учитывается
     SCALE_INCONS = 0.012         # отрезки разошлись больше — подстройку выключить
+    OFFSET_Z_MAX = 30.0          # м: больший сдвиг высоты GNSS − карта не переносить
 
     def __init__(self, track_map=None, origin=None, init_window=3.0,
                  projection="mgrs", mgrs_grid="", utm_zone=0, stop_dwell=8.0,
-                 scale_adapt=True, nomap_mode="line", keep_offset_xy=False,
-                 keep_offset_z=False, mgrs_guard_m=0.0):
+                 scale_adapt=True, nomap_mode="line", keep_offset_xy=True,
+                 keep_offset_z=True, mgrs_guard_m=0.0):
         self.map = track_map
         self.origin = origin            # (lat, lon, alt) или None: первая точка master
         self.init_window = float(init_window)
@@ -77,7 +78,9 @@ class Position:
             raise ValueError(f"nomap_mode {nomap_mode!r}: line | hold")
         self.nomap_mode = nomap_mode
         # сдвиг «GNSS окна − карта» в якоре сохраняется в выходе (эталон судьи —
-        # тот же GNSS, у прогонов без RTK он смещён на метры)
+        # тот же GNSS, у прогонов без RTK он смещён на метры). По горизонтали
+        # это только поперечная часть (курсор притягивается к оси пути поперёк,
+        # не дальше snap_r), по высоте — не больше OFFSET_Z_MAX
         self.keep_offset_xy = bool(keep_offset_xy)
         self.keep_offset_z = bool(keep_offset_z)
         self.offset = (0.0, 0.0, 0.0)
@@ -233,9 +236,11 @@ class Position:
             self._cursor = self.map.locate(anchor, az)
             c = self._cursor
             if c.get("on_map"):
+                dz = anchor[2] - c["z"]
                 self.offset = ((anchor[0] - c["x"]) if self.keep_offset_xy else 0.0,
                                (anchor[1] - c["y"]) if self.keep_offset_xy else 0.0,
-                               (anchor[2] - c["z"]) if self.keep_offset_z else 0.0)
+                               dz if self.keep_offset_z and abs(dz) <= self.OFFSET_Z_MAX
+                               else 0.0)
 
     # ---------- путь -> положение ----------
 
@@ -393,7 +398,10 @@ class Runner:
     def _advance(self, stamp):
         dt = self.p.dt
         if self.t is None:
-            self.t = stamp
+            # WP23: узлы сетки кратны dt (совпадают с метками GNSS, кратными
+            # 0,1 с); иначе фаза сетки зависит от того, какое сообщение пришло
+            # первым (GNSS сетку больше не двигает)
+            self.t = math.floor(stamp / dt) * dt
             return []
         outs = []
         while self.t + dt <= stamp + 1e-9:

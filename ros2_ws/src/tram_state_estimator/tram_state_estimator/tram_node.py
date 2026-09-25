@@ -79,8 +79,8 @@ class TramEstimatorNode(Node):
         P("mgrs_guard_m", 0.0)             # у края квадрата не публиковать (0 — выкл.)
         P("scale_adapt", True)             # онлайн-масштаб пути по остановкам
         P("nomap_mode", "line")            # без карты: line | hold
-        P("keep_offset_xy", False)         # сдвиг GNSS окна − карта в выходе
-        P("keep_offset_z", False)
+        P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе
+        P("keep_offset_z", True)
         g = lambda n: self.get_parameter(n).value
 
         params = declare_core_params(self, include_dt=True)

@@ -323,7 +323,7 @@ class Frame:
         self._eqr = (Equirect(self.lat0, self.lon0, self.alt0)
                      if self.projection == "equirect" else None)
         # масштаб UTM в начале: путь по карте без карты (прямая) в метрах сетки
-        self.k0 = self.scale_heading(self.lat0, self.lon0, 0.0)[0]
+        self.k0 = float(self.scale_heading(self.lat0, self.lon0, 0.0)[0][0])
 
     # --- внутренняя система
     def fwd_arr(self, lat, lon, alt):
