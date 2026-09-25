@@ -2,8 +2,14 @@
 // Перенос текущего ядра: лист параметров (позиции ручки, единицы и раскладка датчиков,
 // табличный привод), маска свежих показаний, восстанавливаемые отказы датчиков, согласие
 // осей, защёлка «стоим или скользим». Сверка с Python: js-port/record.py + compare.js.
+// PORT — ядро пакета, с которым порт сверен: sha1 estimator_core.py (переводы строк LF,
+// 12 знаков; так же его пишут tools/export_replay.py и js-port/record*.py). Страница
+// сравнивает его с ядром, которым посчитаны прогоны комиссии, и при расхождении
+// подписывает песочницу «упрощённое ядро». Перенёс правку ядра и сверил — обнови PORT
+// здесь и во вшитой копии в simulator/index.html (js-port/check.sh это проверяет).
 const TramEst = (() => {
   const G = 9.81;
+  const PORT = { core_git: '56933cc', core_sha1: '674bab988601', checked: '25.09', dv: '6·10⁻¹³ м/с' };
   const DEFAULT = {
     M_nom: 28000.0, r_nom: 0.35, n_axles: 4, driven: [true, true, false, false], braked: [true, true, true, true], v_max_line: 20.0,
     F_notch: 36000.0, F_brake: 30000.0, v_base: 8.0, v_ed_fade: 1.5, brake_hold_frac: 1.0,
@@ -506,6 +512,6 @@ const TramEst = (() => {
       };
     }
   }
-  return { Estimator, DEFAULT, MODE_NAMES, COAST, TRACTION, BRAKE, TRANSITION, SLIP, STANDSTILL, DEGRADED, G, notch_to_u, sensor_to_speed };
+  return { Estimator, DEFAULT, MODE_NAMES, COAST, TRACTION, BRAKE, TRANSITION, SLIP, STANDSTILL, DEGRADED, G, notch_to_u, sensor_to_speed, PORT };
 })();
 if (typeof module !== 'undefined') module.exports = TramEst;

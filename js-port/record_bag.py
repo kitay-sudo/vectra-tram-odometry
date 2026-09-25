@@ -19,8 +19,10 @@ import export_replay as X  # noqa: E402  (тот же лист, та же свя
 
 bag = sys.argv[1] if len(sys.argv) > 1 else X.DEFAULT_RUN
 variant = sys.argv[2] if len(sys.argv) > 2 else "clean"
-sheet = os.path.join(X.PKG, "config", "tram.yaml")
-params, node = X.load_sheet(sheet)
+# лист вагона (2 тележки, км/ч, табличный привод) — для сверки порта годится любой лист вагона;
+# третий аргумент — другой лист (путь), например оценочный config/eval/tram.yaml
+sheet = sys.argv[3] if len(sys.argv) > 3 else os.path.join(X.PKG, "config", "tram.yaml")
+params, node, _ = X.resolve_sheet(sheet)
 a = X.bagio.load(bag)
 b, info = X.make_variant(a, bag, variant)
 C = X.EC.Estimator
@@ -50,5 +52,6 @@ X.replay(b, [r])
 pd = {k: (list(v) if isinstance(v, tuple) else v) for k, v in dataclasses.asdict(params).items()}
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rec_bag.json")
 with open(out, "w", encoding="utf-8") as fh:
-    json.dump({"bag": bag, "variant": variant, "params": pd, "rows": rows}, fh)
+    json.dump({"bag": bag, "variant": variant, "params": pd, "rows": rows,
+               "core_sha1": X.core_sha1()}, fh)
 print("ok", bag, variant, len(rows), "шагов;", sum(1 for x in rows if x[0] == 1), "разомкнутых")
