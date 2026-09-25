@@ -133,19 +133,34 @@ def main():
          res.get("cpu_pct_1core", {}).get("max", 1e9) <= 200),
         ("ОЗУ ≤ 0,5 ГБ", f"RSS max {res.get('rss_first_last_max_mb', [None] * 3)[2]} МБ; лимит контейнера {a.memory}; OOM: {a.oom}",
          (res.get("rss_first_last_max_mb", [0, 0, 1e9])[2] <= 512) and a.oom != "true"),
-        ("без утечки памяти", f"наклон RSS после 60 с {slope} МБ/мин; половины {res.get('rss_mean_halves_after_60s_mb')}",
-         slope is not None and slope < 0.5),
+        # короткий bag (< ~90 с после прогрева): наклон не считается — «н/д», не FAIL
+        ("без утечки памяти", f"наклон RSS после 60 с {slope} МБ/мин; половины {res.get('rss_mean_halves_after_60s_mb')}"
+         if slope is not None else "н/д: после прогрева 60 с меньше 30 замеров RSS (bag короче ~90 с)",
+         None if slope is None else slope < 0.5),
         ("работа без вмешательства: нода жива до конца", f"alive={a.alive}, SIGINT-останов {a.stop_s} с, код {a.exit_code}",
          a.alive == "true"),
     ]
+    verdict = lambda ok: "н/д" if ok is None else ("PASS" if ok else "FAIL")
+    # разрывы выхода > 0,3 с: совпадает ли каждый с разрывом входов /vehicle/*
+    # (±0,1 с по времени начала) — тогда пауза в самой записи bag
+    big = []
+    if len(vel) > 5 and len(veh) > 5:
+        dv, dveh = np.diff(vel[:, 0]), np.diff(veh)
+        for k in np.where(dv > 0.3)[0]:
+            t = vel[k, 0]
+            m = (np.abs(veh[:-1] - t) < 0.1 + dv[k]) & (dveh > 0.5 * dv[k])
+            big.append({"t_s": round(float(t - vel[0, 0]), 1), "gap_s": round(float(dv[k]), 3),
+                        "inputs_gap": bool(m.any())})
+    gaps["output_over_300ms"] = big
     S = {"bag": a.bag, "rate": float(a.rate), "limits": {"cpus": a.cpus, "memory": a.memory},
          "wall_span_s": round(span, 1), "outputs": o, "latency": L, "node": res,
          "oom_killed": a.oom, "alive_at_end": a.alive, "stop_s": a.stop_s,
          "exit_code": a.exit_code, "input_counts": P.get("inputs"),
          "accuracy_sanity": P.get("accuracy_sanity_vs_bag_gnss"),
          "wall_gaps": gaps,
-         "checks": [{"check": c, "value": v, "pass": bool(ok)} for c, v, ok in checks],
-         "pass": all(ok for _, _, ok in checks)}
+         "checks": [{"check": c, "value": v, "pass": None if ok is None else bool(ok)}
+                    for c, v, ok in checks],
+         "pass": all(ok is not False for _, _, ok in checks)}
     with open(os.path.join(a.dir, "summary.json"), "w", encoding="utf-8") as fh:
         json.dump(S, fh, ensure_ascii=False, indent=1)
 
@@ -154,7 +169,7 @@ def main():
           f"в соседнем контейнере в тех же сетевом/IPC/PID пространствах. Длительность по "
           f"стенным часам {span / 60:.1f} мин. Команда: `tools/measure_realtime.sh --bag {a.bag} --rate {a.rate}`.", "",
           "| критерий ТЗ | измерено | итог |", "|---|---|---|"]
-    md += [f"| {c} | {v} | {'PASS' if ok else 'FAIL'} |" for c, v, ok in checks]
+    md += [f"| {c} | {v} | {verdict(ok)} |" for c, v, ok in checks]
     if res.get("per_minute"):
         md += ["", "RSS и CPU ноды по минутам (psutil, раз в 1 с):", "",
                "| мин | RSS ср., МБ | RSS макс., МБ | CPU, % ядра |", "|---|---|---|---|"]
@@ -165,8 +180,17 @@ def main():
                f"{d['cpu_pct'].get('mean')} %, макс {d['cpu_pct'].get('max')} %; память ср. "
                f"{d['mem_mib'].get('mean')} МиБ, макс {d['mem_mib'].get('max')} МиБ из {d['mem_limit_mib']} МиБ."]
     md += ["", f"Крупнейшие разрывы по стенным часам, с: выход ноды {gaps['output_top5_s']}; "
-           f"входы /vehicle/* от плеера {gaps['input_top5_s']}. Совпадают — пауза в записи bag "
-           "(пока входы молчат, выхода нет; пульс выхода — поток robust)."]
+           f"входы /vehicle/* от плеера {gaps['input_top5_s']}."]
+    if big:
+        same = [g for g in big if g["inputs_gap"]]
+        own = [g for g in big if not g["inputs_gap"]]
+        if same:
+            md += [f"Разрывы выхода > 0,3 с вместе с разрывом входов (пауза в записи bag; "
+                   f"пока входы молчат, выхода нет — пульс выхода, поток robust): {same}."]
+        if own:
+            md += [f"Разрывы выхода > 0,3 с БЕЗ разрыва входов (задержка самой ноды): {own}."]
+    else:
+        md += ["Разрывов выхода > 0,3 с нет."]
     md += ["", f"Итог: **{'PASS' if S['pass'] else 'FAIL'}**", ""]
     with open(os.path.join(a.dir, "summary.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(md))

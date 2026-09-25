@@ -9,15 +9,23 @@
 
 ```bash
 cp .env.example .env        # DATA_DIR=<папка с прогонами>, BAG=30618_e9a34502
-docker compose up           # первый раз соберёт образ (~3 мин, нужен интернет)
+docker compose up --build   # первый раз соберёт образ (~3 мин, нужен интернет)
 ```
+
+`--build` обязателен после каждого `git pull`: без него compose возьмёт готовый
+образ `vectra/tram:compose`, а в нём нода собрана из старых исходников (repo
+смонтирован, но нода запускается из `/ws` образа).
 
 | Адрес | Что |
 |---|---|
 | `http://localhost:8080` | страница симулятора (сервис `web`, `python3 -m http.server`) |
 | `ws://localhost:9090` | rosbridge (сервис `bridge`): `/result/*`, `/tram/estimator_status` |
 
-После сборки образа сеть не нужна: страница без CDN, bag — с диска.
+После сборки образа серверной части сеть не нужна: нода, мост и bag — локально.
+Страница — оговорка: на `main` `simulator/index.html` грузит Tailwind с
+`cdn.tailwindcss.com` и шрифт Google Fonts. Без интернета у браузера зрителя
+страница откроется без стилей. В ветке `sim` страница без внешних зависимостей;
+после её слияния интернет для страницы не нужен.
 
 Порты по умолчанию открыты только на `127.0.0.1`. Чтобы открыть страницу с
 другого устройства в той же сети, задайте в `.env` `WEB_BIND=0.0.0.0` и
@@ -37,12 +45,12 @@ cp .env.example .env
 #   DATA_DIR=/srv/tram/data        папка с прогонами
 #   BAG=30618_e9a34502  PLAY_LOOP=1
 #   PUBLIC_HOST=demo.example.org   домен сервера
-docker compose --profile server up -d
+docker compose --profile server up -d --build
 docker compose logs -f proxy estimator player
 ```
 
 Профиль `server` добавляет к сервисам демо обратный прокси nginx
-(`nginx:1.27-alpine`, закреплён по digest):
+(`nginx:1.30-alpine` — 1.30.5 stable от 22.09.2026, закреплён по digest):
 
 | Путь | Куда |
 |---|---|
@@ -131,3 +139,12 @@ python3 tools/ws_check.py wss://demo.example.org/ros               # снару�
 - **Изоляция.** Сеть проекта изолирована: чужие ROS 2 на сервере в тот же домен не
   попадут. Если нужен `network_mode: host`, задайте уникальный `ROS_DOMAIN_ID`.
 - **Останов.** `docker compose down` посылает SIGINT (`stop_signal`), как Ctrl+C.
+- **Перезапуск.** У `estimator` нет `restart`: `player` и `probe` живут в его
+  сетевом, IPC и PID пространствах, а перезапущенный контейнер получает новые.
+  После перезапуска `player` остаётся в старом пространстве без DDS, `probe`
+  завершается (проверено ревьюером: `kill -9` ноды). Упавшую ноду перезапускает
+  сам launch (`respawn`, поток robust). Если упал весь контейнер `estimator`:
+  `docker compose up -d --force-recreate`.
+- **Второй вариант сервера.** В ветке `sim` есть `simulator/deploy/compose.demo.yml`
+  (caddy с автоматическим TLS от Let's Encrypt, тот же путь `/ros`). Он тоже
+  занимает порты 80/443: на сервере запускать что-то одно. Выбор — на интеграции.

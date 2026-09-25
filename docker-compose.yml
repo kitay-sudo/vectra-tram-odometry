@@ -1,12 +1,13 @@
 # Vectra — резервная одометрия трамвая (ROS 2 Humble). Одна команда на всё:
 #
-#   docker compose up                    # живое демо: нода + bag + проба + мост + страница
+#   docker compose up --build            # живое демо: нода + bag + проба + мост + страница
+#                                        # (--build: образ из текущих исходников, не старый)
 #   docker compose run --rm test         # colcon build + pytest (без сети)
 #   docker compose run --rm eval         # офлайн-оценка tools/eval.py (нужны данные)
 #   docker compose --profile server up -d   # публичный сервер: + обратный прокси :80/:443
 #
 # Настройки — в .env (шаблон .env.example): DATA_DIR, BAG, ROS_DOMAIN_ID,
-# PUBLIC_HOST, порты. Подробно: docs/JURY.md (§ Docker) и docs/DEMO.md.
+# PUBLIC_HOST, порты. Подробно: docs/JURY.md (§ Docker) и docs/DEPLOY.md.
 #
 # DDS между контейнерами: ROS-сервисы в сети проекта (bridge) с одинаковым
 # ROS_DOMAIN_ID и ROS_LOCALHOST_ONLY=0, discovery FastDDS по multicast внутри
@@ -45,7 +46,11 @@ services:
     ipc: shareable
     stop_signal: SIGINT
     stop_grace_period: 15s
-    restart: unless-stopped
+    # restart здесь НЕ ставится: player и probe живут в сетевом, IPC и PID
+    # пространствах этого контейнера. Перезапущенный контейнер получает новые
+    # пространства, а player/probe остаются в старых (без DDS, probe — Exited).
+    # Упавшую ноду перезапускает сам launch (respawn, поток robust); если упал
+    # весь контейнер: docker compose up -d --force-recreate
 
   player:
     <<: *ros
@@ -96,7 +101,9 @@ services:
 
   web:
     <<: *ros
-    # статическая страница симулятора; после сборки образа сеть не нужна
+    # статическая страница симулятора (python http.server). Внешние ресурсы
+    # страницы (на main — Tailwind CDN и Google Fonts) браузер грузит сам;
+    # в ветке sim страница без них — см. docs/DEPLOY.md
     command: python3 -m http.server 8080 --bind 0.0.0.0 --directory /repo/simulator
     ports:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
@@ -105,7 +112,8 @@ services:
   # ---------------------------------------------------------------- публичный сервер
   proxy:
     profiles: [server]
-    image: ${PROXY_IMAGE:-nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10}
+    # nginx 1.30.5 stable (сборка 22.09.2026), закреплён по digest
+    image: ${PROXY_IMAGE:-nginx:1.30-alpine@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1ae99cb068c3bce2b}
     depends_on: [bridge]
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:-localhost}

@@ -15,6 +15,8 @@
 #   --memory M      лимит памяти контейнера ноды, без swap (512m)
 #   --tag NAME      каталог out/realtime/NAME (по умолчанию <bag>_x<rate>)
 #   --build         пересобрать образ из рабочего дерева перед замером
+#   --allow-stale   мерить образ, даже если его /ws/src не совпадает с ros2_ws/src
+#                   (по умолчанию такой замер не запускается: мерили бы старый код)
 #   --stats-every S период опроса docker stats, с (5)
 # Переменные: IMAGE (vectra/tram:compose), DATA_DIR (<repo>/data).
 # Результат: out/realtime/<tag>/{summary.json,summary.md,raw.npz,node.log,
@@ -47,7 +49,7 @@ fi
 here="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
 IMAGE="${IMAGE:-vectra/tram:compose}"
 DATA_DIR="${DATA_DIR:-$here/data}"
-BAG=""; RATE=1.0; CPUS=2; MEM=512m; TAG=""; BUILD=0; EVERY=5
+BAG=""; RATE=1.0; CPUS=2; MEM=512m; TAG=""; BUILD=0; EVERY=5; STALE_OK=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --bag) BAG="$2"; shift ;;
@@ -56,6 +58,7 @@ while [ $# -gt 0 ]; do
     --memory) MEM="$2"; shift ;;
     --tag) TAG="$2"; shift ;;
     --build) BUILD=1 ;;
+    --allow-stale) STALE_OK=1 ;;
     --stats-every) EVERY="$2"; shift ;;
     *) echo "неизвестная опция $1"; exit 2 ;;
   esac
@@ -71,8 +74,18 @@ if [ $BUILD -eq 1 ] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   echo "[rt] сборка образа $IMAGE из рабочего дерева"
   docker build -q -f "$here/docker/Dockerfile" -t "$IMAGE" "$here" || exit 1
 fi
+# нода работает из /ws образа: исходники образа (кроме test/) должны совпадать с деревом
+if ! docker run --rm -v "$here:/repo:ro" "$IMAGE" diff -r -q -x __pycache__ -x .pytest_cache -x test /ws/src /repo/ros2_ws/src >/dev/null 2>&1; then
+  if [ $STALE_OK -eq 1 ]; then
+    echo "[rt] ВНИМАНИЕ: /ws/src образа $IMAGE не совпадает с ros2_ws/src — мерится код образа (--allow-stale)"
+  else
+    echo "[rt] образ $IMAGE собран из других исходников, чем ros2_ws/src рабочего дерева:"
+    echo "[rt] замер был бы по старому коду. Добавьте --build (или --allow-stale)."
+    exit 2
+  fi
+fi
 name="vectra-rt-${TAG//[^a-zA-Z0-9_.-]/_}-$RANDOM"
-dom=$((RANDOM % 90 + 110))
+dom=$((RANDOM % 100 + 1))    # 1…100: вне 102…232 (эфемерные порты Linux, см. ROS 2 docs)
 echo "[rt] образ $IMAGE; нода: --cpus $CPUS --memory $MEM; bag $BAG x$RATE; ROS_DOMAIN_ID=$dom"
 echo "[rt] хост: $(docker info --format '{{.NCPU}} CPU, {{.MemTotal}} B, {{.OperatingSystem}} {{.ServerVersion}}')"
 echo "[rt] соседние контейнеры (замер предварительный, если они есть):"

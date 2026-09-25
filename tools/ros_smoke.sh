@@ -44,7 +44,7 @@ if [ ! -d /opt/ros/humble ]; then
   mkdir -p "$here/out/smoke/$tag"
   export MSYS_NO_PATHCONV=1
   exec docker run --rm --name "vectra-smoke-${tag//[^a-zA-Z0-9_.-]/_}-$RANDOM" --cpus 2 \
-    -e ROS_LOCALHOST_ONLY=1 -e ROS_DOMAIN_ID="$((RANDOM % 90 + 110))" \
+    -e ROS_LOCALHOST_ONLY=1 -e ROS_DOMAIN_ID="$((RANDOM % 100 + 1))" \
     -v "$here:/repo:ro" -v "$here/out/smoke/$tag:/repo/out/smoke/$tag" \
     -v "$DATA_DIR:/data:ro" \
     "$IMAGE" bash /repo/tools/ros_smoke.sh --inside "$@"
@@ -78,7 +78,7 @@ source /opt/ros/humble/setup.bash
 if [ -n "$WS" ]; then
   source "$WS/install/setup.bash"; log "workspace: $WS"
 elif [ $BUILD -eq 0 ] && [ -f /ws/install/setup.bash ] && \
-     diff -r -q -x __pycache__ /ws/src "$REPO/ros2_ws/src" >/dev/null 2>&1; then
+     diff -r -q -x __pycache__ -x .pytest_cache -x test /ws/src "$REPO/ros2_ws/src" >/dev/null 2>&1; then
   source /ws/install/setup.bash; log "workspace: /ws образа (исходники совпадают с репозиторием)"
 else
   log "workspace: собираю $REPO/ros2_ws/src в /tmp/smoke_ws"
