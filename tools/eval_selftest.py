@@ -52,6 +52,22 @@ def test_utm_matches_pyproj(ll, E, N, code):
     assert int(math.floor(float(x))) == int(code[5:10]) and int(math.floor(float(y))) == int(code[10:])
 
 
+def test_one_geodesy_and_independent_series():
+    """Интеграция: eval_geo — обёртка над геодезией пакета (одна реализация
+    на ноду, оценку и экспорт). Независимая проверка — ряд Снайдера
+    (analysis/georef.py, поток «положение») на линии и вокруг: < 1 см."""
+    sys.path.insert(0, str(ROOT / "analysis"))
+    import georef
+    from tram_state_estimator import geodesy as GD
+    assert G.GD is GD
+    rng = np.random.default_rng(0)
+    lat = rng.uniform(55.70, 55.90, 5000)
+    lon = rng.uniform(37.20, 37.70, 5000)
+    E, N = G.utm_fwd(lat, lon, 37)
+    Es, Ns = georef.utm_snyder(lat, lon, 37)
+    assert np.abs(E - Es).max() < 0.01 and np.abs(N - Ns).max() < 0.01
+
+
 def test_utm_inverse_roundtrip():
     lat = np.array([p[0][0] for p in PYPROJ_UTM37])
     lon = np.array([p[0][1] for p in PYPROJ_UTM37])

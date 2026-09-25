@@ -445,59 +445,30 @@ def replay(a, runners):
 
 # ------------------------------------------------------------------ геодезия
 
-A_WGS = 6378137.0
-F_WGS = 1.0 / 298.257223563
-E2 = F_WGS * (2.0 - F_WGS)
+# Геодезия — одна на проект: tram_state_estimator/geodesy.py (нода, оценка,
+# экспорт). Прежние свои формулы экспортёра совпадали с ней лучше 1 мм
+# (docs/audit/INTEGRATION.md) и заменены вызовами пакета.
+from tram_state_estimator import geodesy as GD  # noqa: E402
 
 
 def proj_equirect(lat, lon, alt, o):
     """Формула runner.Enu до правок (сфера R = a)."""
-    k = math.cos(math.radians(o[0]))
-    return np.c_[np.radians(np.asarray(lon) - o[1]) * A_WGS * k,
-                 np.radians(np.asarray(lat) - o[0]) * A_WGS, np.asarray(alt) - o[2]]
-
-
-def _ecef(lat, lon, alt):
-    la, lo = np.radians(lat), np.radians(lon)
-    n = A_WGS / np.sqrt(1.0 - E2 * np.sin(la) ** 2)
-    return np.c_[(n + alt) * np.cos(la) * np.cos(lo), (n + alt) * np.cos(la) * np.sin(lo),
-                 (n * (1.0 - E2) + alt) * np.sin(la)]
+    return GD.Equirect(*o).fwd_arr(lat, lon, alt)
 
 
 def proj_enu(lat, lon, alt, o):
     """Строгий ENU WGS84 от точки o."""
-    p = _ecef(np.asarray(lat, float), np.asarray(lon, float), np.asarray(alt, float)) \
-        - _ecef(np.array([o[0]]), np.array([o[1]]), np.array([o[2]]))
-    la, lo = math.radians(o[0]), math.radians(o[1])
-    R = np.array([[-math.sin(lo), math.cos(lo), 0.0],
-                  [-math.sin(la) * math.cos(lo), -math.sin(la) * math.sin(lo), math.cos(la)],
-                  [math.cos(la) * math.cos(lo), math.cos(la) * math.sin(lo), math.sin(la)]])
-    return p @ R.T
+    return GD.Enu(*o).fwd_arr(lat, lon, alt)
 
 
 def utm_zone(lon):
-    return int((lon + 180.0) // 6) + 1
+    return GD.utm_zone(lon)
 
 
 def utm_en(lat, lon, zone):
-    """UTM, северное полушарие, ряд Крюгера до n^4 (точность << 1 мм)."""
-    n = F_WGS / (2.0 - F_WGS)
-    Ab = A_WGS / (1.0 + n) * (1.0 + n ** 2 / 4.0 + n ** 4 / 64.0)
-    al = (n / 2 - 2 * n ** 2 / 3 + 5 * n ** 3 / 16 + 41 * n ** 4 / 180,
-          13 * n ** 2 / 48 - 3 * n ** 3 / 5 + 557 * n ** 4 / 1440,
-          61 * n ** 3 / 240 - 103 * n ** 4 / 140,
-          49561 * n ** 4 / 161280)
-    phi = np.radians(np.asarray(lat, float))
-    dl = np.radians(np.asarray(lon, float) - (zone * 6 - 183))
-    c = 2.0 * math.sqrt(n) / (1.0 + n)
-    t = np.sinh(np.arctanh(np.sin(phi)) - c * np.arctanh(c * np.sin(phi)))
-    xi = np.arctan(t / np.cos(dl))
-    eta = np.arctanh(np.sin(dl) / np.sqrt(1.0 + t ** 2))
-    Ex, Ny = eta + 0.0, xi + 0.0
-    for j, a_ in enumerate(al, 1):
-        Ex = Ex + a_ * np.cos(2 * j * xi) * np.sinh(2 * j * eta)
-        Ny = Ny + a_ * np.sin(2 * j * xi) * np.cosh(2 * j * eta)
-    return np.c_[500000.0 + 0.9996 * Ab * Ex, 0.9996 * Ab * Ny]
+    """UTM, северное полушарие (геодезия пакета, ряд Крюгера до n^6)."""
+    E, N = GD.utm_fwd(np.asarray(lat, float), np.asarray(lon, float), zone, north=True)
+    return np.c_[np.ravel(E), np.ravel(N)]
 
 
 def unwrap100k(a):
