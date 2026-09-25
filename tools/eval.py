@@ -120,9 +120,6 @@ MAP_SRC = ("analysis/build_map.py", "analysis/drive_model.json",
            "ros2_ws/src/tram_state_estimator/tram_state_estimator/track_map.py",
            "ros2_ws/src/tram_state_estimator/tram_state_estimator/runner.py",
            "ros2_ws/src/tram_state_estimator/config/tram_calibration.json")
-# карта напарника analysis/cache/track_map_train.npz собрана кодом main 56933cc;
-# её содержимое совпадает с пересборкой (проверено 25.09, docs/EVAL.md)
-LEGACY_MAP_KEY = "bb9fbbdf"
 
 
 def map_key():
@@ -153,9 +150,9 @@ def resolve_map(spec, cache, train_ids, workers, rebuild, log, out):
     if spec == "train":
         key = map_key()
         name = f"track_map_train.{key}.npz"
+        # карта напарника analysis/cache/track_map_train.npz не используется: она собрана
+        # на другой платформе и отличается множителем пути в 16-м знаке (числа — в 6-м)
         cands = [cache / name, out / "maps" / name]
-        if key == LEGACY_MAP_KEY:
-            cands.append(cache / "track_map_train.npz")
         f = next((c for c in cands if c.exists()), None)
         if rebuild or f is None:
             f = (cache if _writable(cache) else out / "maps") / name
@@ -555,7 +552,7 @@ def evaluate(args, log):
                                       sha=R.sha(map_path) if map_path else None, leak=map_leak),
         gnss=args.gnss, frame=args.frame, frame_ru=M.FRAMES_RU[args.frame],
         runner_frame=args.runner_frame, judge_grid=args.judge_grid, quick=args.quick,
-        runs=ids, split=SPLIT.relative_to(ROOT).as_posix(), pkg_src_sha=src_digest(),
+        runs=ids, kinds=kinds, split=SPLIT.relative_to(ROOT).as_posix(), pkg_src_sha=src_digest(),
         tol_s=M.TOL, v_stand_gnss=M.V_STAND_GNSS, v_false_ss=M.V_FALSE_SS,
         params=dict(dt=base_p.dt, q_v=base_p.q_v, c_creep=base_p.c_creep,
                     c_creep_drag=base_p.c_creep_drag, meas_scale=base_p.meas_scale,
@@ -662,6 +659,8 @@ def main():
     ap.add_argument("--doc", default="docs/EVAL.md")
     ap.add_argument("--probe-glob", default="out/realtime/**/summary.json,out/ros_e2e/*/summary.json",
                     help="сводки tools/ros_probe.py для раздела «Реальное время»")
+    ap.add_argument("--render-only", action="store_true",
+                    help="только пересобрать docs/EVAL.md из готовых JSON в --out (графики не трогать)")
     ap.add_argument("--check-determinism", action="store_true",
                     help="прогнать всё второй раз и сравнить JSON побайтно")
     args = ap.parse_args()
@@ -677,6 +676,19 @@ def main():
     def log(msg):
         print(f"[eval {time.perf_counter() - t_start:6.0f} с] {msg}", flush=True)
 
+    if args.render_only:
+        import eval_report
+        result = dict(summary=json.loads((out / "summary.json").read_text(encoding="utf-8")),
+                      runs=json.loads((out / "runs.json").read_text(encoding="utf-8")),
+                      inject=json.loads((out / "inject.json").read_text(encoding="utf-8")))
+        result["kinds"] = result["summary"]["meta"].get("kinds") or list(
+            dict.fromkeys(x["kind"] for x in result["inject"]))
+        timing = json.loads((out / "timing.json").read_text(encoding="utf-8"))
+        pics = eval_report.existing_pics(ROOT)
+        (ROOT / args.doc).write_text(eval_report.render(result, timing, args, pics, ROOT),
+                                     encoding="utf-8")
+        log(f"пересобран {args.doc} из {out.relative_to(ROOT)}")
+        return
     result, timing, base, res = evaluate(args, log)
     files = {"summary.json": dumps(result["summary"]), "runs.json": dumps(result["runs"]),
              "inject.json": dumps(result["inject"])}

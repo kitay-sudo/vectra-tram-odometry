@@ -111,6 +111,20 @@ def plot_speed(base, img, bag):
     return p.name
 
 
+def _med(x, w=51):
+    """Скользящая медиана по окну w (NaN пропускаются)."""
+    if len(x) < w:
+        return x.copy()
+    from numpy.lib.stride_tricks import sliding_window_view
+    h = w // 2
+    pad = np.r_[np.full(h, np.nan), x, np.full(h, np.nan)]
+    with np.errstate(all="ignore"):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            return np.nanmedian(sliding_window_view(pad, w), axis=1)
+
+
 def plot_position(base, ids, img):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(2, 2, figsize=(10, 6.2), sharex=True, sharey="row")
@@ -121,13 +135,15 @@ def plot_position(base, ids, img):
             if not s or "sref" not in s:
                 continue
             x = np.asarray(s["sref"], float) / 1000.0
-            al, d3 = np.asarray(s["al"], float).copy(), np.asarray(s["d3"], float).copy()
+            # скользящая медиана 5 с (51 фикс): скачки самого эталона GNSS иначе
+            # рисуют «иглы» на весь график; числа в таблицах — без сглаживания
+            al, d3 = _med(np.asarray(s["al"], float)), _med(np.asarray(s["d3"], float))
             back = np.r_[False, np.diff(x) < -0.001]      # скачок эталона назад: разрыв линии
             x = x.copy()
             x[back] = np.nan
             ax[0, col].plot(x, al, color=color, lw=0.9, alpha=0.75)
             ax[1, col].plot(x, d3, color=color, lw=0.9, alpha=0.75)
-        ax[0, col].set_title(f"{title}: {len(ids)} отложенных прогонов", loc="left")
+        ax[0, col].set_title(f"{title}: {len(ids)} отложенных прогонов (медиана 5 с)", loc="left")
         ax[1, col].set_xlabel("путь по эталону GNSS, км")
     ax[0, 0].set_ylabel("вдоль пути, м (+ — впереди)")
     ax[1, 0].set_ylabel("3D, м")
@@ -244,7 +260,71 @@ def probe_rows(root, patterns):
     return rows
 
 
+# ------------------------------------------------------------------ сводка инъекций
+
+def inject_summary(inj, kinds):
+    """По видам: среднее по прогонам MAE во время, наибольшая |Δ вдоль| через
+    300 с, падения, флаги модели."""
+    out = []
+    for k in kinds:
+        xs = [x for x in inj if x["kind"] == k and not x.get("skipped")]
+        if not xs:
+            continue
+        row = dict(kind=k, n=len(xs))
+        for est in ("model", "naive"):
+            es = [x["est"].get(est) or {} for x in xs]
+            mae = [g(e, "during", "v_mae") for e in es if g(e, "during", "v_mae") is not None]
+            tail = [abs(e["d_along_tail"]) for e in es if e.get("d_along_tail") is not None]
+            row[est] = dict(mae=float(np.mean(mae)) if mae else None,
+                            tail=float(max(tail)) if tail else None,
+                            crash=sum(1 for e in es if e.get("crash")))
+        em = [x["est"].get("model") or {} for x in xs]
+        fv = [g(e, "during", "frac_valid") for e in em if g(e, "during", "frac_valid") is not None]
+        fa = [g(e, "during", "frac_amb") for e in em if g(e, "during", "frac_amb") is not None]
+        fs = [g(e, "during", "frac_slip") for e in em if g(e, "during", "frac_slip") is not None]
+        cv = [g(e, "during", "cov2s") for e in em if g(e, "during", "cov2s") is not None]
+        row["flag"] = dict(valid=min(fv) if fv else None, amb=max(fa) if fa else None,
+                           slip=max(fs) if fs else None, cov2s=float(np.mean(cv)) if cv else None)
+        out.append(row)
+    return out
+
+
+def verdict(r):
+    """Короткий вывод по виду инъекции (для таблицы и «Главного»)."""
+    m, n, fl = r["model"], r["naive"], r["flag"]
+    if m["crash"]:
+        return f"модель падает ({m['crash']} из {r['n']})"
+    flagged = (fl["valid"] is not None and fl["valid"] < 0.99) or (fl["amb"] or 0) > 0.05 \
+        or (fl["slip"] or 0) > 0.05
+    worse = m["mae"] is not None and n["mae"] is not None and m["mae"] > 1.5 * n["mae"] + 0.02
+    better = m["mae"] is not None and n["mae"] is not None and n["mae"] > 1.5 * m["mae"] + 0.02
+    big = m["mae"] is not None and m["mae"] > 0.3
+    parts = []
+    if big and not flagged:
+        parts.append("не замечено: ошибка без флага")
+    elif flagged:
+        parts.append("флаг есть")
+    if better:
+        parts.append("модель лучше базы")
+    elif worse:
+        parts.append("модель хуже базы")
+    if (m["tail"] or 0) > 20:
+        parts.append(f"остаток {f(m['tail'], 0)} м")
+    return "; ".join(parts) or "в пределах нормы"
+
+
+OK_VERDICTS = ("в пределах нормы", "флаг есть", "флаг есть; модель лучше базы", "модель лучше базы")
+
+
 # ------------------------------------------------------------------ документ
+
+def existing_pics(root):
+    img = root / "docs" / "img"
+    names = dict(speed="eval_speed_error.png", pos="eval_position_error.png", phase="eval_phase.png")
+    out = {k: (v if (img / v).exists() else None) for k, v in names.items()}
+    out["inj"] = [n for n in ("eval_inject_speed.png", "eval_inject_along.png") if (img / n).exists()]
+    return out
+
 
 def write(result, timing, base, res, args, root):
     import matplotlib
@@ -290,6 +370,37 @@ def render(result, timing, args, pics, root):
     for leak in (meta["sheet"].get("leak"), meta["map"].get("leak")):
         if leak:
             A(f">\n> **{leak}.** Эти числа не отчётные, пока нет оценочного листа.")
+    A("")
+    tm0, tn0 = _tot(S, "all", "model"), _tot(S, "all", "naive")
+    A("## Главное")
+    A("")
+    A(f"* **Скорость** ({len(ids)} отложенных, против GNSS master): модель MAE "
+      f"{f(tm0.get('v_mae'), 4)} м/с, смещение {f(tm0.get('v_bias'), 4, True)}, ±2σ "
+      f"{pct(tm0.get('cov2s_v'))}; база «только колесо» MAE {f(tn0.get('v_mae'), 4)}, смещение "
+      f"{f(tn0.get('v_bias'), 4, True)}.")
+    A(f"* **Положение** (MGRS, после перевода выхода): модель 3D ср. {f(tm0.get('p3d_mean'))} м, "
+      f"вдоль RMSE {f(tm0.get('along_rmse'))} м, дрейф 3D по концу медиана "
+      f"{f(tm0.get('drift_pct_3d_median'), 3)} % (макс {f(tm0.get('drift_pct_3d_max'), 2)} %); база 3D "
+      f"{f(tn0.get('p3d_mean'))} м.")
+    zv = next((v for v in S.get("variants", []) if v["name"] == "zero" and v.get("totals")), None)
+    if zv:
+        A(f"* **Без заглушек крипа** (c_creep = c_creep_drag = 0): MAE {f(zv['totals'].get('v_mae'), 4)}, "
+          f"смещение {f(zv['totals'].get('v_bias'), 4, True)}, 3D {f(zv['totals'].get('p3d_mean'))} м.")
+    if (tm0.get("judge_raw_3d_mean") or 0) > 1000:
+        A(f"* **Система судьи:** выход Runner сейчас локальный (equirect от начала), а судья ждёт "
+          f"MGRS: без перевода средняя 3D у судьи ≈ {f(tm0.get('judge_raw_3d_mean') / 1000, 0)} км.")
+    A(f"* **Граница квадратов MGRS:** при «переносе по точке» у судьи {tm0.get('sq_mismatch', 0)} пар "
+      f"модели попадают в другой квадрат, чем эталон; средняя 3D тогда {f(tm0.get('wrap_3d_mean'))} м "
+      f"вместо {f(tm0.get('p3d_mean'))} м.")
+    gf0 = S.get("gnss_full")
+    if gf0:
+        A(f"* **GNSS весь прогон:** выход совпал с режимом «GNSS 3 с» в {gf0.get('identical_runs')} из "
+          f"{len(gf0.get('runs', {}))} прогонов; 3D ср. {f(g(gf0, 'full', 'p3d_mean'), 1)} м против "
+          f"{f(g(gf0, 'gnss3', 'p3d_mean'), 1)} м (первые {f(gf0['span_s'] / 60, 0)} мин).")
+    summ0 = inject_summary(result["inject"], result["kinds"])
+    if summ0:
+        bad = [f"{r['kind']} — {verdict(r)}" for r in summ0 if verdict(r) not in OK_VERDICTS]
+        A("* **Инъекции:** " + ("; ".join(bad) if bad else "все виды в пределах нормы") + ".")
     A("")
     A("## 1. Как запустить")
     A("")
@@ -505,7 +616,7 @@ def render(result, timing, args, pics, root):
                      f(rm.get("along_end"), 1, True), f(rm.get("drift_pct_3d"), 3),
                      rm.get("sq_mismatch", "—"), "упала" if rm.get("crash") else ""])
     A(table(["прогон", "путь, км", "пар v", "MAE", "MAE база", "смещение", "±2σ", "3D ср.",
-             "3D база", "3D конец", "вдоль конец", "дрейф 3D, %", "квадрат ≠", ""], rows))
+             "3D база", "3D конец", "вдоль конец", "дрейф 3D, %", "квадрат ≠", "падение"], rows))
     A("")
 
     # ---------------- варианты листа
@@ -573,6 +684,23 @@ def render(result, timing, args, pics, root):
     A(table(["вид", "описание", "длит., с"],
             [[k, I.KINDS[k]["ru"], f(I.KINDS[k]["dur"], 1)] for k in result["kinds"]]))
     A("")
+    summ = inject_summary(result["inject"], result["kinds"])
+    if summ:
+        A("**Сводка по видам** (среднее MAE во время аномалии по прогонам; наибольший |Δ вдоль| через "
+          "300 с; флаги модели во время: наименьшая доля valid, наибольшие доли ambiguous и slip; "
+          "±2σ — доля пар, где ошибка внутри ±2σ):")
+        A("")
+        rows = []
+        for r in summ:
+            m, n, fl = r["model"], r["naive"], r["flag"]
+            rows.append([r["kind"], r["n"], f(m["mae"], 3), f(n["mae"], 3), f(m["tail"], 1), f(n["tail"], 1),
+                         f"{pct(fl['valid'], 0)} / {pct(fl['amb'], 0)} / {pct(fl['slip'], 0)}",
+                         pct(fl["cov2s"], 0), verdict(r)])
+        A(table(["вид", "прогонов", "MAE модели", "MAE базы", "|Δ вдоль| модели, м", "|Δ вдоль| базы, м",
+                 "valid / amb / slip", "±2σ", "вывод"], rows))
+        A("")
+        A("Подробно по прогонам:")
+        A("")
     rows = []
     for x in inj:
         em, en = x["est"].get("model", {}), x["est"].get("naive", {})
@@ -651,6 +779,14 @@ def render(result, timing, args, pics, root):
     A("")
     A(table(["метрика", "sub15 (аудит 25.09, json_train)", "этот прогон"], rows))
     A("")
+    A("Откуда расхождения, если они есть: (1) аудит считал 3D, путь и вдоль/поперёк в equirect "
+      "напарника, а здесь основная система — MGRS/UTM: длина пути в UTM на ~0,2 % больше "
+      "(equirect короче по востоку на 0,23 %), средняя 3D по прогону меняется до ~0,2 %; для "
+      "сверки выше взята та же equirect; (2) аудит хранил ряды в float32, поэтому доля «±2σ» на "
+      "границе (стоянка, σ_v на полу) может отличаться на ~0,1 п. п.; (3) sub15 печатает 3 "
+      "значащие цифры. Скорость по прогонам совпадает с `out/core/runs_val_json_train.csv` "
+      "аудита до 5-й значащей цифры (проверено 25.09 на коде до правок).")
+    A("")
 
     # ---------------- пороги
     A("## 9. Пороги приёмок, пересчитанные на 15 чистых (WP7 (г))")
@@ -674,8 +810,11 @@ def render(result, timing, args, pics, root):
          f"{f(max([x for x in others if x is not None], default=None), 1)} м)"],
         ["WP13 масштаб колёс", "3D ≤ 3,9 м; 92226df0 ≤ 6 м; 30618 не хуже > 1 м",
          f"3D ср. {f(tm.get('p3d_mean'))} м; 92226df0 {f(r92)} м (MGRS)",
-         f"3D ≤ {f(math.floor(tm.get('p3d_mean', 0) * 0.85 * 10) / 10, 1)} м (−15 %); 92226df0 ≤ 6 м; "
-         "ни один 30618 не хуже > 1 м" if tm.get("p3d_mean") else "—"],
+         (f"−15 % к 3D на момент приёмки (так выведен порог 3,9 из 4,65): сейчас "
+          f"{f(math.floor(tm.get('p3d_mean', 0) * 0.85 * 10) / 10, 1)} м"
+          + (f", после WP5 (без крипа, {f(zt.get('p3d_mean'))} м) — "
+             f"{f(math.floor(zt['p3d_mean'] * 0.85 * 10) / 10, 1)} м" if zt and zt.get("p3d_mean") else "")
+          + "; 92226df0 ≤ 6 м; ни один 30618 не хуже > 1 м") if tm.get("p3d_mean") else "—"],
     ]
     A(table(["пакет", "порог в TODO (на 17)", "база на 15 чистых", "предлагаемый порог"], rows))
     A("")
