@@ -2,12 +2,15 @@
 """Экспорт прогона для режима «Прогон данных комиссии» (simulator/index.html).
 
 Оценка считается той же связкой, что нода ROS 2 (tram_node.py): Runner из
-ros2_ws/src/tram_state_estimator, лист параметров вагона (yaml ноды), карта
-путей; сообщения подаются в порядке записи bag, GNSS — только первые 3 с
-(как analysis/evaluate.py и tools/eval.py). Рядом считаются:
-  * причинная база «только колесо» (среднее последних показаний тележек ×
-    meas_scale, путь на той же сетке, та же выставка, карта и привязка к
-    остановкам — как NaiveRunner в tools/audit/core_metrics.py);
+ros2_ws/src/tram_state_estimator, лист параметров вагона, карта путей;
+параметры ноды передаются в Runner так же, как их передаёт tram_node.py
+(включая параметры выставки и системы выхода после WP потока «положение»).
+Сообщения подаются в порядке записи bag, GNSS — только первые 3 с
+(analysis/evaluate.events, как tools/eval.py). Рядом считаются:
+  * причинная база «только колесо»: тот же Runner (сетка, выставка, карта,
+    привязка к остановкам, система выхода — код пакета без копий), но на
+    месте ядра — среднее свежих (не старше wheel_timeout) показаний тележек в
+    м/с, путь — интеграл на сетке (как NaiveCore в tools/eval_replay.py);
   * эталон GNSS master (скорость |vel|, положение fix), rover vel — справочно;
   * входы (тележки, км/ч; ручка) и диагностика оценщика: поля
     EstimatorStatus и состояние каждой тележки (принята / нет новых данных /
@@ -17,15 +20,18 @@ ros2_ws/src/tram_state_estimator, лист параметров вагона (ya
 (та же семантика и выбор окна, что в tools/inject.py потока оценки; если
 tools/inject.py есть — берётся он).
 
-Честность: прогон по умолчанию — отложенный (holdout_scored в tools/split.json),
-карта — только из обучающих (analysis/cache/track_map_train.npz), лист —
-оценочный config/eval/tram.yaml, если он есть, иначе текущий config/tram.yaml
-(имя листа пишется в файл и показывается на странице).
+Честность (решение 7): прогон по умолчанию — отложенный (holdout_scored в
+tools/split.json); карта — только из обучающих: config/eval/track_map.npz
+пакета, если есть, иначе analysis/cache/track_map_train.npz; лист — по тем же
+правилам, что tools/eval.py --sheet eval: оценочный config/eval/{tram_eval.yaml,
+tram.yaml, tram_calibration.json}, а пока его нет — config/tram_calibration.json
+с пометкой «УТЕЧКА» (она пишется в файл и показывается на странице; числа с
+такой пометкой не отчётные).
 
 Система координат на экране: система выхода модели (MGRS/UTM, ENU или
-equirect — определяется по данным), сдвинутая в первую точку GNSS master.
-Разрыв MGRS на границе квадратов 100 км снимается. Судья считает в MGRS;
-ошибки в плане от сдвига начала не зависят.
+equirect — берётся из настроек Runner и проверяется по данным), сдвинутая в
+первую точку GNSS master. Разрыв MGRS на границе квадратов 100 км снимается.
+Судья считает в MGRS; ошибки в плане от сдвига начала не зависят.
 
 Выход:
   simulator/replays/<run>_<variant>.js  — `TV_REPLAYS["<run>_<variant>"] = {...}`
@@ -33,6 +39,7 @@ equirect — определяется по данным), сдвинутая в 
   simulator/replays/index.js            — список прогонов с итоговыми метриками
 
   docker run --rm --cpus 2 -v <worktree>:/repo \
+      -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro \
       -v E:/MY-PROJECT/TrackVector/analysis/cache:/repo/analysis/cache:ro \
       -w /repo vectra/tram:dev python3 tools/export_replay.py \
       [--run 30618_e9a34502] [--variants clean,front_zero,both_zero,dropout,skid_brake]
@@ -62,13 +69,23 @@ import numpy as np  # noqa: E402
 import bagio  # noqa: E402
 import evaluate as E  # noqa: E402
 from tram_state_estimator import estimator_core as EC  # noqa: E402
+from tram_state_estimator import runner as RM  # noqa: E402
 from tram_state_estimator.runner import Runner  # noqa: E402
 from tram_state_estimator.track_map import TrackMap  # noqa: E402
 
 KMH = 3.6
 OUT_DIR = os.path.join(ROOT, "simulator", "replays")
 DEFAULT_RUN = "30618_e9a34502"
-DEFAULT_MAP = os.path.join(ROOT, "analysis", "cache", "track_map_train.npz")
+CFG = os.path.join(PKG, "config")
+# карта только из обучающих прогонов: пакетная EVAL-карта (поток «положение»,
+# analysis/build_map.py eval), иначе кэш напарника (build_map по train)
+MAP_CANDIDATES = (os.path.join(CFG, "eval", "track_map.npz"),
+                  os.path.join(ROOT, "analysis", "cache", "track_map_train.npz"))
+# оценочный лист — те же кандидаты и тот же запасной, что tools/eval_replay.py
+EVAL_SHEETS = tuple(os.path.join(CFG, "eval", n)
+                    for n in ("tram_eval.yaml", "tram.yaml", "tram_calibration.json"))
+LEAK = ("УТЕЧКА: лист подогнан по всем записям, включая отложенные "
+        "(оценочного листа config/eval/ ещё нет) — числа не отчётные")
 VARIANTS = ("clean", "front_zero", "both_zero", "dropout", "skid_brake")
 TOL = 0.05          # с: пара «выход — эталон» по ближайшей метке (README §5.1)
 DECIM_DT = 0.1      # с: шаг строк экспорта (10 Гц)
@@ -184,39 +201,117 @@ def make_variant(a, bag, kind):
 
 # ------------------------------------------------------------------ лист и связка
 
-def load_sheet(path):
-    """yaml ноды -> (Params, параметры ноды)."""
+def _yaml_params(path):
     import yaml
     with open(path, encoding="utf-8") as fh:
-        got = yaml.safe_load(fh)
-    got = got[next(iter(got))]["ros__parameters"]
+        d = yaml.safe_load(fh)
+    for v in d.values():
+        if isinstance(v, dict) and "ros__parameters" in v:
+            return v["ros__parameters"]
+    raise SystemExit(f"{path}: нет ros__parameters")
+
+
+def _rel(path):
+    return os.path.relpath(path, ROOT).replace(os.sep, "/")
+
+
+def resolve_sheet(spec=None):
+    """Лист по правилам tools/eval.py --sheet (если tools/eval_replay.py есть —
+    буквально его resolve_sheet, иначе те же правила здесь):
+      None/'eval' — оценочный config/eval/{tram_eval.yaml, tram.yaml,
+                    tram_calibration.json}; без него — config/tram_calibration.json
+                    + параметры ноды из config/tram.yaml, с пометкой УТЕЧКА;
+      'jury'      — боевой config/tram.yaml (УТЕЧКА на отложенных);
+      путь        — yaml ноды или json калибровки.
+    Возвращает (Params, параметры ноды, сведения о листе)."""
+    spec = spec or "eval"
     names = {f.name for f in dataclasses.fields(EC.Params)}
-    params = EC.Params.from_dict({k: v for k, v in got.items() if k in names})
-    node = {k: v for k, v in got.items() if k not in names}
-    return params, node
+    try:
+        import eval_replay as ER                  # tools/eval_replay.py (поток оценки)
+        sh = ER.resolve_sheet(spec)
+        corep, node = dict(sh["core"]), dict(sh["node"])
+        path, label, leak, src = str(sh["path"]), sh["label"], sh.get("leak"), "tools/eval_replay.py"
+    except (ImportError, AttributeError):
+        jury = os.path.join(CFG, "tram.yaml")
+        node_defaults = {k: v for k, v in _yaml_params(jury).items() if k not in names}
+        leak = None
+        if spec == "eval":
+            path = next((q for q in EVAL_SHEETS if os.path.exists(q)), None)
+            if path is None:
+                path, label, leak = (os.path.join(CFG, "tram_calibration.json"),
+                                     "json (запасной: оценочного листа config/eval/ нет)", LEAK)
+            else:
+                label = f"оценочный ({_rel(path)}, только train)"
+        elif spec == "jury":
+            path, label = jury, "боевой config/tram.yaml (все данные)"
+            leak = "УТЕЧКА: боевой лист подогнан по всем данным — числа на отложенных не отчётные"
+        else:
+            path = os.path.abspath(spec)
+            label = _rel(path)
+        if path.endswith(".json"):
+            with open(path, encoding="utf-8") as fh:
+                d = json.load(fh)
+            d = d.get("params", d)
+            corep = {k: v for k, v in d.items() if k in names}
+            node = dict(node_defaults)
+            node.update({k: v for k, v in d.items() if k not in names and not k.startswith("_")})
+        else:
+            d = _yaml_params(path)
+            corep = {k: v for k, v in d.items() if k in names}
+            node = {k: v for k, v in d.items() if k not in names}
+        path, src = _rel(path), "tools/export_replay.py"
+    # лист не из config/eval/ на отложенном прогоне — всегда пометка
+    if not leak and "/config/eval/" not in "/" + path.replace(os.sep, "/"):
+        leak = "лист не оценочный (не из config/eval/): на отложенных числа не отчётные"
+    params = EC.Params.from_dict(corep)
+    full = path if os.path.isabs(path) else os.path.join(ROOT, path)
+    return params, node, dict(path=path, label=label, leak=leak or None, resolver=src,
+                              sha1=sha1(full))
+
+
+# Параметры ноды -> аргументы Runner так же, как tram_node.py: явные
+# соответствия, остальное — по имени аргумента (x или x_s). Если у Runner есть
+# **kwargs (поток «положение»: они уходят в Position), принимаются и
+# аргументы Position.__init__ (projection, mgrs_grid, utm_zone, ...).
+NODE_TO_ARG = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeout_s",
+               "init_window": "init_window_s"}
+NOT_NODE = ("self", "params", "track_map", "origin")
+
+
+def runner_arg_names():
+    def named(fn):
+        return [n for n, q in inspect.signature(fn).parameters.items()
+                if q.kind not in (q.VAR_KEYWORD, q.VAR_POSITIONAL) and n not in NOT_NODE]
+    sig = inspect.signature(Runner.__init__).parameters
+    names = named(Runner.__init__)
+    if any(q.kind == q.VAR_KEYWORD for q in sig.values()) and hasattr(RM, "Position"):
+        names += [n for n in named(RM.Position.__init__) if n not in names]
+    return names
 
 
 def runner_kwargs(node, tmap):
-    """Аргументы Runner так же, как их собирает tram_node.py: таймауты, начало,
-    карта; новые параметры ноды (проекция и т. п.) — по совпадению имени с
-    аргументом Runner.__init__."""
-    sig = inspect.signature(Runner.__init__).parameters
+    """(аргументы Runner, параметры ноды, не ушедшие в Runner)."""
     kw = dict(track_map=tmap)
-    if "wheel_timeout_s" in node:
-        kw["wheel_timeout"] = float(node["wheel_timeout_s"])
-    if "handle_timeout_s" in node:
-        kw["handle_timeout"] = float(node["handle_timeout_s"])
     o = tuple(float(node.get(k, float("nan"))) for k in ("origin_lat", "origin_lon", "origin_alt"))
     kw["origin"] = o if all(math.isfinite(x) for x in o) else None
-    for k, v in node.items():
-        if k in sig and k not in kw:
-            kw[k] = v
-    return {k: v for k, v in kw.items() if k in sig}
+    # init_window_s: аргумент Runner/Position либо (код до правок) pos.init_window в make_runner
+    used = {"origin_lat", "origin_lon", "origin_alt", "map_file", "frame_id", "child_frame_id",
+            "init_window_s"}
+    for name in runner_arg_names():
+        key = NODE_TO_ARG.get(name) or (name if name in node else name + "_s")
+        if key in node:
+            kw[name] = node[key]
+            used.add(key)
+    return kw, sorted(k for k in node if k not in used)
 
 
-def make_runner(params, node, tmap):
-    r = Runner(params, **runner_kwargs(node, tmap))
-    if "init_window_s" in node and hasattr(r, "pos") and hasattr(r.pos, "init_window"):
+def make_runner(params, node, tmap, cls=Runner):
+    kw, _ = runner_kwargs(node, tmap)
+    r = cls(params, **kw)
+    # связка до WP потока «положение»: окно выставки задаётся после __init__
+    # (как tram_node.py до правок)
+    if "init_window" not in kw and "init_window_s" in node and hasattr(r, "pos") \
+            and hasattr(r.pos, "init_window"):
         r.pos.init_window = float(node["init_window_s"])
     return r
 
@@ -280,73 +375,58 @@ def instrument_core():
     C._tv_instrumented = True
 
 
-class NaiveRunner:
-    """Причинная база «только колесо»: скорость — среднее последних показаний
-    тележек (не старше wheel_timeout) × meas_scale / 3,6; путь — интеграл на
-    той же сетке p.dt по меткам сообщений; положение — тот же объект
-    выставки и карты, что у модели (берётся из Runner), та же привязка к
-    остановкам (стоянка = скорость < v_standstill дольше stop_dwell)."""
+class _NaiveCore(EC.Estimator):
+    """База «только колесо» на месте ядра (семантика NaiveCore из
+    tools/eval_replay.py): скорость — среднее свежих (не старше wheel_timeout
+    связки) конечных показаний тележек в м/с, иначе прежняя; путь — интеграл
+    на сетке p.dt. Остальные поля выхода нейтральные."""
 
-    def __init__(self, params, node, tmap, stop_dwell=8.0):
-        self.p, self.dt = params, params.dt
-        self.k = params.meas_scale * EC.LINEAR_UNITS.get(params.meas_units, 1.0 / 3.6)
-        self.last = [None, None]
-        self.t_w = [-math.inf, -math.inf]
-        self.t = None
-        self.s = self.v = 0.0
-        self.s0 = None
-        self.pos = make_runner(params, node, tmap).pos
-        self._dwell = 0.0
-        self.wheel_timeout = float(node.get("wheel_timeout_s", 1.0))
-        self.stop_dwell = stop_dwell
+    def __init__(self, params, runner):
+        super().__init__(params)
+        self._r = runner
+        self._v = 0.0
+        self._k = float(np.asarray(EC.sensor_to_speed(1.0, params)))
 
-    def on_wheel(self, i, stamp, value):
-        out = self._advance(stamp)
-        if math.isfinite(value):
-            self.last[i], self.t_w[i] = value, stamp
-        return out
-
-    def on_handle(self, stamp, position):
-        return self._advance(stamp)
-
-    def on_fix(self, stamp, antenna, lat, lon, alt):
-        out = self._advance(stamp)
-        moved = (self.s - self.s0) if self.s0 is not None else 0.0
-        was = self.pos.ready
-        self.pos.on_fix(stamp, antenna, lat, lon, alt, moved)
-        if self.pos.ready and was:
-            self.s0 = self.s
-        return out
-
-    def _advance(self, stamp):
-        if self.t is None:
-            self.t = stamp
-            return []
-        outs = []
-        while self.t + self.dt <= stamp + 1e-9 and len(outs) < 100000:
-            self.t += self.dt
-            outs.append(self._step())
-        return outs
-
-    def _step(self):
-        t = self.t
-        vals = [self.last[i] for i in (0, 1)
-                if self.last[i] is not None and t - self.t_w[i] <= self.wheel_timeout]
+    def _naive(self):
+        r, p = self._r, self.p
+        vals = [float(r.meas[i]) for i in range(self.nw)
+                if r.t - r.t_wheel[i] <= r.wheel_timeout and math.isfinite(float(r.meas[i]))]
         if vals:
-            self.v = max(0.0, float(np.mean(vals)) * self.k)
-        self.s += self.v * self.dt
-        if self.pos.ready:
-            if self.s0 is None:
-                self.s0 = self.s
-            x, y, z = self.pos.xyz(self.s - self.s0)
-            standing = bool(vals) and self.v < self.p.v_standstill
-            self._dwell = self._dwell + self.dt if standing else 0.0
-            if self._dwell >= self.stop_dwell > self._dwell - self.dt:
-                self.pos.on_stop(self.s - self.s0)
-                x, y, z = self.pos.xyz(self.s - self.s0)
-        else:
-            x, y, z = self.s, 0.0, 0.0
-        return dict(stamp=t, v=self.v, s=self.s, x=x, y=y, z=z, pos_ready=bool(self.pos.ready))
+            self._v = max(0.0, float(np.mean(vals)) * self._k)
+        self.x[EC.IV] = self._v
+        self.x[EC.IS] += self._v * p.dt
+        stand = bool(vals) and self._v < p.v_standstill
+        return dict(v=self._v, s=float(self.x[EC.IS]), d=0.0, k_t=1.0, k_b=1.0,
+                    mu=float(self.mu), sigma_v=0.0, sigma_s=0.0,
+                    mode=EC.STANDSTILL if stand else EC.COAST,
+                    healthy=np.ones(self.nw, dtype=bool), slip=False, ambiguous=False,
+                    n_accepted=len(vals), n_rejected=0, odometry_used=bool(vals),
+                    valid=bool(vals))
+
+    def step(self, notch, meas, fresh=True, handle_ok=True):
+        return self._naive()
+
+    def step_open_loop(self, notch):
+        return self._naive()
+
+
+class NaiveRunner(Runner):
+    """Причинная база «только колесо» внутри той же связки: Runner пакета
+    (сетка, выставка по GNSS окна, карта, привязка к остановкам, система
+    выхода — без копий, при любом их API), но ядро — _NaiveCore. Ядро
+    подменяется при КАЖДОМ присваивании self.core (в __init__, при сбросе
+    связки по разрыву времени и при пересоздании ядра — WP3/WP4 потока
+    robust)."""
+
+    age_comp = False    # WP6 robust: показания не приводятся по ускорению модели
+
+    @property
+    def core(self):
+        return self.__dict__.get("_naive_core")
+
+    @core.setter
+    def core(self, c):
+        self.__dict__["_naive_core"] = c if isinstance(c, _NaiveCore) else _NaiveCore(c.p, self)
 
 
 def replay(a, runners):
@@ -429,10 +509,24 @@ def unwrap100k(a):
     return a - np.r_[0.0, np.cumsum(k)] * 1e5
 
 
-def detect_frame(xyz, T, ready, m):
-    """Система выхода по данным: для каждого кандидата — эталон master fix в
-    этой системе; берётся кандидат с наименьшей медианной ошибкой в плане.
-    Возвращает (имя, xy_экран Nx2, z_экран N, ref_xy Mx2, ref_z M, медианы)."""
+def frame_hint(r):
+    """Система выхода по настройкам связки: Position.projection (поток
+    «положение»: mgrs | utm | enu | equirect) и mgrs_grid; без них — формула
+    equirect (код до правок). -> (кандидат detect_frame, projection, grid)."""
+    pos = getattr(r, "pos", None)
+    proj = str(getattr(pos, "projection", "") or "equirect").lower()
+    grid = str(getattr(pos, "mgrs_grid", "") or "")
+    cand = {"mgrs": "utm_abs", "utm": "utm_abs", "enu": "enu"}.get(proj, "equirect")
+    return cand, proj, grid
+
+
+def detect_frame(xyz, T, ready, m, hint=None):
+    """Система выхода: кандидат из настроек связки (hint), проверенный по
+    данным. Для каждого кандидата — эталон master fix в этой системе и
+    медианная ошибка в плане; настройка берётся, если её медиана не хуже
+    лучшей больше чем на max(0,5 м, 10 %) (на стоящем прогоне все кандидаты
+    равны), иначе — лучший по данным (с предупреждением).
+    Возвращает dict: имя, подпись, xy на экране, эталон, z, медианы."""
     lat, lon, alt = m[:, 2], m[:, 3], m[:, 4]
     o = (float(lat[0]), float(lon[0]), float(alt[0]))
     zone = utm_zone(o[1])
@@ -459,12 +553,20 @@ def detect_frame(xyz, T, ready, m):
         e = np.hypot(*(xm[j[ok]] - xr[ok]).T)
         med[name] = float(np.median(e))
     best = min(med, key=med.get)
+    if hint is not None and hint[0] in med:
+        if med[hint[0]] <= med[best] + max(0.5, 0.1 * med[best]):
+            best = hint[0]
+        else:
+            print(f"  внимание: настройка связки {hint[1]} ({hint[0]}), по данным ближе {best}: "
+                  f"медианы {', '.join(f'{k} {v:.2f} м' for k, v in med.items())}")
     xm, xr, K = cands[best]
     if best == "utm_abs":
         disp, ref = xm - U0, U - U0
         wrap = bool(np.any(np.abs(np.diff(X[ready, 0])) > 5e4)
                     or np.any(np.abs(np.diff(X[ready, 1])) > 5e4))
+        grid = hint[2] if hint is not None and hint[1] == "mgrs" else ""
         label = ("MGRS, покадровый квадрат (разрыв 100 км снят)" if wrap else
+                 f"MGRS от квадрата {grid}" if grid else
                  "UTM абсолютные" if not K.any() else f"MGRS/UTM со сдвигом {K[0]:.0f}, {K[1]:.0f} м")
     else:
         disp, ref = xm, xr
@@ -552,7 +654,8 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     tm = TrackMap.load(map_path) if map_path else None
     tn = TrackMap.load(map_path) if map_path else None
     r = make_runner(params, node, tm)
-    nv = NaiveRunner(params, node, tn)
+    nv = make_runner(params, node, tn, cls=NaiveRunner)
+    assert isinstance(nv.core, _NaiveCore) and not isinstance(r.core, _NaiveCore)
     t_run = time.perf_counter()
     mo, no = replay(a, [r, nv])
     t_run = time.perf_counter() - t_run
@@ -567,14 +670,20 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         return np.array([o.get(k, np.nan) if o.get(k) is not None else np.nan for o in src], dtype=dtype)
     V, SV, S, SS = O("v"), O("sigma_v"), O("s"), O("sigma_s")
     XYZ = np.c_[O("x"), O("y"), O("z")]
-    ready = np.array([bool(o.get("pos_ready", True)) for o in mo])
+    # положение есть: выставка прошла и (поток «положение») pos_valid — у края
+    # квадрата MGRS при mgrs_guard_m нода /result/position не публикует
+    def pos_ok(src):
+        return np.array([bool(o.get("pos_ready", True)) and bool(o.get("pos_valid", True))
+                         for o in src])
+    ready = pos_ok(mo)
     Vn, Sn = O("v", no), O("s", no)
     XYZn = np.c_[O("x", no), O("y", no), O("z", no)]
-    ready_n = np.array([bool(o.get("pos_ready", True)) for o in no])
+    ready_n = pos_ok(no)
 
     m, g = a["mfix"], a["mvel"]
-    fr = detect_frame(XYZ, T, ready, m)
-    frn = detect_frame(XYZn, T, ready_n, m)
+    hint = frame_hint(r)
+    fr = detect_frame(XYZ, T, ready, m, hint)
+    frn = detect_frame(XYZn, T, ready_n, m, hint)
     if fr is None:
         raise SystemExit(f"{bag}: нет пар положения с эталоном — выставка не прошла?")
 
@@ -759,6 +868,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         frame=dict(model=fr["name"], label=fr["label"], naive=frn["name"] if frn else None,
                    zone=fr["zone"], z_abs=fr["z_abs"], origin=list(fr["origin"]),
                    medians_m={k_: round(v_, 3) for k_, v_ in fr["medians"].items()},
+                   runner_projection=hint[1], runner_grid=hint[2],
                    note="экран: система выхода модели, сдвинутая в первую точку GNSS master; "
                         "судья считает в MGRS"),
         flags="bit0 valid (и нет разрыва входов), bit1 slip, bit2 ambiguous, bit3 handle_ok, "
@@ -785,6 +895,14 @@ def git_rev():
 def sha1(path):
     with open(path, "rb") as fh:
         return hashlib.sha1(fh.read()).hexdigest()[:12]
+
+
+def core_sha1():
+    """Отпечаток estimator_core.py, с которым посчитан прогон (переводы строк
+    приведены к LF: одинаков в клоне Windows и Linux). Страница сравнивает его
+    с отпечатком ядра, с которым сверен JS-порт песочницы (EST_PORT в est.js)."""
+    with open(EC.__file__, "rb") as fh:
+        return hashlib.sha1(fh.read().replace(b"\r\n", b"\n")).hexdigest()[:12]
 
 
 def rounded(x, nd=6):
@@ -833,9 +951,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--run", default=DEFAULT_RUN, help="прогон (по умолчанию отложенный 30618_e9a34502)")
     ap.add_argument("--variants", default=",".join(VARIANTS))
-    ap.add_argument("--map", default=DEFAULT_MAP, help="карта путей; '' — без карты")
-    ap.add_argument("--sheet", default=None, help="yaml ноды; по умолчанию config/eval/tram.yaml, "
-                                                  "если есть, иначе config/tram.yaml")
+    ap.add_argument("--map", default=None,
+                    help="карта путей; по умолчанию config/eval/track_map.npz пакета, если есть, "
+                         "иначе analysis/cache/track_map_train.npz (обе — только train); '' — без карты")
+    ap.add_argument("--sheet", default=None,
+                    help="лист: eval (по умолчанию: оценочный config/eval/, без него — запасной json "
+                         "с пометкой УТЕЧКА, как tools/eval.py) | jury | путь к yaml/json")
     ap.add_argument("--allow-train", action="store_true", help="разрешить прогон не из holdout_scored")
     ap.add_argument("--out", default=None, help="каталог вывода (по умолчанию simulator/replays)")
     ap.add_argument("--selftest", action="store_true", help="проверить определение системы выхода и выйти")
@@ -847,20 +968,32 @@ def main():
         raise SystemExit(0 if selftest(args.run) else 1)
 
     split = json.load(open(os.path.join(ROOT, "tools", "split.json"), encoding="utf-8"))
-    if args.run not in split["holdout_scored"] and not args.allow_train:
+    holdout = args.run in split["holdout_scored"]
+    if not holdout and not args.allow_train:
         raise SystemExit(f"{args.run} не из holdout_scored (tools/split.json); --allow-train, "
                          "если это осознанно")
-    sheet = args.sheet or next(p for p in (os.path.join(PKG, "config", "eval", "tram.yaml"),
-                                           os.path.join(PKG, "config", "tram.yaml"))
-                               if os.path.exists(p))
-    params, node = load_sheet(sheet)
-    map_path = args.map or None
+    params, node, sheet = resolve_sheet(args.sheet)
+    if not holdout:
+        sheet["leak"] = None          # обучающий прогон: утечки по определению нет, числа не отчётные
+    if args.map is None:
+        map_path = next((q for q in MAP_CANDIDATES if os.path.exists(q)), None)
+        if map_path is None:
+            raise SystemExit("нет карты только из обучающих: " + ", ".join(_rel(q) for q in MAP_CANDIDATES)
+                             + " (--map '' — без карты)")
+    else:
+        map_path = args.map or None
     if map_path and not os.path.exists(map_path):
         raise SystemExit(f"нет карты {map_path}")
+    kw, unused = runner_kwargs(node, None)
     a = bagio.load(args.run)
     entries = []
-    print(f"прогон {args.run}; лист {os.path.relpath(sheet, ROOT)}; карта "
-          f"{os.path.relpath(map_path, ROOT) if map_path else 'нет'}")
+    csha = core_sha1()
+    print(f"прогон {args.run}; лист {sheet['path']} — {sheet['label']} (правила {sheet['resolver']}); "
+          f"карта {_rel(map_path) if map_path else 'нет'}; ядро {_rel(EC.__file__)} sha1 {csha}")
+    print(f"  в Runner: {', '.join(f'{k}={v!r}' for k, v in kw.items() if k != 'track_map')}"
+          + (f"; параметры ноды не для Runner: {', '.join(unused)}" if unused else ""))
+    if sheet["leak"]:
+        print(f"  ВНИМАНИЕ: {sheet['leak']}")
     for kind in args.variants.split(","):
         b, info = make_variant(a, args.run, kind)
         if b is None:
@@ -868,10 +1001,11 @@ def main():
             continue
         doc = run_variant(b, params, node, map_path, args.run, kind, info)
         doc["meta"].update(
-            sheet=os.path.relpath(sheet, ROOT).replace("\\", "/"), sheet_sha1=sha1(sheet),
-            map=os.path.relpath(map_path, ROOT).replace("\\", "/") if map_path else None,
+            sheet=sheet["path"], sheet_label=sheet["label"], sheet_sha1=sheet["sha1"],
+            sheet_leak=sheet["leak"], sheet_rules=sheet["resolver"],
+            map=_rel(map_path) if map_path else None,
             map_sha1=sha1(map_path) if map_path else None,
-            split="holdout_scored" if args.run in split["holdout_scored"] else "train",
+            core_sha1=csha, split="holdout_scored" if holdout else "train",
             git=git_rev(), made=time.strftime("%Y-%m-%d %H:%M"),
             gnss_in_runner="первые 3 с по времени записи (analysis/evaluate.events)")
         key = f"{args.run}_{kind}"
@@ -879,24 +1013,25 @@ def main():
         s = doc["summary"]
         entries.append(dict(key=key, run=args.run, variant=kind, ru=info["ru"],
                             file=os.path.basename(path), kb=round(nraw / 1024), gz_kb=round(ngz / 1024),
-                            sheet=doc["meta"]["sheet"], map=doc["meta"]["map"],
-                            split=doc["meta"]["split"],
+                            sheet=sheet["path"], sheet_leak=sheet["leak"], map=doc["meta"]["map"],
+                            split=doc["meta"]["split"], core_sha1=csha,
                             summary=rounded({k: s[k] for k in ("v_mae", "naive_v_mae", "v_mae_vs_rover",
                                                                "drift_pct", "naive_drift_pct",
-                                                               "p2d_mean", "naive_p2d_mean", "path_m",
-                                                               "cov2s_v", "pairs_v")}
+                                                               "p2d_mean", "naive_p2d_mean", "p3d_mean",
+                                                               "path_m", "cov2s_v", "pairs_v")}
                                             | ({"window": s["window"]} if "window" in s else {}))))
         w = s.get("window")
         print(f"  {kind:<11} {nraw / 1024:7.0f} КБ (gzip {ngz / 1024:4.0f}) | "
               f"MAE v {s['v_mae']:.4f} / база {s['naive_v_mae']:.4f} м/с (rover {s['v_mae_vs_rover'] or 0:.4f}) | "
               f"дрейф {s['drift_pct'] if s['drift_pct'] is not None else float('nan'):.3f} % / база "
               f"{s['naive_drift_pct'] if s['naive_drift_pct'] is not None else float('nan'):.3f} % | "
-              f"ср. план {s['p2d_mean']:.2f} / {s['naive_p2d_mean']:.2f} м | ±2σ {100 * s['cov2s_v']:.1f} % | "
-              f"система {doc['meta']['frame']['model']}"
+              f"ср. план {s['p2d_mean']:.2f} / {s['naive_p2d_mean']:.2f} м, 3D {s['p3d_mean']:.2f} м | "
+              f"±2σ {100 * s['cov2s_v']:.1f} % | пар v {s['pairs_v']} | "
+              f"система {doc['meta']['frame']['model']} ({doc['meta']['frame']['label']})"
               + (f" | окно t0+{w['t0_rel']:.0f} с: MAE {w['v_mae']:.3f}/{w['naive_v_mae']:.3f}, "
                  f"вдоль в конце окна {w['along_end']:+.1f}/{w['naive_along_end']:+.1f} м" if w else ""))
     p = update_index(entries)
-    print("->", os.path.relpath(p, ROOT))
+    print("->", _rel(p))
 
 
 if __name__ == "__main__":
