@@ -6,9 +6,11 @@
 // Образ vectra/tram:sim — node:22-alpine + chromium + puppeteer-core (Dockerfile
 // рядом: simulator/test/Dockerfile). Страница открывается с file://, сеть
 // контейнера выключена: любая внешняя загрузка (CDN, шрифты) — ошибка теста.
-// Проверяется: 0 JS-исключений и ошибок консоли во всех режимах; песочница:
-// лист жюри и линия загружены, метрики каждого сценария = отчёт sandbox_report.js,
-// панель «Что сейчас думает модель» объясняет событие сценария, ручное управление,
+// Проверяется: 0 JS-исключений и ошибок консоли во всех режимах; песочница (исходный вид
+// страницы 110a5e0 на ядре пакета): лист жюри и линия загружены, метрики каждого сценария =
+// отчёт sandbox_report.js, панель «Что сейчас думает модель» объясняет событие сценария,
+// свободная поездка по умолчанию, сцена и карта, переключатели меняют имитатор, окна за
+// значками шапки (модель, пакет ROS 2, метрики, показ 60 с, запись), ручное управление,
 // справка, телефон без горизонтальной прокрутки; каждый экспортированный прогон грузится, проигрывается, и метрики
 // страницы в конце прогона совпадают с итогом экспортёра; подпись JS-порта
 // следует отпечатку ядра прогонов; живой режим с имитатором rosbridge (ws в этом
@@ -86,12 +88,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       }, k, cond);
       await sleep(300);
       await shot(page, `sandbox_${k}.png`);
-      const panel = await page.evaluate(() => document.getElementById('sbThink').innerText);
+      const panel = await page.evaluate(() => window.__tvSandbox.think(true));
       check(`песочница ${k}: событие наступило, панель объясняет`, x.found && re.test(panel), { t: +x.t.toFixed(1), bogies: x.bog, head: x.head.slice(0, 140) });
     }
     // линия, панель объяснения, метрики и условия — отдельными снимками (ниже первого экрана)
     await page.evaluate(() => { const S = window.__tvSandbox; S.load('ice_skid'); S.play(false); S.run(58, true); S.render(); });
-    for (const id of ['sbThink', 'sbMetrics', 'sbTrack', 'sbCtrl']) { const el = await page.$('#' + id); await el.scrollIntoView(); await sleep(250); await el.screenshot({ path: path.join(OUT, `sandbox_ice_${id}.png`) }); report.shots.push(`sandbox_ice_${id}.png`); }
+    for (const id of ['sbThink', 'map', 'ctrl']) { const el = await page.$('#' + id); await el.scrollIntoView(); await sleep(250); await el.screenshot({ path: path.join(OUT, `sandbox_ice_${id}.png`) }); report.shots.push(`sandbox_ice_${id}.png`); }
+    await page.evaluate(() => window.__tvSandbox.openInfo('metrics')); await sleep(400);
+    { const el = await page.$('#mCard'); await el.screenshot({ path: path.join(OUT, 'sandbox_ice_metrics.png') }); report.shots.push('sandbox_ice_metrics.png'); }
+    await page.evaluate(() => window.__tvSandbox.closeInfo());
+    await page.evaluate(() => window.__tvSandbox.think(false));
     // ручное управление: тяга с кнопки, вагон едет, клавиши работают
     {
       const r = await page.evaluate(() => { const S = window.__tvSandbox; S.load('manual'); S.play(false); document.querySelector('[data-sbh="15"]').click(); S.run(12); return S.state(); });
@@ -114,12 +120,72 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await page.click('#themeBtn');
     await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
     await sleep(1500);
-    const ov = await page.evaluate(() => { const v = document.getElementById('sbView'); return Math.max(document.documentElement.scrollWidth - innerWidth, v.scrollWidth - v.clientWidth); });
+    const ov = await page.evaluate(() => { const v = document.getElementById('dash'); return Math.max(document.documentElement.scrollWidth - innerWidth, v.scrollWidth - v.clientWidth, document.body.scrollWidth - innerWidth); });
     check('песочница, телефон: нет горизонтальной прокрутки', ov <= 1, { overflow_px: ov });
     await shot(page, 'sandbox_mobile.png');
-    await page.evaluate(() => { document.getElementById('sbView').scrollTop = 1200; });
+    await page.evaluate(() => { document.getElementById('dash').scrollTop = 1200; });
     await sleep(400);
     await shot(page, 'sandbox_mobile_panels.png');
+    await page.close();
+  }
+
+  // ---------------- исходный вид песочницы: свободная поездка, сцена, карта, переключатели, окна шапки
+  {
+    const page = await open('?mode=sandbox');
+    await page.evaluate(() => { try { localStorage.removeItem('tv.preset'); } catch (_) {} });
+    await page.goto(URL0 + '?mode=sandbox', { waitUntil: 'load' });
+    await sleep(3500);
+    const v = await page.evaluate(() => {
+      const S = window.__tvSandbox, E = S.engine(), cv = document.getElementById('scene'), px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      const cols = new Set(); for (let i = 0; i < px.length; i += 4 * 997) cols.add(px[i] >> 4 << 8 | px[i + 1] >> 4 << 4 | px[i + 2] >> 4);
+      return { key: S.state().key, t: +S.state().t.toFixed(1), s: +E.plant.s.toFixed(1), driver: !!E.driver, route: E.route.length, colours: cols.size,
+        map: getComputedStyle(document.getElementById('map')).display !== 'none', ctrlSide: document.getElementById('ctrl').classList.contains('ctrl-side'),
+        readout: document.getElementById('bV').textContent, stops: document.querySelectorAll('#tStops > div').length, name: document.getElementById('scName').textContent };
+    });
+    check('песочница по умолчанию: свободная поездка по всей линии, сцена нарисована, карта и панель справа', v.key === 'free' && v.driver && v.route >= 5 && v.t > 5 && v.colours > 20 && v.map && v.ctrlSide && v.stops >= 5 && /Свободная/.test(v.name), v);
+    await shot(page, 'sandbox_free.png');
+    // переключатели меняют имитатор поверх сценария (и возвращаются к сценарию)
+    const c = await page.evaluate(() => {
+      const S = window.__tvSandbox; S.load('dry');
+      const E = S.engine(), q = x => document.querySelector(x);
+      S.play(false);
+      q('[data-sbwx="rain"]').click(); q('[data-sens="both"]').click(); document.getElementById('swRush').click(); document.getElementById('swUrban').click();
+      S.run(0.5, true);
+      const a = { wx: E.cond.weatherB.join(','), f: E.cond.faults.map(f => f && f.kind).join(','), mass: E.cond.mass, gnss: E.gnssOff, kindShown: !document.getElementById('kindRow').hidden };
+      document.getElementById('wxLbl').click(); document.getElementById('snLbl').click(); document.getElementById('swRush').click(); document.getElementById('swUrban').click();
+      S.run(0.5, true);
+      const b = { wx: E.cond.weatherB.join(','), f: E.cond.faults.map(f => f && f.kind).join(','), mass: E.cond.mass, gnss: E.gnssOff };
+      q('[data-drive="manual"]').click(); const man = { driver: !!E.driver, handle: !document.getElementById('handleRow').hidden };
+      q('[data-drive="auto"]').click(); man.back = !!E.driver;
+      S.play(true);
+      return { a, b, man };
+    });
+    check('песочница (сценарий «Сухо»): погода, датчики, час пик, застройка и «Авто / Ручное» меняют имитатор; ↺ возвращает сценарий',
+      c.a.wx === 'rain,rain' && c.a.f === 'zero,zero' && c.a.mass === 1.3 && c.a.gnss && c.a.kindShown && c.b.wx === 'dry,dry' && c.b.f === ',' && c.b.mass === 1 && !c.b.gnss && !c.man.driver && c.man.handle && c.man.back, c);
+    // список сценариев
+    await page.click('#scBtn'); await sleep(300);
+    const pop = await page.evaluate(() => ({ open: !document.getElementById('scPop').hidden, n: document.querySelectorAll('#scPop [data-preset]').length }));
+    await shot(page, 'sandbox_scenarios.png');
+    await page.click('#scPop [data-preset="ice_skid"]'); await sleep(300);
+    const picked = await page.evaluate(() => ({ key: window.__tvSandbox.state().key, closed: document.getElementById('scPop').hidden, name: document.getElementById('scName').textContent }));
+    check('песочница: список сценариев открывается, выбор загружает сценарий', pop.open && pop.n >= 16 && picked.key === 'ice_skid' && picked.closed && /наледь/.test(picked.name), { pop, picked });
+    // окна за значками шапки
+    const views = {};
+    for (const [key, sel, wait, test] of [['model', '[data-open="model"]', 2500, '#typed'], ['ros', '[data-open="ros"]', 3500, '#bMed'], ['metrics', '[data-open="metrics"]', 800, '#sbMetrics'], ['replay', '#recBtn', 800, '#repInfo']]) {
+      await page.click(sel); await sleep(wait);
+      const r = await page.evaluate(t => ({ open: document.getElementById('modal').style.display !== 'none', text: (document.querySelector(t) || {}).textContent || '' }), test);
+      views[key] = { open: r.open, len: r.text.length, head: r.text.trim().slice(0, 40) };
+      await shot(page, `sandbox_view_${key}.png`);
+      await page.keyboard.press('Escape'); await sleep(250);
+    }
+    const closed = await page.evaluate(() => document.getElementById('modal').style.display === 'none');
+    check('песочница: окна «Как устроена модель», «Пакет ROS 2» (схема и время шага ядра), «Метрики», «Запись поездки»',
+      closed && views.model.open && views.model.len > 60 && views.ros.open && /^\d/.test(views.ros.head) && views.metrics.open && views.metrics.len > 300 && views.replay.open && views.replay.len > 30, views);
+    await page.click('#presBtn'); await sleep(10500);
+    const tour = await page.evaluate(() => ({ shown: document.getElementById('pres').style.display !== 'none', step: document.getElementById('presStep').textContent, key: window.__tvSandbox.state().key, t: +window.__tvSandbox.state().t.toFixed(1) }));
+    await shot(page, 'sandbox_tour.png');
+    await page.click('#presStop'); await sleep(200);
+    check('песочница: показ 60 с идёт по сценариям (шаг 2 — дождь и полная тяга)', tour.shown && /Шаг 2/.test(tour.step) && tour.key === 'rain_spin' && tour.t > 3, tour);
     await page.close();
   }
 

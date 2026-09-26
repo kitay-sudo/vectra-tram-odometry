@@ -233,7 +233,9 @@ const TramSandbox = (() => {
       for (const ev of pr.events || []) if (t >= ev.t0 && t < ev.t1) { if (ev.fault) faults = ev.fault.map((f, b) => f || faults[b]); if (ev.drop) drop = true; }
       // сцепление — по месту каждой тележки: передняя на s, задняя на 7,55 м позади
       const weatherB = [0, 1].map(b => this.weatherAt(s - b * this.plant.C.bogie_base));
-      faults = faults.map((f, b) => this.userFaults[b] || f);
+      // ручной переключатель по тележке: объект отказа; 'none' — «норма» поверх отказа сценария;
+      // null — как в сценарии (по умолчанию: числа сценариев и таблицы docs/SANDBOX.md не меняются)
+      faults = faults.map((f, b) => this.userFaults[b] === 'none' ? null : (this.userFaults[b] || f));
       return { faults, drop: drop || this.userDrop, weather: weatherB[0], weatherB, mass: this.userMass ?? (pr.mass || 1.0), gnssOff: this.userGnssOff || (pr.gnss_off !== undefined && t >= pr.gnss_off) };
     }
     // погода на рельсе в точке линии s (зоны сценария, общий фон, ручной переключатель)
