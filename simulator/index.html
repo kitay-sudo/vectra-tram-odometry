@@ -236,14 +236,14 @@
       <div class="rv-card" id="sbThink" aria-live="off"></div>
       <div class="rv-card" id="sbMetrics"></div>
       <div class="rv-card">
-        <div class="rv-h"><b>Линия (pathgraph организаторов)</b>
+        <div class="rv-h"><b id="sbTrackH">Линия (pathgraph организаторов)</b>
           <span class="seg" role="radiogroup" aria-label="Масштаб линии">
             <button role="radio" aria-checked="false" data-sbzoom="all">вся линия</button>
             <button role="radio" aria-checked="true" data-sbzoom="near">у вагона</button>
           </span>
         </div>
         <div class="rv-cv h-map"><canvas id="sbTrack" aria-label="Линия: истина, модель и база на пути"></canvas></div>
-        <div class="rv-note">Кольцо — истина, <span style="color:#0E9AA7">точка</span> — путь по модели, <span style="color:#E89B0C">точка</span> — только колесо (обе отложены вдоль той же линии). Точки — остановки карты пакета. Профиль высот и кривые — из pathgraph.</div>
+        <div class="rv-note">Кольцо — истина, <span style="color:#0E9AA7">точка</span> — путь по модели, <span style="color:#E89B0C">точка</span> — только колесо (обе отложены вдоль той же линии). <span id="sbTrackSrc">Точки — остановки карты пакета. Профиль высот и кривые — из pathgraph.</span></div>
       </div>
       <div class="rv-card" id="sbCtrl">
         <div class="rv-h"><b>Условия и управление</b><span class="k">поверх сценария</span></div>
@@ -349,6 +349,7 @@
         </div>
         <div class="rv-cv h-map"><canvas id="rvMap" aria-label="План: трасса GNSS, модель и база"></canvas></div>
         <div id="rvMapNote" class="rv-note"></div>
+        <div id="rvRefNote" class="rv-note"></div>
       </div>
     </div>
   </div>
@@ -513,7 +514,9 @@
     const inj = M.inject && M.inject.t0 != null ? ` Аномалия: <b>${M.inject.ru.toLowerCase()}</b>, с ${fmtT(M.inject.t0 - M.t0)}; внесена в записанные входы тележек (${M.inject.src}).` : '';
     $('rvNote').innerHTML = `Запись <b>${M.run}</b> (${fmtT(M.dur)}, ${(S.path_m / 1000).toFixed(2)} км) — ${M.split === 'holdout_scored' ? 'отложенная: в подборе карты и разбиения не участвовала' : 'обучающая'}. `
       + `Оценку посчитал пакет ROS 2 офлайн той же связкой, что нода (Runner, лист ${M.sheet}${M.sheet_label ? ' — ' + M.sheet_label : ''}, карта ${M.map || 'нет'}); сообщения в порядке записи, GNSS в оценщик — только первые 3 с, дальше он только эталон.${inj}${sheetW}`;
-    $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране — метры от первой точки GNSS master (x — восток, y — север). Серая полоса — трасса GNSS, фиолетовый пунктир — pathgraph организаторов (ось пути, оба направления). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
+    const refL = M.frame.ref_label || 'антенна GNSS master';
+    $('rvRefNote').textContent = '';
+    $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране — метры от первой точки эталона (x — восток, y — север). Эталон положения — ${refL}: та же точка вагона, что на выходе модели. Серая полоса — трасса эталона, фиолетовый пунктир — pathgraph организаторов (ось пути, оба направления). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
     $('rvSub').textContent = `экспорт ${M.made || ''}${M.git ? ', git ' + M.git : ''}`;
   }
 
@@ -798,7 +801,7 @@
     const row = (name, a, b, title) => `<tr title="${title || ''}"><td>${name}</td><td style="color:${C_OK}">${a}</td><td style="color:${C_NAIVE}">${b}</td></tr>`;
     let rows = row('Скорость: MAE, м/с', f(r.mae, 4), f(r.maeN, 4), 'Средняя абсолютная ошибка против |v| GNSS master, пары по ближайшей метке ≤ 0,05 с')
       + (live ? '' : row('Дрейф пути, % дистанции', f(r.drift, 3), f(r.driftN, 3), 'Ошибка вдоль трассы на момент курсора / путь по эталону; в конце прогона — «накопленный дрейф» по ТЗ'))
-      + row('Ошибка в плане, средняя, м', f(r.h, 2), f(r.hn, 2), 'Средняя ошибка x, y против GNSS master')
+      + row('Ошибка в плане, средняя, м', f(r.h, 2), f(r.hn, 2), live ? `Средняя ошибка x, y против эталона: ${REF.point === 'base_link' ? 'base_link по паре антенн' : REF.point === 'master' ? 'антенна master' : 'точка эталона ещё не выбрана'}` : `Средняя ошибка x, y против эталона: ${(D.meta && D.meta.frame && D.meta.frame.ref_label) || 'антенна GNSS master'}`)
       + row('Истина в ±2σ скорости', isFinite(r.cov) ? (100 * r.cov).toFixed(1) + ' %' : '—', '—', 'Доля пар, где |ошибка| ≤ 2σ_v. У честной σ около 95 %');
     if (r.w0 !== undefined) rows += row(tc < r.w0 ? 'В окне аномалии: MAE, м/с (окно впереди)' : 'В окне аномалии: MAE, м/с', f(r.wMae, 3), f(r.wMaeN, 3), 'Ошибка скорости только в окне аномалии');
     let foot = '';
@@ -837,7 +840,27 @@
     ['/vehicle/driver_position_cmd', 'tram_vehicle_msgs/msg/DriverControllerCommand', 100],
     ['/sensing/gnss/master/vel', 'geometry_msgs/msg/TwistStamped', 100],
     ['/sensing/gnss/master/fix', 'sensor_msgs/msg/NavSatFix', 200],
+    ['/sensing/gnss/rover/fix', 'sensor_msgs/msg/NavSatFix', 200],
   ];
+  // Точка эталона положения. Судья и pathgraph — base_link: ось поворота передней тележки на
+  // уровне рельса; антенны в base_link (tf организаторов): master x −9,873 м, rover x +2,563 м.
+  // base_link = master + 9,873 м вперёд по оси вагона (курс — по паре антенн одной эпохи).
+  // Нода до 26.09 выдавала точку антенны master. Какую точку выдаёт нода, странице не видно,
+  // поэтому точка выбирается сама по первым 10 парам «выход — GNSS»: какая ближе (они в 9,9 м
+  // друг от друга, ошибка модели ~1 м). ?ref=base_link | ?ref=master — задать явно.
+  const REF = { point: /^(base_link|master)$/.test(qs.get('ref') || '') ? qs.get('ref') : null, fixed: /^(base_link|master)$/.test(qs.get('ref') || ''), cand: [], course: null, mx: 9.873 };
+  function liveCourse() {
+    const m = LV.last.gm, r = LV.last.rf;
+    if (!m || !r || Math.abs(m.t - r.t) > 0.05) return;
+    const dE = r.U[0] - m.U[0], dN = r.U[1] - m.U[1], b = Math.hypot(dE, dN);
+    if (b >= 5 && b <= 25) REF.course = { t: m.t, u: [dE / b, dN / b] };
+  }
+  function refNote() {
+    const el = $('rvRefNote'); if (!el) return;
+    el.textContent = REF.point === 'base_link' ? `Эталон положения — base_link (ось передней тележки на уровне рельса, как у судьи): антенна master + 9,873 м вперёд по курсу пары антенн${REF.fixed ? ' (задан ?ref=)' : '; выбран сам — выход ноды ближе к нему'}.`
+      : REF.point === 'master' ? `Эталон положения — антенна GNSS master${REF.fixed ? ' (задан ?ref=)' : REF.noRover ? ' (rover нет: base_link не посчитать)' : '; выбран сам — выход ноды ближе к нему, чем к base_link (нода выдаёт точку антенны)'}.`
+      : 'Эталон положения выбирается по первым парам с выходом ноды (base_link или антенна master).';
+  }
   const LV = { ws: null, want: false, retry: 0, timer: 0, state: 'idle', last: {}, cnt: {}, rateT: 0, rates: {}, lastMsg: 0, data: null, T0: null, fc: null, nodeHz: null, rowT: -1, frame: null, gnssPath: 0, gPrev: null, err: '' };
   function defaultUrl() {
     const q = qs.get('ros'); if (q) return q;
@@ -861,8 +884,9 @@
   }
   function enterLive() {
     if (!LV.data) { LV.data = emptyData(); LV.data.live = true; D = LV.data; }
-    $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master (только эталон для показа: нода берёт GNSS лишь в окне выставки) через rosbridge, 10 Гц на топик. Адрес — поле выше или <b>?ros=wss://хост/ros</b>.';
+    $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master и rover (только эталон для показа: нода берёт GNSS лишь в окне выставки; пара антенн даёт точку base_link) через rosbridge, 10 Гц на топик. Адрес — поле выше или <b>?ros=wss://хост/ros</b>.';
     $('rvMapNote').textContent = 'Плоскость: выход ноды (MGRS/UTM переводится в метры от первой точки GNSS; разрыв квадрата 100 км снимается).';
+    refNote();
     $('rvSub').textContent = '';
     // автоподключение: явный ?ros=, прошлый выбор, или страница с сервера (мост того же хоста, /ros)
     const served = /^https?:$/.test(location.protocol) && !/^(localhost|127\.|\[::1\])/.test(location.hostname);
@@ -928,14 +952,37 @@
         if (L.vel && Math.abs(L.vel.t - t) <= 0.05 && LV.T0 !== null) livePairV(t - LV.T0, L.vel.v - v, naiveNow() - v, L.st ? Math.abs(L.vel.v - v) <= 2 * L.st.sigma_v : 0);
         break;
       }
+      case '/sensing/gnss/rover/fix': {
+        if (!isFinite(x.latitude) || !isFinite(x.longitude)) break;
+        L.rf = { t: stampOf(x.header), U: utmEN(x.latitude, x.longitude, GEO.zone ?? Math.floor((x.longitude + 180) / 6) + 1) };
+        liveCourse();
+        break;
+      }
       case '/sensing/gnss/master/fix': {
         if (!isFinite(x.latitude) || !isFinite(x.longitude)) break;
         const t = stampOf(x.header), g = geoLocal(x.latitude, x.longitude);
-        L.gf = { t, x: g[0], y: g[1], U: g[2] };
+        L.gm = { t, U: g[2] };
+        liveCourse();
+        // base_link: master + 9,873 м по курсу пары антенн (курс не старше 2 с)
+        const cu = REF.course && Math.abs(t - REF.course.t) <= 2 ? REF.course.u : null;
+        const gb = cu ? [g[0] + REF.mx * cu[0], g[1] + REF.mx * cu[1], [g[2][0] + REF.mx * cu[0], g[2][1] + REF.mx * cu[1]]] : null;
         if (LV.gPrev) { const d = Math.hypot(g[0] - LV.gPrev[0], g[1] - LV.gPrev[1]); if (d > 0.3 && d < 50) { LV.gnssPath += d; LV.gPrev = g; } } else LV.gPrev = g;
         // ошибка в плане — только когда выход ноды в абсолютной системе (MGRS/UTM): у локальной
         // системы ноды начало (первая точка master в записи) странице неизвестно
-        if (L.pos && Math.abs(L.pos.t - t) <= 0.1 && LV.T0 !== null) { const q = posLocal(L.pos.x, L.pos.y, g); if (q && !GEO.local) livePairP(t - LV.T0, Math.hypot(q[0] - g[0], q[1] - g[1])); }
+        const q = L.pos && Math.abs(L.pos.t - t) <= 0.1 && LV.T0 !== null ? posLocal(L.pos.x, L.pos.y, g) : null;
+        if (!REF.point && q && !GEO.local) {
+          REF.cand.push([Math.hypot(q[0] - g[0], q[1] - g[1]), gb ? Math.hypot(q[0] - gb[0], q[1] - gb[1]) : NaN]);
+          if (REF.cand.length >= 10) {
+            const med = k => { const v = REF.cand.map(c => c[k]).filter(Number.isFinite).sort((a, b) => a - b); return v.length >= 5 ? v[v.length >> 1] : NaN; };
+            const hm = med(0), hb = med(1);
+            REF.noRover = !isFinite(hb);
+            REF.point = isFinite(hb) && hb < hm ? 'base_link' : 'master';
+            refNote();
+          }
+        }
+        const ref = REF.point === 'base_link' ? gb : g;          // пока точка не выбрана — трасса по master
+        if (ref) L.gf = { t, x: ref[0], y: ref[1], U: ref[2] };
+        if (REF.point && ref && q && !GEO.local) livePairP(t - LV.T0, Math.hypot(q[0] - ref[0], q[1] - ref[1]));
         break;
       }
     }
@@ -1088,7 +1135,7 @@
       const near = ds.filter(d => d < 50);
       return { points: n, gnss: ds.length, on_line: near.length, median_m: near.length ? near[Math.floor(near.length / 2)] : null };
     },
-    liveTail: (n = 2000) => LV.data ? { x: LV.data.x.slice(-n), y: LV.data.y.slice(-n), h: LV.data.pp.h.slice(-n), host: LV.host || null, pill: $('rvLiveSt').textContent } : null,
+    liveTail: (n = 2000) => LV.data ? { x: LV.data.x.slice(-n), y: LV.data.y.slice(-n), h: LV.data.pp.h.slice(-n), host: LV.host || null, pill: $('rvLiveSt').textContent, ref: REF.point, refNote: $('rvRefNote').textContent } : null,
   };
   const m0 = qs.get('mode') || store.get('tv.mode');
   requestAnimationFrame(frame);

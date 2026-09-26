@@ -10,7 +10,9 @@ const path = require('path');
 const JS = path.join(__dirname, '..', 'js');
 const SB = require(path.join(JS, 'sandbox.js'));
 const sheet = require(path.join(JS, 'sheet.js'));
-const track = require(path.join(JS, 'track.js'));
+// линия — pathgraph организаторов (js/track.js); без файла — заглушка, и в docs такое не пишется
+let track = null;
+try { track = require(path.join(JS, 'track.js')); } catch (_) { console.error('внимание: нет simulator/js/track.js (simulator/tools/gen_track.py) — линия-заглушка, числа не для docs/SANDBOX.md'); }
 const T = require(path.join(JS, 'est.js'));
 const SEED = +(process.env.SEED || 7);
 const write = process.argv.includes('--write');
@@ -20,7 +22,7 @@ const t0 = Date.now();
 const rows = [];
 for (const p of SB.PRESETS.filter(x => !x.manual)) {
   const e = SB.runPreset(p.key, { sheet, track, seed: SEED });
-  rows.push({ key: p.key, ru: p.ru, about: p.about, expect: p.expect, summary: e.summary() });
+  rows.push({ key: p.key, ru: p.ru, about: p.about, expect: p.expect, real: p.real || null, summary: e.summary() });
 }
 // разброс «сухо» по зёрнам имитатора (шум датчиков, пропуски тактов)
 const drySeeds = [1, 2, 3, 4, 5, 6, 7, 8].map(seed => { const s = SB.runPreset('dry', { sheet, track, seed }).summary(); return { seed, v_mae: s.v_mae, naive_v_mae: s.naive_v_mae, cov2s: s.cov2s }; });
@@ -36,6 +38,7 @@ function does(S) {
   if (S.frozen_s > 0.2) out.push(`«залипли обе» ${f(S.frozen_s, 1)} с`);
   if (S.stale_s > 0.5) out.push(`без колёс (разомкнутый режим) ${f(S.stale_s, 1)} с`);
   if (S.invalid_s > 0.5) out.push(`недостоверно ${f(S.invalid_s, 1)} с`);
+  if (S.overconf_s > 0.5) out.push(`**считала оценку достоверной, хотя ошибка больше 0,5 м/с и вне ±2σ, ${f(S.overconf_s, 1)} с**`);
   if (S.agree_steps > 0) out.push(`уступала колёсам по согласию тележек (${S.agree_steps} ${plural(S.agree_steps, 'шаг', 'шага', 'шагов')})`);
   return out.length ? out.join('; ') : 'шла по колёсам, отбрасываний нет';
 }
@@ -50,10 +53,32 @@ function verdict(S) {
   if (avg === 'хуже') return '**хуже колеса**';
   return 'на уровне колеса' + (worstMax ? ', наибольшая ошибка больше' : '');
 }
-const head = '| Сценарий | Условия | Что делает модель (по прогону) | MAE скорости, м/с: модель / колесо | Макс. ошибка, км/ч: модель / колесо | Путь в конце, м: модель / колесо | В окне условий: MAE, м/с | Истина в ±2σ | Итог |\n|---|---|---|---|---|---|---|---|---|';
+// тот же отказ на реальных записях: сводка инъекций docs/EVAL.md §6 (3 отложенные записи,
+// окно — на ходу; путь — остаток вдоль пути через 300 с, с картой и привязками к остановкам)
+const EVAL_MD = path.join(__dirname, '..', '..', 'docs', 'EVAL.md');
+function evalInject() {
+  if (!fs.existsSync(EVAL_MD)) return null;
+  const src = fs.readFileSync(EVAL_MD, 'utf8'), i = src.indexOf('| вид | прогонов | MAE модели | MAE базы');
+  if (i < 0) return null;
+  const out = {};
+  for (const line of src.slice(i).split('\n').slice(2)) {
+    if (!line.startsWith('|')) break;
+    const c = line.split('|').slice(1, -1).map(x => x.trim());
+    out[c[0]] = { mae: c[2], maeN: c[3], along: c[4], alongN: c[5], verdict: c[8] };
+  }
+  return out;
+}
+const EV = evalInject();
+if (!EV) console.error('внимание: в docs/EVAL.md нет сводки инъекций (раздел 6) — столбец «на реальных записях» пуст');
+function realCol(r) {
+  if (!r.real) return '—';
+  if (typeof r.real === 'string') return r.real;
+  return r.real.map(k => { const x = EV && EV[k]; return x ? `${k}: ${x.mae} / ${x.maeN}; ${x.along} / ${x.alongN} м` : `${k}: нет в EVAL.md`; }).join('<br>');
+}
+const head = '| Сценарий | Условия | Что делает модель (по прогону) | MAE скорости, м/с: модель / колесо | Макс. ошибка, км/ч: модель / колесо | Путь в конце, м: модель / колесо | В окне условий: MAE, м/с | Истина в ±2σ | Итог | Тот же отказ на реальных записях (EVAL.md §6): MAE, м/с; остаток пути, м — модель / база |\n|---|---|---|---|---|---|---|---|---|---|';
 const lines = rows.map(r => {
   const S = r.summary, W = S.win;
-  return `| ${r.ru} | ${r.about} | ${does(S)} | ${f(S.v_mae, 3)} / ${f(S.naive_v_mae, 3)} | ${f(S.v_max * 3.6, 1)} / ${f(S.naive_v_max * 3.6, 1)} | ${f(S.s_err, 1)} / ${f(S.naive_s_err, 1)} | ${W ? `${f(W.v_mae, 3)} / ${f(W.naive_v_mae, 3)} (${f(W.s, 0)} с)` : '—'} | ${f(100 * S.cov2s, 1)} % | ${verdict(S)} |`;
+  return `| ${r.ru} | ${r.about} | ${does(S)} | ${f(S.v_mae, 3)} / ${f(S.naive_v_mae, 3)} | ${f(S.v_max * 3.6, 1)} / ${f(S.naive_v_max * 3.6, 1)} | ${f(S.s_err, 1)} / ${f(S.naive_s_err, 1)} | ${W ? `${f(W.v_mae, 3)} / ${f(W.naive_v_mae, 3)} (${f(W.s, 0)} с)` : '—'} | ${f(100 * S.cov2s, 1)} % | ${verdict(S)} | ${realCol(r)} |`;
 });
 const dm = a => a.reduce((x, y) => x + y, 0) / a.length;
 const dryTxt = `«Сухо» по 8 зёрнам имитатора: MAE модели ${f(dm(drySeeds.map(x => x.v_mae)), 4)} м/с (от ${f(Math.min(...drySeeds.map(x => x.v_mae)), 4)} до ${f(Math.max(...drySeeds.map(x => x.v_mae)), 4)}), `
@@ -62,7 +87,8 @@ const stamp = `Ядро ${T.PORT.core_sha1} (${T.PORT.core_git}), лист ${she
 const md = [head, ...lines].join('\n') + '\n\n' + dryTxt + '\n\n' + stamp;
 console.log(md);
 const doc = { made_by: 'simulator/test/sandbox_report.js', seed: SEED, core_sha1: T.PORT.core_sha1, sheet_sha1: sheet.sheet_sha1, presets: rows, dry_seeds: drySeeds };
-fs.writeFileSync(path.join(__dirname, 'sandbox_report.json'), JSON.stringify(doc, null, 1) + '\n');
+if (track) fs.writeFileSync(path.join(__dirname, 'sandbox_report.json'),JSON.stringify(doc, null, 1) + '\n');
+if (write && !track) { console.error('--write без js/track.js не делаю: таблица docs/SANDBOX.md — по настоящей линии'); process.exit(1); }
 if (write) {
   const p = path.join(__dirname, '..', '..', 'docs', 'SANDBOX.md');
   const src = fs.readFileSync(p, 'utf8');

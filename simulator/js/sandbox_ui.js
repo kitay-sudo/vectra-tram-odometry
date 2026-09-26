@@ -47,6 +47,9 @@
     document.querySelectorAll('[data-preset]').forEach(b => b.setAttribute('aria-checked', b.dataset.preset === key));
     const pr = UI.eng.preset;
     $('sbAbout').innerHTML = `<b>${pr.ru}.</b> ${pr.about} <span class="sb-exp"><b>Модель должна:</b> ${pr.expect}</span>`;
+    const syn = !!UI.eng.trackDoc.synthetic;
+    $('sbTrackH').textContent = syn ? 'Линия-заглушка (нет js/track.js)' : 'Линия (pathgraph организаторов)';
+    $('sbTrackSrc').textContent = syn ? 'Файла js/track.js с pathgraph организаторов нет (его делает simulator/tools/gen_track.py): линия, остановки и профиль придуманы, числа не совпадут с docs/SANDBOX.md.' : 'Точки — остановки карты пакета. Профиль высот и кривые — из pathgraph.';
     $('sbManual').hidden = !pr.manual;
     UI.play = true; syncPlay();
     resetControls();
@@ -267,7 +270,7 @@
     const P = (x, y) => [ox + x * sc, oy - y * sc];
     c.lineCap = 'round'; c.lineJoin = 'round';
     // pathgraph организаторов: оба направления
-    for (const d of window.TV_TRACK.dirs) {
+    for (const d of E.trackDoc.dirs) {
       c.strokeStyle = fg; c.globalAlpha = .16; c.lineWidth = 6; c.beginPath();
       for (let i = 0; i < d.x.length; i++) { const [px, py] = P(d.x[i], d.y[i]); if (i) c.lineTo(px, py); else c.moveTo(px, py); }
       c.stroke(); c.globalAlpha = 1;
@@ -300,11 +303,12 @@
     const ppm = Math.max(9, Math.min(30, w / 30));       // пикселей на метр
     const railY = h - 26, cx = w * 0.5;
     const tilt = -Math.atan(Math.tan(pl.grade) * 5);       // уклон на экране ×5, чтобы было видно
-    const wx = cond.weather || 'dry', s = pl.s;
+    // центр экрана — середина кузова: передняя тележка (путь s, base_link) справа, задняя — на 7,55 м левее
+    const wx = cond.weather || 'dry', s = pl.s - pl.C.bogie_base / 2;
     const R = E.rows, k = R.n - 1, dt = lastSceneT === null ? 0 : Math.max(0, Math.min(1, E.t - lastSceneT));
     lastSceneT = E.t;
     const exp = E.last ? SB.explain(E) : null;
-    const Lb = 15 * ppm, bodyH = 2.4 * ppm, xF = 3.775 * ppm, xR = -3.775 * ppm, wr = Math.max(5, 0.36 * ppm);
+    const Lb = 15 * ppm, bodyH = 2.4 * ppm, xF = pl.C.bogie_base / 2 * ppm, xR = -pl.C.bogie_base / 2 * ppm, wr = Math.max(5, 0.36 * ppm);
     const bodyBottom = -wr * 2 - 7, by = bodyBottom - bodyH;
     // --- в системе рельса (повёрнута на уклон)
     c.save(); c.translate(cx, railY); c.rotate(tilt);
@@ -313,8 +317,15 @@
     c.globalAlpha = .12; c.lineWidth = 1; c.beginPath(); c.moveTo(-w, -h + 30); c.lineTo(w, -h + 30); c.stroke();
     c.globalAlpha = .25;
     for (let q = Math.floor((s - w / ppm) / 0.75) * 0.75; q < s + w / ppm; q += 0.75) { const x = (q - s) * ppm; c.beginPath(); c.moveTo(x, 2); c.lineTo(x, 7); c.stroke(); }
-    c.globalAlpha = 1; c.strokeStyle = wx === 'dry' ? fg : wx === 'ice' ? '#9fd3f0' : wx === 'leaves' ? '#c98b3a' : C_WET; c.lineWidth = 3;
-    c.beginPath(); c.moveTo(-w, 0); c.lineTo(w, 0); c.stroke();
+    // рельс раскрашен по месту: зона скользкого рельса видна, и задняя тележка въезжает в неё позже
+    const wxCol = x => x === 'dry' ? fg : x === 'ice' ? '#9fd3f0' : x === 'leaves' ? '#c98b3a' : C_WET;
+    c.globalAlpha = 1; c.lineWidth = 3;
+    for (let x = -w, prev = null, x0 = -w; x <= w + 4; x += 4) {
+      const cur = x <= w ? E.weatherAt(s + x / ppm) : null;
+      if (prev !== null && cur !== prev) { c.strokeStyle = wxCol(prev); c.beginPath(); c.moveTo(x0, 0); c.lineTo(Math.min(x, w), 0); c.stroke(); x0 = x; }
+      if (prev === null) x0 = x;
+      prev = cur;
+    }
     // пантограф и кузов (15 м, шкворни тележек в 7,55 м; передняя — справа, едет вправо)
     c.strokeStyle = fg; c.globalAlpha = .55; c.lineWidth = 1.2; c.beginPath(); c.moveTo(-12, by); c.lineTo(0, -h + 31); c.lineTo(12, by); c.stroke(); c.globalAlpha = 1;
     c.fillStyle = night ? '#2a3038' : '#e9edf1'; c.strokeStyle = fg; c.lineWidth = 1.2;

@@ -40,6 +40,22 @@ const TramSandbox = (() => {
     }
     kMax(s0, s1) { let m = 0; for (let i = this._i(Math.max(0, s0)); i < this.s.length && this.s[i] <= s1; i++) m = Math.max(m, this.k[i]); return m; }
   }
+  // Линия-заглушка, если js/track.js нет (pathgraph организаторов не кладём в git, пока не
+  // ясна лицензия; файл пересоздаёт simulator/tools/gen_track.py из _incoming/pathgraph):
+  // 4,7 км, шаг 5 м, кривые R 150–300 м, профиль ±10 м, остановки через ~470 м.
+  // Числа песочницы на ней не совпадут с docs/SANDBOX.md (там настоящая линия).
+  Track.synthetic = () => {
+    const s = [], x = [], y = [], z = [], k = [];
+    let th = 0, px = 0, py = 0;
+    for (let i = 0; i <= 940; i++) {
+      const si = 5 * i, ph = si % 1100, sg = Math.floor(si / 1100) % 2 ? 1 : -1;
+      const ki = ph > 700 && ph < 880 ? sg / (si > 2200 ? 300 : 150) : 0;
+      if (i) { th += ki * 5; px += 5 * Math.cos(th); py += 5 * Math.sin(th); }
+      s.push(si); x.push(px); y.push(py); z.push(150 + 10 * Math.sin(si / 750)); k.push(Math.abs(ki));
+    }
+    const stops = []; for (let a = 60; a < 4650; a += 470) stops.push(a);
+    return { synthetic: true, source: 'линия-заглушка (нет js/track.js)', origin: null, stops, dirs: [{ s, x, y, z, k, name: 'заглушка', length_m: 4700 }] };
+  };
 
   // ------------------------------------------------------------------ водитель (автомат)
   // Видит истинную скорость и путь (как настоящий водитель), ведёт вагон от остановки к
@@ -99,38 +115,48 @@ const TramSandbox = (() => {
 
   // ------------------------------------------------------------------ сценарии
   // t — секунды от начала сценария; зоны сцепления — по пути (м от начала линии).
+  // real — вид инъекции в реальные записи с тем же отказом (docs/EVAL.md §6; таблица docs/SANDBOX.md
+  // берёт оттуда числа) или строка — почему аналога нет.
   const PRESETS = [
     { key: 'dry', ru: 'Сухо (норма)', route: [1, 3], T: 200,
       about: 'Сухой рельс, водитель ведёт вагон от остановки к остановке по настоящей линии (pathgraph организаторов, профиль высот оттуда же).',
       expect: 'Обе тележки принимаются, модель идёт по колёсам; ошибка скорости того же порядка, что на реальных записях.' },
-    { key: 'rain_spin', ru: 'Дождь + полная тяга (буксование)', route: [1, 3], T: 200, weather: 'rain', driver: { acc_notch: 15, a_brake: 0.5 },
+    { key: 'rain_spin', real: ['spin_traction'],  ru: 'Дождь + полная тяга (буксование)', route: [1, 3], T: 200, weather: 'rain', driver: { acc_notch: 15, a_brake: 0.5 },
       about: 'Мокрый рельс (μ ≈ 0,08–0,10), водитель трогается полной тягой (+15): колёса срываются, передняя тележка — сильнее.',
       expect: 'Показание буксующей тележки отбрасывается («колесо разгоняется быстрее, чем может вагон»), модель снижает оценку сцепления и не разгоняет вагон вслед за колёсами.' },
-    { key: 'ice_skid', ru: 'Снег / наледь при торможении (юз)', route: [1, 3], T: 200, driver: { brake: 'hard' }, wsp: false,
+    { key: 'ice_skid', real: 'нет: юз с блокировкой колёс на записях не вводили',  ru: 'Снег / наледь при торможении (юз)', route: [1, 3], T: 200, driver: { brake: 'hard' }, wsp: false,
       zones: [{ from: 'stop+1', before: 260, after: 40, weather: 'ice' }],
       about: 'Перед остановкой наледь (μ ≈ 0,05), водитель тормозит экстренно (−15), противоюзная защита не справляется: колёса блокируются, вагон скользит.',
       expect: 'Нули заблокированных колёс не принимаются за остановку: режим «стоим или скользим?», скорость по модели, полоса ±2σ широкая, пока колёса снова не покатятся.' },
-    { key: 'leaves', ru: 'Листопад', route: [1, 3], T: 200, driver: { acc_notch: 13 },
+    { key: 'leaves', real: ['skid_brake'],  ru: 'Листопад', route: [1, 3], T: 200, driver: { acc_notch: 13 },
       zones: [{ from: 'stop+0', before: 0, after: 220, weather: 'leaves' }, { from: 'stop+1', before: 240, after: 200, weather: 'leaves' }, { from: 'stop+2', before: 240, after: 60, weather: 'leaves' }],
       about: 'Участки листопадной плёнки (μ ≈ 0,05) и на разгоне, и на торможении; защита от буксования и юза работает — колёса проскальзывают на 10–30 %, но не блокируются.',
       expect: 'Резкие срывы отбрасываются; плавное проскальзывание под защитой модель от настоящей скорости не отличает (как юз −30 % на реальных записях, docs/EVAL.md) — это слабое место.' },
-    { key: 'front_fail', ru: 'Отказ передней тележки', route: [0, 1], T: 165,
+    { key: 'front_fail', real: ['front_zero'],  ru: 'Отказ передней тележки', route: [0, 1], T: 165,
       events: [{ t0: 35, t1: 95, fault: [{ kind: 'zero' }, null] }],
       about: 'Датчик передней тележки на ходу начинает показывать 0 км/ч (60 с).',
       expect: 'Передняя исключается как оборванная (ноль при движении), скорость — по задней; после отказа датчик возвращается, когда 2 с согласуется с задней.' },
-    { key: 'both_fail', ru: 'Отказ обеих тележек', route: [0, 1], T: 165,
+    { key: 'both_fail', real: ['both_zero'],  ru: 'Отказ обеих тележек', route: [0, 1], T: 165,
       events: [{ t0: 40, t1: 60, fault: [{ kind: 'zero' }, { kind: 'zero' }] }],
       about: 'Обе тележки на ходу разом показывают 0 км/ч (20 с).',
-      expect: 'Скачок в ноль физически невозможен — нули отбрасываются, скорость и путь идут по модели (ручка + физика), оценка помечена недостоверной, σ растёт.' },
-    { key: 'stuck', ru: 'Залипание датчиков', route: [0, 1], T: 165,
+      expect: 'Скачок в ноль физически невозможен — нули отбрасываются, скорость и путь идут по модели (ручка + физика), оценка помечена недостоверной, σ растёт. Здесь это лучший случай: вагон идёт ровно, а имитатор разгоняется по той же таблице привода, что у модели; на реальных записях ошибка пути в разы больше (docs/SANDBOX.md), но всё равно меньше, чем у колёс.' },
+    { key: 'both_fail_start', real: 'нет: на записях отказы вводятся только на ходу (≥ 4 м/с)',  ru: 'Отказ обеих при трогании', route: [0, 1], T: 165,
+      events: [{ t0: 6, t1: 26, fault: [{ kind: 'zero' }, { kind: 'zero' }] }],
+      about: 'Вагон только тронулся (≈ 1,2 м/с, ручка +11), и обе тележки разом начинают показывать 0 км/ч (20 с).',
+      expect: 'Слабое место: на скорости ниже 2 м/с ноль обеих тележек похож на обычную остановку — модель принимает «стоим», хотя ручка держит тягу; оценка при этом считается достоверной. Ошибка пути — как у простой одометрии.' },
+    { key: 'both_fail_stop', real: 'нет: на записях отказы вводятся только на ходу (≥ 4 м/с)',  ru: 'Отказ обеих при торможении к остановке', route: [0, 1], T: 175,
+      events: [{ t0: 140, t1: 160, fault: [{ kind: 'zero' }, { kind: 'zero' }] }],
+      about: 'Вагон тормозит к остановке (≈ 8 м/с), и обе тележки разом начинают показывать 0 км/ч (20 с): вагон останавливается и стоит, а датчики молчат нулями.',
+      expect: 'Слабое место: нули приняты за юз («стоим или скользим?»), модель держит скорость по ручке и после остановки — ошибка пути больше, чем у простой одометрии, пока колёса снова не покажут ход или стоянку.' },
+    { key: 'stuck', real: ['both_stuck'],  ru: 'Залипание датчиков', route: [0, 1], T: 165,
       events: [{ t0: 8, t1: 40, fault: [{ kind: 'stuck' }, null] }, { t0: 100, t1: 118, fault: [{ kind: 'stuck' }, { kind: 'stuck' }] }],
       about: 'Сначала на разгоне залипает передняя (32 с одно и то же значение), потом на ходу обе разом (18 с).',
       expect: 'Одна: исключается, когда задняя меняется, а она нет. Обе: признак «залипли все разом» при команде тяги или тормоза — только прогноз по ручке.' },
-    { key: 'dropout', ru: 'Пропуски сообщений', route: [0, 1], T: 165,
+    { key: 'dropout', real: ['dropout'],  ru: 'Пропуски сообщений', route: [0, 1], T: 165,
       events: [{ t0: 32, t1: 34, drop: true }, { t0: 50, t1: 50.6, drop: true }, { t0: 70, t1: 75, drop: true }, { t0: 139, t1: 144, drop: true }],
       about: 'Сообщения обеих тележек пропадают: 2 с, 0,6 с и 5 с на ходу, затем 5 с на торможении к остановке.',
       expect: 'До 1 с — прогноз между показаниями; дольше — разомкнутый режим (скорость по ручке и физике, полоса ±2σ растёт, оценка недостоверна); после возврата данных — снова по колёсам.' },
-    { key: 'noise', ru: 'Шум датчика', route: [0, 1], T: 165,
+    { key: 'noise', real: ['noise', 'outliers'],  ru: 'Шум датчика', route: [0, 1], T: 165,
       events: [{ t0: 30, t1: 70, fault: [{ kind: 'noise', sigma_kmh: 0.9 }, { kind: 'noise', sigma_kmh: 0.9 }] }, { t0: 85, t1: 110, fault: [null, { kind: 'outliers', p: 0.05 }] }],
       about: 'Шум ×5 (σ ≈ 0,25 м/с) на обеих тележках 40 с, затем выбросы ×3 на задней.',
       expect: 'Шум сглаживается фильтром (модель тише колёс), выбросы отбрасываются проверкой невязки.' },
@@ -154,7 +180,7 @@ const TramSandbox = (() => {
       this.sheetDoc = opts.sheet;              // TV_SHEET
       this.sheet = Object.assign({}, E.DEFAULT, opts.sheet.core);
       this.node = opts.sheet.node || {};
-      this.trackDoc = opts.track;              // TV_TRACK
+      this.trackDoc = opts.track && opts.track.dirs ? opts.track : Track.synthetic();   // TV_TRACK или заглушка
       this.seed = opts.seed ?? 7;
       this.maxRows = opts.maxRows ?? 36000;
       this.load(opts.preset || 'dry');
@@ -199,17 +225,23 @@ const TramSandbox = (() => {
       this.applyConditions();
     }
     emptyRows() { const o = { n: 0 }; for (const k of Engine.KEYS) o[k] = []; return o; }
-    emptyStats() { return { n: 0, ae: 0, aeN: 0, cov: 0, mode: new Array(7).fill(0), slip: 0, amb: 0, invalid: 0, stale: 0, frozen: 0, win: { n: 0, ae: 0, aeN: 0, maxE: 0, maxEN: 0, cov: 0 }, rej: [0, 0], acc: [0, 0], exc: [0, 0], agree: 0, winRej: [0, 0], winSeen: [0, 0], maxE: 0, maxEN: 0, muMin: Infinity, svMax: 0 }; }
+    emptyStats() { return { n: 0, ae: 0, aeN: 0, cov: 0, mode: new Array(7).fill(0), slip: 0, amb: 0, invalid: 0, stale: 0, frozen: 0, win: { n: 0, ae: 0, aeN: 0, maxE: 0, maxEN: 0, cov: 0 }, rej: [0, 0], acc: [0, 0], exc: [0, 0], agree: 0, winRej: [0, 0], winSeen: [0, 0], maxE: 0, maxEN: 0, muMin: Infinity, svMax: 0, overconf: 0 }; }
     // активные условия на момент t (сценарий + ручные переключатели)
     active(t) {
       const pr = this.preset, s = this.plant.s;
       let faults = [null, null], drop = false;
       for (const ev of pr.events || []) if (t >= ev.t0 && t < ev.t1) { if (ev.fault) faults = ev.fault.map((f, b) => f || faults[b]); if (ev.drop) drop = true; }
-      let weather = this.baseWeather;
-      for (const z of this.zones) if (s >= z.a && s <= z.b) weather = z.weather;
-      if (this.userWeather) weather = this.userWeather;
+      // сцепление — по месту каждой тележки: передняя на s, задняя на 7,55 м позади
+      const weatherB = [0, 1].map(b => this.weatherAt(s - b * this.plant.C.bogie_base));
       faults = faults.map((f, b) => this.userFaults[b] || f);
-      return { faults, drop: drop || this.userDrop, weather, mass: this.userMass ?? (pr.mass || 1.0), gnssOff: this.userGnssOff || (pr.gnss_off !== undefined && t >= pr.gnss_off) };
+      return { faults, drop: drop || this.userDrop, weather: weatherB[0], weatherB, mass: this.userMass ?? (pr.mass || 1.0), gnssOff: this.userGnssOff || (pr.gnss_off !== undefined && t >= pr.gnss_off) };
+    }
+    // погода на рельсе в точке линии s (зоны сценария, общий фон, ручной переключатель)
+    weatherAt(s) {
+      if (this.userWeather) return this.userWeather;
+      let w = this.baseWeather;
+      for (const z of this.zones) if (s >= z.a && s <= z.b) w = z.weather;
+      return w;
     }
     // окно сценария для метрик: пока действует необычное условие и 10 с после
     inWindow() { return this.t - this._winT <= 10; }
@@ -218,9 +250,10 @@ const TramSandbox = (() => {
       const key = JSON.stringify(c.faults);
       if (key !== this._fkey) { this._fkey = key; pl.setFault(0, c.faults[0]); pl.setFault(1, c.faults[1]); }
       pl.dropAll = c.drop;
-      if (c.weather !== this._wkey) { this._wkey = c.weather; pl.setWeather(c.weather); }
+      const wk = c.weatherB.join('|');
+      if (wk !== this._wkey) { this._wkey = wk; pl.setWeather(c.weatherB[0], 0); pl.setWeather(c.weatherB[1], 1); }
       const hill = this.hill && pl.s >= this.hill[0] && pl.s <= this.hill[2];
-      if (c.faults[0] || c.faults[1] || c.drop || c.weather !== 'dry' || c.mass !== 1 || c.gnssOff || hill) this._winT = this.t;
+      if (c.faults[0] || c.faults[1] || c.drop || c.weatherB.some(w => w !== 'dry') || c.mass !== 1 || c.gnssOff || hill) this._winT = this.t;
       pl.mass_factor = c.mass;
       this.gnssOff = c.gnssOff;
       this.cond = c;
@@ -280,6 +313,8 @@ const TramSandbox = (() => {
       S.n++; S.ae += Math.abs(e); S.aeN += Math.abs(eN); S.cov += Math.abs(e) <= 2 * o.sigma_v ? 1 : 0; S.mode[o.mode]++;
       S.maxE = Math.max(S.maxE, Math.abs(e)); S.maxEN = Math.max(S.maxEN, Math.abs(eN));
       if (o.slip) S.slip++; if (o.ambiguous) S.amb++; if (!o.valid) S.invalid++; if (o.wheels_stale) S.stale++; if (o.frozen) S.frozen++;
+      // «уверена, но ошибается»: оценка помечена достоверной, а истина вне ±2σ дальше 0,5 м/с
+      if (o.valid && Math.abs(e) > Math.max(0.5, 2 * o.sigma_v)) S.overconf++;
       S.muMin = Math.min(S.muMin, o.mu); S.svMax = Math.max(S.svMax, o.sigma_v);
       if (row.w0 === 1 || row.w1 === 1) S.agree++;
       for (let b = 0; b < 2; b++) { const w = row['w' + b]; if (w === 9 || w === 10) S.exc[b]++; if ((w >= 2 && w <= 7) || w === 13) { S.rej[b]++; if (row.win) S.winRej[b]++; } else if (w <= 1) S.acc[b]++; if (row.win && w !== 12) S.winSeen[b]++; }
@@ -295,7 +330,7 @@ const TramSandbox = (() => {
         s_err: k >= 0 ? R0.s[k] - R0.st[k] : NaN, naive_s_err: k >= 0 ? R0.ns[k] - R0.st[k] : NaN, path: k >= 0 ? R0.st[k] : 0,
         slip_s: S.slip * dt, amb_s: S.amb * dt, invalid_s: S.invalid * dt, stale_s: S.stale * dt, frozen_s: S.frozen * dt,
         rej_front: S.rej[0] * dt, rej_rear: S.rej[1] * dt, exc_front: S.exc[0] * dt, exc_rear: S.exc[1] * dt,
-        agree_steps: S.agree, mu_min: S.muMin, sv_max: S.svMax,
+        agree_steps: S.agree, mu_min: S.muMin, sv_max: S.svMax, overconf_s: S.overconf * dt,
         win: W.n ? { s: W.n * dt, v_mae: W.ae / W.n, naive_v_mae: W.aeN / W.n, v_max: W.maxE, naive_v_max: W.maxEN, cov2s: W.cov / W.n,
           rej_front: S.winSeen[0] ? S.winRej[0] / S.winSeen[0] : 0, rej_rear: S.winSeen[1] ? S.winRej[1] / S.winSeen[1] : 0 } : null,
         arrivals: this.arrivals.slice(),
@@ -379,7 +414,8 @@ const TramSandbox = (() => {
     const slipTxt = b => { const x = pl.slip(b); return Math.abs(x) < 0.03 || pl.v < 0.3 && pl.w[b] < 0.3 ? 'катится нормально' : x > 0 ? `буксует: колесо ${f1(pl.w[b] * KMH)} км/ч при вагоне ${f1(pl.v * KMH)} км/ч` : pl.w[b] < 0.05 ? `юз: колесо заблокировано, вагон скользит на ${f1(pl.v * KMH)} км/ч` : `юз: колесо ${f1(pl.w[b] * KMH)} км/ч при вагоне ${f1(pl.v * KMH)} км/ч`; };
     const FR = { zero: 'датчик показывает 0', stuck: 'датчик залип', dropout: 'сообщений нет', noise: 'датчик шумит ×5', outliers: 'выбросы ×3' };
     for (let b = 0; b < 2; b++) truth.push(`${Name[b]}: ${slipTxt(b)}${c.faults[b] ? '; ' + FR[c.faults[b].kind] : ''}${c.drop ? '; сообщения пропали' : ''}.`);
-    truth.push(`Рельс: ${P.WEATHER[c.weather].ru} (μ пика ${f2(pl.mu_peak[0])} / ${f2(pl.mu_peak[1])}); масса ${Math.round(c.mass * p.M_nom / 1000)} т; уклон ${f1(1000 * Math.tan(pl.grade))} ‰; ручка ${pl.notch > 0 ? '+' : ''}${pl.notch}.`);
+    const wxTxt = c.weatherB[0] === c.weatherB[1] ? P.WEATHER[c.weatherB[0]].ru : `под передней — ${P.WEATHER[c.weatherB[0]].ru}, под задней — ${P.WEATHER[c.weatherB[1]].ru}`;
+    truth.push(`Рельс: ${wxTxt} (μ пика ${f2(pl.mu_peak[0])} / ${f2(pl.mu_peak[1])}); масса ${Math.round(c.mass * p.M_nom / 1000)} т; уклон ${f1(1000 * Math.tan(pl.grade))} ‰; ручка ${pl.notch > 0 ? '+' : ''}${pl.notch}.`);
     return { head, lines, bogies: bog, truth, mode, valid: o.valid, amb: o.ambiguous };
   }
 
