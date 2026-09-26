@@ -22,7 +22,7 @@
 // node js-port/sync.js, проверяют js-port/check.sh и simulator/test/page_test.js).
 const TramEst = (() => {
   const G = 9.81;
-  const PORT = { core_git: '5852b8e', core_sha1: 'ed61cb444c94', checked: '26.09', dv: '≤ 1e-6 м/с' };
+  const PORT = { core_git: '5852b8e', core_sha1: 'ed61cb444c94', checked: '26.09', dv: '≤ 6·10⁻¹³ м/с' };
   const DEFAULT = {
     M_nom: 28000.0, r_nom: 0.35, n_axles: 4, driven: [true, true, false, false], braked: [true, true, true, true], v_max_line: 20.0,
     F_notch: 36000.0, F_brake: 30000.0, v_base: 8.0, v_ed_fade: 1.5, brake_hold_frac: 1.0,
