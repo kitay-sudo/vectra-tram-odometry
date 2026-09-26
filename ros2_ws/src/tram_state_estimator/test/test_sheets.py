@@ -99,8 +99,13 @@ def test_node_params_are_in_sheet(which):
             "child_frame_id", "wheel_timeout_s", "handle_timeout_s",
             "init_window_s"} <= node
     assert set(got) - CORE == node
-    assert got["projection"] == "mgrs" and got["mgrs_grid"] == "" \
-        and got["utm_zone"] == 0
+    # система судьи (pathgraph организаторов, 26.09): MGRS от 37UCB непрерывно,
+    # точка base_link; положение на каждом шаге (защиты у края квадрата нет)
+    assert got["projection"] == "mgrs" and got["mgrs_grid"] == "37UCB" \
+        and got["utm_zone"] == 0 and got["mgrs_guard_m"] == 0.0
+    assert got["output_point"] == "base_link"
+    assert (got["antenna_master_x"], got["antenna_rover_x"], got["antenna_z"]) == \
+        (-9.873, 2.563, 3.0)
     want = {f.name for f in fields(Params) if getattr(DEFAULT, f.name) != ()}
     assert want <= set(got), f"в листе нет полей ядра: {want - set(got)}"
 

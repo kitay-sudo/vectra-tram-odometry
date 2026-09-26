@@ -7,9 +7,16 @@
 сдвигом в точку выставки): координаты, курсы сетки (отличаются от истинных на
 сближение меридианов, здесь ≈1,3°) и множитель пути на точку.
 
-Карту организаторов (формат пока неизвестен) можно подключить без правки
-ядра: TrackMap.from_polylines() делает из ломаных/рёбер графа (широта/долгота,
-UTM или MGRS) точки того же вида; load() понимает .npz, .geojson/.json и .csv.
+Точка вагона, по траектории которой собрана карта, — атрибут point:
+"base_link" (ось передней тележки на уровне рельса; карты с 26.09 и карта
+организаторов pathgraph) или "master" (антенна; карты до 26.09 без этого
+поля). Position ведёт курсором эту точку и переносит её в точку выхода.
+
+Карта организаторов pathgraph (26.09: два JSON, по одному на направление,
+точки через 1 м в MGRS от квадрата 37UCB непрерывно, z — уровень рельса)
+читается TrackMap.from_pathgraph(); ломаные/рёбра графа (широта/долгота, UTM
+или MGRS) — from_polylines(); load() понимает .npz, pathgraph .json (в том
+числе каталог или список через «;»), .geojson и .csv.
 
 Движение по карте: на каждом шаге точка сдвигается на пройденный путь по
 текущему курсу, затем притягивается к оси пути — к точкам карты в радиусе
@@ -34,6 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .body import point_name
 from .geodesy import (A_WGS, E2_WGS, Frame, mgrs_inv, utm_fwd, utm_inv)
 
 CELL = 2.0
@@ -56,6 +64,61 @@ def hold_mode(v):
     return m
 
 
+PATHGRAPH_GRID = "37UCB"     # pathgraph: MGRS от угла 37UCB непрерывно (x > 100 км восточнее E = 400 км)
+
+
+def _pathgraph_files(paths):
+    if isinstance(paths, (list, tuple)):
+        out = []
+        for p in paths:
+            out += _pathgraph_files(p)
+        return out
+    spec = str(paths)
+    if ";" in spec:
+        return _pathgraph_files([p for p in spec.split(";") if p.strip()])
+    p = Path(spec.strip())
+    if p.is_dir():
+        return sorted(p.glob("*.json"))
+    return [p]
+
+
+def is_pathgraph(path):
+    """Файл .json в формате pathgraph организаторов (поле points, не GeoJSON)."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            head = fh.read(4096)
+    except OSError:
+        return False
+    return '"points"' in head and '"type"' not in head
+
+
+def read_pathgraph(paths):
+    """pathgraph организаторов: {"points": [{x, y, z, tang, curv}], "paths":
+    [{"point_indices": [...]}]}. x, y — MGRS от угла квадрата 37UCB
+    непрерывно (x = E − 300 000, y = N − 6 100 000 зоны 37), z — высота
+    уровня рельса (м, та же система высот, что NavSatFix), tang — угол
+    касательной от оси x против часовой (рад, REP-103), curv — кривизна (1/м).
+    Возвращает список путей: dict(name, xy K×2, z, tang, curv) в порядке
+    point_indices (по ходу движения)."""
+    out = []
+    for f in _pathgraph_files(paths):
+        d = json.loads(Path(f).read_text(encoding="utf-8"))
+        P = np.array([[p["x"], p["y"], p.get("z", 0.0), p.get("tang", np.nan),
+                       p.get("curv", np.nan)] for p in d["points"]], float)
+        paths_ = d.get("paths") or [{"point_indices": list(range(len(P)))}]
+        for k, path in enumerate(paths_):
+            idx = np.asarray(path.get("point_indices", []), int)
+            if len(idx) < 2:
+                continue
+            Q = P[idx]
+            name = Path(f).stem + (f"#{k}" if len(paths_) > 1 else "")
+            out.append(dict(name=name, xy=Q[:, :2].copy(), z=Q[:, 2].copy(),
+                            tang=Q[:, 3].copy(), curv=Q[:, 4].copy()))
+    if not out:
+        raise ValueError(f"pathgraph {paths}: нет ни одного пути")
+    return out
+
+
 def _equirect_scale(lat, head, lat0):
     """Масштаб прежней плоской формулы (сфера a, cos φ0) вдоль head."""
     phi = np.radians(lat)
@@ -69,7 +132,7 @@ def _equirect_scale(lat, head, lat0):
 
 class TrackMap:
     def __init__(self, lat, lon, alt, head, weight, scale=1.0, stops=None,
-                 scale_frame="equirect", terminals=None):
+                 scale_frame="equirect", terminals=None, point="master"):
         self.lat, self.lon, self.alt = (np.asarray(v, float).reshape(-1)
                                         for v in (lat, lon, alt))
         # точки остановок: (широта, долгота, истинный курс, разброс вдоль пути, м)
@@ -90,6 +153,8 @@ class TrackMap:
         if scale_frame not in SCALE_FRAMES:
             raise ValueError(f"scale_frame {scale_frame!r}: ожидается {SCALE_FRAMES}")
         self.scale_frame = scale_frame
+        # точка вагона, по траектории которой собрана карта (z карты — её высота)
+        self.point = point_name(point)
         self.snap_r = 3.0
         self.max_dh = math.radians(35.0)
         # тупик карты: off — всегда прямо и поиск пути; terminals — стоять
@@ -105,12 +170,18 @@ class TrackMap:
 
     @staticmethod
     def load(path):
-        """Карта из файла: .npz (наш формат), .geojson/.json (LineString /
-        MultiLineString, lon/lat[/alt]), .csv (колонки line,lat,lon[,alt]
-        или line,mgrs_e,mgrs_n с колонкой grid)."""
+        """Карта из файла: .npz (наш формат), pathgraph организаторов (.json с
+        полем points; каталог с такими .json или список путей через «;»),
+        .geojson/.json (LineString / MultiLineString, lon/lat[/alt]), .csv
+        (колонки line,lat,lon[,alt] или line,mgrs_e,mgrs_n с колонкой grid)."""
+        spec = str(path)
+        if ";" in spec or Path(spec).is_dir():
+            return TrackMap.from_pathgraph(spec)
         path = Path(path)
         suf = path.suffix.lower()
         if suf in (".geojson", ".json"):
+            if is_pathgraph(path):
+                return TrackMap.from_pathgraph(path)
             return TrackMap.from_geojson(path)
         if suf == ".csv":
             return TrackMap.from_csv(path)
@@ -119,8 +190,10 @@ class TrackMap:
         stops = z["stops"] if "stops" in z.files else None
         frame = str(z["scale_frame"]) if "scale_frame" in z.files else "equirect"
         term = z["terminals"] if "terminals" in z.files else None
+        # карты до 26.09 собраны по антенне master
+        point = str(z["point"]) if "point" in z.files else "master"
         m = TrackMap(z["lat"], z["lon"], z["alt"], z["head"], z["weight"],
-                     scale, stops, frame, term)
+                     scale, stops, frame, term, point)
         m.prepare()                      # при загрузке, не в колбэке выставки
         return m
 
@@ -129,12 +202,32 @@ class TrackMap:
                             head=self.head, weight=self.weight,
                             scale=self.scale, stops=self.stops,
                             scale_frame=np.array(self.scale_frame),
-                            terminals=self.terminals, **meta)
+                            terminals=self.terminals, point=np.array(self.point),
+                            **meta)
+
+    @staticmethod
+    def from_pathgraph(paths, grid=PATHGRAPH_GRID, weight=1.0, scale=1.0, stops=None,
+                       terminals=None):
+        """Карта организаторов pathgraph -> TrackMap (точка base_link, z —
+        уровень рельса; путь в каждом файле — по ходу движения, поэтому не
+        в обе стороны). paths — файл, каталог с .json или список (строка через
+        «;»). Точки идут через 1 м; курс — по направлению ребра (tang файла с
+        ним совпадает до 1°, test_pathgraph). scale — множитель пути колёс в
+        истинных метрах (scale_frame "true"); analysis/build_map.py калибрует
+        его во внутренней системе и ставит "utm"."""
+        lines = [np.c_[pg["xy"], pg["z"]] for pg in read_pathgraph(paths)]
+        m = TrackMap.from_polylines(lines, crs="mgrs", grid=grid, spacing=1.0,
+                                    bidirectional=False, weight=weight, scale=scale,
+                                    stops=stops, point="base_link")
+        if terminals is not None:
+            m.terminals = np.asarray(terminals, float).reshape(-1, 2)
+        return m
 
     @staticmethod
     def from_polylines(lines, crs="latlon", zone=None, grid=None, alt=None,
                        spacing=1.0, bidirectional=True, weight=1.0, scale=1.0,
-                       stops=None, find_terminals=False, term_join=10.0):
+                       stops=None, find_terminals=False, term_join=10.0,
+                       point="base_link"):
         """Карта из ломаных (оси путей / рёбра графа организаторов).
 
         lines — список массивов точек K×2 или K×3:
@@ -151,6 +244,8 @@ class TrackMap:
         ломаных, у которых ближе term_join м нет точек других ломаных
         (висячие вершины графа путей). По умолчанию нет: если в чужой карте
         есть дыры, удержание на краю дыры хуже, чем пройти её по прямой.
+        point — точка вагона, которую описывают ломаные: ось пути — base_link
+        (по умолчанию), траектория антенны — master.
         """
         la_all, lo_all, h_all, z_all = [], [], [], []
         ends = []                        # (широта, долгота, № ломаной)
@@ -206,7 +301,7 @@ class TrackMap:
                     term.append((la_e, lo_e))
         return TrackMap(lat, lon, np.concatenate(z_all), np.concatenate(h_all),
                         np.full(len(lat), float(weight)), scale, stops, "true",
-                        term or None)
+                        term or None, point)
 
     @staticmethod
     def from_geojson(path, **kw):

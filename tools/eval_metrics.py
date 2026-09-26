@@ -3,8 +3,14 @@
 Пары «выход — эталон» — по ближайшей метке времени в пределах TOL = 0,05 с
 (README датасета, раздел 5.1). Эталон скорости — |v| GNSS master по (x, y)
 (основной) и rover (дополнительный): официального эталона скорости нет,
-источников четыре — 2 тележки и 2 GNSS. Эталон положения — master fix в
-системе судьи (MGRS: x — восток, y — север, z — высота).
+источников четыре — 2 тележки и 2 GNSS. Эталон положения — точка base_link
+по GNSS (организаторы 25.09: ось поворота передней тележки на уровне рельса;
+антенны в base_link: master (−9,873; 0; 3,0), rover (2,563; 0; 3,0)):
+пара master+rover одной эпохи (±0,05 с) — base_link = master + 9,873/12,436 ·
+(rover − master), z − 3,0; без пары — master + 9,873 м вдоль курса эталонной
+траектории, z = высота master − 3,0 (reference). Система судьи — плоские MGRS
+от угла квадрата 37UCB непрерывно (как pathgraph организаторов). Прежний
+эталон (антенна master) — ref_point="master".
 
 Разложение вдоль/поперёк пути (along_cross) перенесено без изменений из
 tools/audit/core_metrics.py, чтобы числа совпадали с аудитом.
@@ -15,6 +21,7 @@ import math
 import numpy as np
 
 import eval_geo as G
+import eval_pathgraph as PGM
 
 TOL = 0.05
 V_STAND_GNSS = 0.2      # м/с: ниже — фаза «стоянка» по GNSS
@@ -282,15 +289,90 @@ def score_speed(O, a, which="master", v_standstill=0.3, meas_scale=1.0):
     return row, s
 
 
-def reference_geo(a):
-    """Эталон положения: метки и (lat, lon, alt) master fix (как в core_metrics:
-    без фильтрации по status; неконечные строки отброшены)."""
+# tf антенн в base_link (организаторы 25.09), м; независимо от body.py пакета
+MASTER_X, ROVER_X, ANTENNA_Z = -9.873, 2.563, 3.0
+REF_POINTS = ("base_link", "master")
+PAIR_TOL = 0.05            # с: master и rover одной эпохи
+BASE_OK = (5.0, 25.0)      # м: годная база пары (≈ 12,44)
+TAN_DT, TAN_MIN = 1.0, 1.0  # с, м: касательная траектории по ±1 с при смещении ≥ 1 м
+
+
+def reference(a, point="base_link"):
+    """Эталон положения: dict(t, lat, lon, alt, yaw, paired, zone).
+
+    Строки — фиксы master (как в core_metrics: без фильтрации по status,
+    неконечные отброшены). point "master" — сама антенна. point "base_link":
+    с парой rover (ближайшая метка ±0,05 с, база 5–25 м) — по tf на отрезке
+    master→rover (кузов жёсткий, base_link на оси тележки и на кривой),
+    z — по той же доле между высотами антенн минус 3,0; без пары — master +
+    9,873 м вдоль курса (касательная траектории master за ±1 с, на стоянке —
+    курс ближайшей пары), z = высота master − 3,0; без курса строка
+    отбрасывается. yaw — курс (рад от оси x против часовой, UTM) для выбора
+    пути pathgraph своего направления."""
     m = _rows(a["mfix"], 5)
     m = m[np.isfinite(m[:, 2]) & np.isfinite(m[:, 3]) & np.isfinite(m[:, 4])]
-    return m[:, 1], m[:, 2], m[:, 3], m[:, 4]
+    n = len(m)
+    empty = np.zeros(0)
+    if n == 0:
+        return dict(t=empty, lat=empty, lon=empty, alt=empty, yaw=empty,
+                    paired=np.zeros(0, bool), zone=None)
+    t, lat, lon, alt = m[:, 1], m[:, 2], m[:, 3], m[:, 4]
+    zone = G.utm_zone(lon[0], lat[0])
+    Em, Nm = (np.asarray(v, float) for v in G.utm_fwd(lat, lon, zone))
+    r = _rows(a["rfix"], 5)
+    r = r[np.isfinite(r[:, 2]) & np.isfinite(r[:, 3]) & np.isfinite(r[:, 4])]
+    paired = np.zeros(n, bool)
+    Er = Nr = zr = np.full(n, np.nan)
+    if len(r) >= 1:
+        r = r[np.argsort(r[:, 1], kind="stable")]
+        j, ok = nearest(r[:, 1], t, tol=PAIR_TOL)
+        E_, N_ = (np.asarray(v, float) for v in G.utm_fwd(r[j, 2], r[j, 3], zone))
+        b = np.hypot(E_ - Em, N_ - Nm)
+        paired = ok & (b >= BASE_OK[0]) & (b <= BASE_OK[1])
+        Er, Nr, zr = E_, N_, r[j, 4]
+    yaw_pair = np.where(paired, np.arctan2(Nr - Nm, Er - Em), np.nan)
+    # касательная траектории master: положение за ±TAN_DT по времени
+    o = np.argsort(t, kind="stable")
+    ts = t[o]
+    Ea = np.interp(t + TAN_DT, ts, Em[o]) - np.interp(t - TAN_DT, ts, Em[o])
+    Na = np.interp(t + TAN_DT, ts, Nm[o]) - np.interp(t - TAN_DT, ts, Nm[o])
+    yaw_tan = np.where(np.hypot(Ea, Na) >= TAN_MIN, np.arctan2(Na, Ea), np.nan)
+    yaw = np.where(paired, yaw_pair, yaw_tan)
+    if (~np.isfinite(yaw)).any() and np.isfinite(yaw_pair).any():
+        # стоянка без пары: курс ближайшей по времени пары
+        k = np.flatnonzero(np.isfinite(yaw_pair))
+        tk = t[k]
+        oo = np.argsort(tk)
+        jj, _ = nearest(tk[oo], t, tol=np.inf)
+        yaw = np.where(np.isfinite(yaw), yaw, yaw_pair[k[oo][jj]])
+    if point == "master":
+        E, N, z = Em, Nm, alt
+        keep = np.ones(n, bool)
+    elif point == "base_link":
+        f = -MASTER_X / (ROVER_X - MASTER_X)
+        c, s_ = np.cos(yaw), np.sin(yaw)
+        E = np.where(paired, Em + f * (Er - Em), Em - MASTER_X * c)
+        N = np.where(paired, Nm + f * (Nr - Nm), Nm - MASTER_X * s_)
+        z = np.where(paired, alt + f * (zr - alt), alt) - ANTENNA_Z
+        keep = paired | np.isfinite(yaw)
+    else:
+        raise ValueError(f"точка эталона {point!r}: {REF_POINTS}")
+    if point == "master":                       # сами фиксы, без пересчёта (как прежде)
+        return dict(t=t, lat=lat, lon=lon, alt=alt, yaw=yaw, paired=paired, zone=zone)
+    la, lo = G.utm_inv(E[keep], N[keep], zone)
+    return dict(t=t[keep], lat=np.asarray(la, float), lon=np.asarray(lo, float),
+                alt=np.asarray(z, float)[keep], yaw=yaw[keep], paired=paired[keep], zone=zone)
+
+
+def reference_geo(a, point="master"):
+    """Эталон положения: метки и (lat, lon, alt) точки point (по умолчанию —
+    master fix, как прежде; оценка берёт base_link через reference)."""
+    r = reference(a, point)
+    return r["t"], r["lat"], r["lon"], r["alt"]
 
 
 BOUNDARY_GRID = "37UDB"     # «непрерывно от квадрата» для матрицы соглашений на границе
+JUDGE_GRID = "37UCB"        # соглашение судьи: от угла 37UCB непрерывно (pathgraph, 26.09)
 
 
 def _conv(E, N, conv):
@@ -312,18 +394,26 @@ def published(O):
     return np.asarray(PV, bool)
 
 
-def score_position(O, a, frame, judge_grid="", full=True, boundary_grid=BOUNDARY_GRID):
-    """Положение оценки против master fix. O["GEO"] — (lat, lon, alt) выхода
+def score_position(O, a, frame, judge_grid=JUDGE_GRID, full=True, boundary_grid=BOUNDARY_GRID,
+                   ref_point="base_link", pg=None):
+    """Положение оценки против эталона ref_point (reference: base_link по
+    GNSS, как у судьи, или антенна master). O["GEO"] — (lat, lon, alt) выхода
     (переведённые из системы Runner'а), O["XYZ"] — сырые x, y, z выхода (для
     «взгляда судьи»), O["PV"] — положение опубликовано. Фикс сопоставляется
     с ближайшим ОПУБЛИКОВАННЫМ положением в пределах 0,05 с; без него фикс
-    непарный (p_unpaired). frame — Frame. Возвращает (row, samples)."""
+    непарный (p_unpaired). frame — Frame. pg — eval_pathgraph.Pathgraph (или
+    None): поперечная ошибка и путь вдоль pathgraph. p_gap_steps — шагов
+    выхода без опубликованного положения после первого опубликованного.
+    Возвращает (row, samples)."""
     PV = published(O)
     T = O["T"][PV]
-    tr, la, lo, al = reference_geo(a)
+    ref = reference(a, ref_point)
+    tr, la, lo, al = ref["t"], ref["lat"], ref["lon"], ref["alt"]
+    first = int(np.argmax(PV)) if PV.any() else len(PV)
     row = dict(p_ref=int(len(tr)), p_out=int(len(O["T"])),
                p_out_invalid=int((~O.get("POSV", PV)).sum()) if len(O["T"]) else 0,
-               p_nan=int((O.get("POSV", PV) & ~PV).sum()) if len(O["T"]) else 0)
+               p_nan=int((O.get("POSV", PV) & ~PV).sum()) if len(O["T"]) else 0,
+               p_gap_steps=int((~PV[first:]).sum()))
     if len(tr) < 2 or not len(T):
         return dict(row, p_pairs=0, p_unpaired=int(len(tr)), p_pair_frac=0.0), None
     P = frame.fwd(la, lo, al)
@@ -346,7 +436,18 @@ def score_position(O, a, frame, judge_grid="", full=True, boundary_grid=BOUNDARY
     row["p3d_end"] = _last(d3)
     row["p2d_mean"] = _nanstat(np.mean, d2)
     row["pz_mean"] = _nanstat(np.mean, np.abs(dz))
+    row["pz_bias"] = _nanstat(np.mean, dz)
     s = dict(d3=d3, d2=d2, tp=tr[idx])
+    if pg is not None and len(idx):
+        Er, Nr = frame.utm(la[idx], lo[idx])
+        Ee, Ne = frame.utm(lat_e[jp], lon_e[jp])
+        rpg, spg = PGM.score(pg, Er, Nr, al[idx], ref["yaw"][idx], Ee, Ne)
+        row.update(rpg)
+        s.update(spg)
+        on = spg["pg_ok"]           # эталон на pathgraph (не за его концами)
+        row["p3d_on_pg"] = _nanstat(np.mean, d3[on])
+        row["p3d_off_pg"] = _nanstat(np.mean, d3[~on])
+        row["p_pairs_off_pg"] = int((~on & np.isfinite(d3)).sum())
     # «взгляд судьи»: квадраты 100 км MGRS при переносе по точке
     if frame.name == "mgrs" and len(idx):
         Er, Nr = frame.utm(la[idx], lo[idx])
@@ -410,14 +511,20 @@ def score_position(O, a, frame, judge_grid="", full=True, boundary_grid=BOUNDARY
 # ------------------------------------------------------------------ агрегирование
 
 BX = tuple(f"bx_{o}_{j}" for o in ("wrap", "grid") for j in ("wrap", "grid"))
-W_MEAN = ("v_mae", "v_bias", "cov2s_v", "cov1s_v", "p3d_mean", "p2d_mean", "pz_mean",
+W_MEAN = ("v_mae", "v_bias", "cov2s_v", "cov1s_v", "p3d_mean", "p2d_mean", "pz_mean", "pz_bias",
           "along_mean", "along_bias", "cross_mean", "cov2s_along",
-          "judge_raw_3d_mean", "wrap_3d_mean") + tuple(b + "_3d_mean" for b in BX)
-W_RMS = ("v_rmse", "p3d_rmse", "along_rmse")
-MAXES = ("v_max", "p3d_max", "along_max", "cross_max", "judge_raw_3d_max", "wrap_3d_max")
+          "judge_raw_3d_mean", "wrap_3d_mean",
+          "pg_frac", "pg_cross_mean", "pg_cross_p95", "pg_along_mean", "pg_along_bias",
+          "p3d_on_pg", "p3d_off_pg",
+          "pg_ref_lat_med", "pg_ref_lat_signed_med", "pg_ref_lat_p95",
+          "pg_ref_dz_med") + tuple(b + "_3d_mean" for b in BX)
+W_RMS = ("v_rmse", "p3d_rmse", "along_rmse", "pg_along_rmse")
+MAXES = ("v_max", "p3d_max", "along_max", "cross_max", "judge_raw_3d_max", "wrap_3d_max",
+         "pg_cross_max", "pg_along_max")
 SUMS = ("v_ref", "v_pairs", "v_unpaired", "v_nan", "v_out_nan", "p_ref", "p_pairs", "p_unpaired",
-        "p_out", "p_out_invalid", "p_nan", "sq_mismatch", "judge_raw_km", "false_ss_n", "moving_n",
-        "along_undef") + tuple(b + "_km" for b in BX)
+        "p_out", "p_out_invalid", "p_nan", "p_gap_steps", "sq_mismatch", "judge_raw_km",
+        "false_ss_n", "moving_n", "along_undef", "pg_pairs", "p_pairs_off_pg") + tuple(
+            b + "_km" for b in BX)
 
 
 def totals(rows):
@@ -505,7 +612,7 @@ def pooled_position(samples_list):
     if not samples_list:
         return {}
     out = {}
-    for k in ("d3", "al", "cr"):
+    for k in ("d3", "al", "cr", "pg_along", "pg_cross"):
         if all(k in s for s in samples_list):
             x = _fin(np.concatenate([s[k] for s in samples_list]))
             if len(x):
