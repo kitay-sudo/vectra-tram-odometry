@@ -38,76 +38,28 @@
   *, *::before, *::after { box-sizing: inherit; }
   html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
   body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
-  #scene { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
   .num { font-variant-numeric: tabular-nums; }
-  @keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: 0 } }
-  .cursor { animation: blink 1s step-end infinite; }
-  .pills { opacity: 0; transform: translateY(8px); transition: opacity .4s ease, transform .4s ease; }
-  .pills.show { opacity: 1; transform: none; }
-  .pill { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; border-radius: 9999px; padding: .3em 1rem; margin: 0 .2em .4em; transition: background-color .2s, color .2s, border-color .2s; }
-  @media (min-width: 640px) { .pill { padding: .3em 1.25rem; } }
-  .pill-solid { background: var(--pill-bg); color: var(--fg); border: 1px solid var(--line); }
-  .pill-solid:hover, .pill-solid[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
   a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--ok); outline-offset: 3px; }
-  #typeBox { font-size: clamp(18px, 4vw, 26px); line-height: 1.35; min-height: 54px; transition: opacity .25s ease; }
-  #typeBox.info { font-size: clamp(16px, 3.2vw, 20px); line-height: 1.5; }
-  .sheet { opacity: 0; transform: translateY(10px); pointer-events: none; transition: opacity .25s ease, transform .25s ease; }
-  .sheet.open { opacity: 1; transform: none; pointer-events: auto; }
-  .sheet p + p { margin-top: .7em; }
-  #dash { left: 32px; top: calc(env(safe-area-inset-top, 0px) + 80px); bottom: 33%; width: min(62vw, 900px); }
-  @media (min-width: 900px) and (max-width: 1199px) { #dash { width: calc(100% - 64px - 372px); } }
-  @media (max-width: 899px) { #dash { width: calc(100% - 64px); } }
-  @media (max-width: 767px) { #dash { left: 20px; right: 20px; width: auto; top: calc(env(safe-area-inset-top, 0px) + 70px); bottom: 24%; } }
-  .map-glass { background: color-mix(in srgb, var(--bg) 16%, transparent) !important; -webkit-backdrop-filter: blur(16px) saturate(1.4) !important; backdrop-filter: blur(16px) saturate(1.4) !important; box-shadow: none !important; border: 1px solid var(--line); }
-  .nav-link { opacity: .7; transition: opacity .2s; white-space: nowrap; text-underline-offset: 5px; }
-  .nav-link:hover, .nav-link[aria-pressed="true"] { opacity: 1; }
-  .nav-link[aria-pressed="true"] { color: var(--ok); }
   .icon-btn { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); transition: background-color .2s, color .2s, border-color .2s; }
-  @media (max-width: 639px) { .icon-btn { width: 32px; height: 32px; } #recBtn { display: none; } }
+  @media (max-width: 639px) { .icon-btn { width: 32px; height: 32px; } }
   .icon-btn:hover { border-color: var(--fg); }
-  #presBtn[aria-pressed="true"], .icon-btn[data-open][aria-pressed="true"] { background: var(--fg); color: var(--bg); }
-  @media (max-width: 767px) { .mob-hide { display: none !important; } }
   @media (max-width: 1199px) { header .badge-sub { display: none !important; } }
-  .ctrl-grid { display: grid; grid-template-columns: 70px 1fr; gap: 8px 10px; align-items: center; }
-  .ctrl-grid .sw-btn { padding-left: 0; }
-  .ctrl-l { opacity: .6; }
-  .seg-full { display: flex; width: 100%; }
-  .seg-full button { flex: 1; text-align: center; padding-left: .4em; padding-right: .4em; }
   .cond-row { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .cond-row .sw-btn { padding-left: 0; padding-right: 0; }
-  #pres { right: 32px; width: 340px; top: 80px; }
-  @media (max-width: 899px) { #pres { top: auto; left: 32px; right: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 56px); width: min(420px, calc(100% - 40px)); } }
   .mode-ico { display: inline-flex; width: .8em; height: .8em; flex: none; }
   .mode-ico svg { width: 100%; height: 100%; }
-  .mode-badge { transition: color .35s ease, border-color .35s ease; min-width: 128px; text-align: center; }
-  .facts > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #trackBar { left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 2px); }
-  @media (min-width: 900px) { #ctrl.ctrl-side { position: fixed; right: 32px; width: 340px; margin: 0; } }
-  @media (max-width: 899px) { .ctrl-grid { grid-template-columns: 70px max-content 70px max-content; column-gap: 14px; } }
-  @media (max-width: 767px) { .ctrl-grid { grid-template-columns: 64px 1fr; } .ctrl-mob-hide { display: none !important; } }
-  @media (max-width: 767px) { #tNames { display: none; } }
-  .glass { background: color-mix(in srgb, var(--bg) 62%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.4); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08); }
-  .seg { white-space: nowrap; }
-  @media (max-height: 900px) and (min-width: 768px) { .st-legend, .st-line { display: none !important; } }
-  #map { top: calc(env(safe-area-inset-top, 0px) + 80px); right: 32px; width: 340px; }
-  @media (max-width: 767px) { #map { left: 20px; right: 20px; width: auto; } }
-  .seg { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9999px; background: var(--pill-bg); padding: 2px; font-size: 12px; }
+  .seg { white-space: nowrap; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9999px; background: var(--pill-bg); padding: 2px; font-size: 12px; }
   .seg button { padding: .25em .8em; border-radius: 9999px; transition: background-color .2s, color .2s; }
   .seg button[aria-checked="true"] { background: var(--fg); color: var(--bg); }
   .seg button:hover:not([aria-checked="true"]) { opacity: .7; }
   .sw-btn { display: inline-flex; align-items: center; gap: .5rem; font-size: 12px; padding: .3em .4em; border-radius: 9999px; color: var(--fg); white-space: nowrap; transition: opacity .2s; }
   .sw-btn[role="switch"]:hover { opacity: .75; }
-  #bRun { border: 1px solid var(--line); background: var(--pill-bg); }
-  #bRun:hover { border-color: var(--fg); }
-  .sw-note { display: inline-block; text-align: left; }
   .sw-track { position: relative; width: 28px; height: 16px; border-radius: 9999px; background: var(--line); transition: background-color .2s; flex: none; }
   .sw-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 9999px; background: var(--fg); transition: transform .2s, background-color .2s; }
   .sw-btn[aria-checked="true"] .sw-track { background: var(--sw, var(--ok)); }
   .sw-btn[aria-checked="true"] .sw-knob { transform: translateX(12px); background: #fff; }
-  .sw-note { opacity: .6; }
   .k { font-size: 12px; opacity: .6; }
   .big { font-family: var(--font-heading); font-weight: 500; line-height: 1.1; }
-  .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
   /* ---------- режимы «Прогон данных комиссии» и «Живой ROS 2» (без Tailwind) ---------- */
   #modeNav { flex: none; }
   #modeNav button { padding: .3em .95em; }
@@ -117,17 +69,14 @@
     header { flex-wrap: wrap; row-gap: 8px; }
     #modeNav { order: 3; width: 100%; display: flex; }
     #modeNav button { flex: 1; }
-    #dash { top: calc(env(safe-area-inset-top, 0px) + 112px) !important; }
   }
   body.rv-on { overflow: auto; }
-  body.rv-on header { background: var(--bg); border-bottom: 1px solid var(--line); z-index: 6; }
-  body.rv-on #scene, body.rv-on #dash, body.rv-on #trackBar, body.rv-on #map, body.rv-on #pres, body.rv-on #ctrl,
-  body.rv-on #presBtn, body.rv-on #recBtn, body.rv-on [data-open="metrics"] { display: none !important; }
-  #runView { position: fixed; inset: 0; z-index: 1; overflow-y: auto; background: var(--bg);
+  header { background: var(--bg); border-bottom: 1px solid var(--line); z-index: 6; }
+  #sbView, #runView { position: fixed; inset: 0; z-index: 1; overflow-y: auto; overflow-x: hidden; background: var(--bg);
     padding: calc(env(safe-area-inset-top, 0px) + 76px) 32px calc(env(safe-area-inset-bottom, 0px) + 28px); }
-  #runView[hidden] { display: none; }
-  @media (max-width: 767px) { #runView { padding-left: 16px; padding-right: 16px; } }
-  @media (max-width: 639px) { #runView { padding-top: calc(env(safe-area-inset-top, 0px) + 112px); } }
+  #sbView[hidden], #runView[hidden] { display: none; }
+  @media (max-width: 767px) { #sbView, #runView { padding-left: 16px; padding-right: 16px; } }
+  @media (max-width: 639px) { #sbView, #runView { padding-top: calc(env(safe-area-inset-top, 0px) + 112px); } }
   .rv-title { font-family: var(--font-heading); font-weight: 500; font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -.01em; }
   .rv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; font-size: 13px; margin-top: 10px; }
   .rv-grid { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr); gap: 16px; margin-top: 14px; }
@@ -173,9 +122,36 @@
   .rv-over[hidden] { display: none; }
   .rv-mode { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-family: var(--font-heading); font-weight: 500; font-size: 22px; }
   .rv-mode .mode-ico { width: .9em; height: .9em; }
+  /* ---------- песочница (без Tailwind) ---------- */
+  .sb-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .sb-presets button { border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .35em .9em; font-size: 13px; line-height: 1.3; text-align: left; }
+  .sb-presets button:hover { border-color: var(--fg); }
+  .sb-presets button[aria-checked="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .sb-about { font-size: 13px; opacity: .9; max-width: 1100px; }
+  .sb-exp { display: block; margin-top: 3px; }
+  .sb-scene-card { margin-top: 12px; padding: 8px 10px; }
+  .rv-cv.h-scene { height: 200px; margin-top: 0; }
+  @media (max-width: 767px) { .rv-cv.h-scene { height: 170px; } }
+  .sb-head { font-size: 15px; line-height: 1.45; margin-top: 8px; }
+  .sb-why { font-size: 12px; opacity: .8; margin-top: 4px; line-height: 1.35; }
+  .sb-lines { margin: 10px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.45; }
+  .sb-lines li + li { margin-top: 4px; }
+  .sb-truth { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .sb-truth .sb-lines { margin-top: 4px; }
+  .sb-ctrl { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px 10px; align-items: center; margin-top: 10px; font-size: 13px; }
+  .sb-wrap { flex-wrap: wrap; white-space: normal; border-radius: 14px; }
+  .sb-hbtn { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .sb-hbtn .rv-btn { font-size: 12px; padding: .25em .8em; }
+  #sbHandle { width: min(220px, 70%); accent-color: var(--ok); vertical-align: middle; }
+  .sb-modal { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.38); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .sb-modal[hidden] { display: none; }
+  .sb-modal-card { position: relative; max-width: 700px; width: 100%; max-height: 100%; overflow: auto; background: var(--bg); padding: 22px 24px; }
+  .sb-close { position: absolute; right: 14px; top: 8px; font-size: 26px; line-height: 1; color: var(--fg); background: none; border: 0; cursor: pointer; }
+  .sb-help { padding-left: 18px; font-size: 14px; line-height: 1.5; margin: 12px 0 0; }
+  .sb-help li + li { margin-top: 8px; }
+  #helpBtn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
   @media (prefers-reduced-motion: reduce) {
-    .cursor { animation: none; }
-    .pills, .sheet, #board { transition: none; }
+    .seg button, .sw-track, .sw-knob, .icon-btn { transition: none; }
   }
 </style>
 <!-- Tailwind v3, собран статически (simulator/css/build_css.sh): страница работает с file:// без сети -->
@@ -184,35 +160,21 @@
 /* tw:end */</style>
 </head>
 <body>
-<canvas id="scene" aria-label="Трамвай на линии, прокрутка колеса мыши даёт тягу" role="img"></canvas>
-
 <header class="fixed left-0 right-0 top-0 z-10 flex items-center justify-between gap-3 px-5 sm:px-8 pb-3" style="padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);">
   <div class="flex items-center gap-4 sm:gap-9 min-w-0">
     <span class="flex items-center gap-3 flex-none">
       <span class="text-[21px] sm:text-[26px] tracking-tight" style="font-family: var(--font-heading); font-weight: 500;">Vectra</span>
-      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Песочница · JS-порт ядра</span>
+      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Песочница · ядро пакета</span>
     </span>
   </div>
   <span id="modeNav" class="seg" role="radiogroup" aria-label="Режим страницы">
-    <button role="radio" aria-checked="true" data-mode="sandbox" title="Песочница: имитатор трамвая и JS-порт ядра пакета">Песочница</button>
+    <button role="radio" aria-checked="true" data-mode="sandbox" title="Песочница: имитатор трамвая и ядро пакета (JS-порт, сверен с Python)">Песочница</button>
     <button role="radio" aria-checked="false" data-mode="replay" title="Прогон данных комиссии: реальная запись, оценку считает пакет ROS 2"><span class="lg">Прогон данных комиссии</span><span class="sm">Прогон</span></button>
     <button role="radio" aria-checked="false" data-mode="live" title="Живой ROS 2: выходы ноды через rosbridge">Живой ROS 2</button>
   </span>
   <div class="flex items-center gap-1.5 sm:gap-2 flex-none">
-    <button class="icon-btn" data-open="model" aria-pressed="false" aria-label="Как устроена модель" title="Как устроена модель">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15c2.5 0 3-8 6-8s3 5 6 5"/></svg>
-    </button>
-    <button class="icon-btn" data-open="ros" aria-pressed="false" aria-label="Пакет ROS 2" title="Пакет ROS 2">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
-    </button>
-    <button class="icon-btn" data-open="metrics" aria-pressed="false" aria-label="Метрики" title="Метрики: модель против колеса">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10"/></svg>
-    </button>
-    <button id="presBtn" class="icon-btn" aria-pressed="false" aria-label="Сценарий 60 секунд" title="Сценарий 60 с: проведёт по всем режимам и покажет метрики">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    </button>
-    <button id="recBtn" class="icon-btn" aria-label="Запись поездки" title="Запись поездки">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2" fill="#D6443A" stroke="none"/></svg>
+    <button id="helpBtn" class="icon-btn" aria-pressed="false" aria-label="Как читать экран" title="Как читать экран песочницы">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.5"/><path d="M12 16.8h.01"/></svg>
     </button>
     <button id="themeBtn" class="icon-btn" aria-pressed="false" aria-label="Переключить день и ночь" title="День и ночь">
       <svg id="icoSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
@@ -222,111 +184,103 @@
   </div>
 </header>
 
-<!-- DASHBOARD (drawn over the background, no panel) -->
-<section id="dash" class="fixed z-[2] flex flex-col num" aria-label="Табло оценщика">
-
-  <!-- CONTROL PANEL: on wide screens it sits on the right under the map -->
-  <div id="ctrl" class="glass map-glass rounded-2xl p-4 mt-3 text-[12px]" aria-label="Управление сценарием">
-    <div class="flex items-center justify-between -mx-4 px-4 pb-3 mb-3 border-b border-[var(--line)]">
-      <span class="text-[14px]" style="font-family: var(--font-heading); font-weight: 500;">Управление</span>
-      <span id="gPill" class="flex items-center gap-1.5 text-[12px]" style="color: var(--ok);" title="Основная навигация по спутникам. Резервной модели она не нужна">
-        <span id="gDot" class="inline-block w-1.5 h-1.5 rounded-full" style="background: var(--ok);"></span>GNSS <span id="bG">на связи</span>
-      </span>
-    </div>
-    <div class="ctrl-grid">
-      <span class="ctrl-l">Движение</span>
-      <span class="flex flex-wrap items-center gap-2 w-full">
-        <button id="bRun" class="sw-btn flex-none" style="padding:.3em .9em;" aria-label="Стоп">
-          <svg id="icoStop" width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>
-          <svg id="icoStart" width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true" style="display:none"><path d="M3 1.8v8.4a.6.6 0 0 0 .9.5l7-4.2a.6.6 0 0 0 0-1l-7-4.2a.6.6 0 0 0-.9.5z"/></svg>
-          <span id="bRunTxt">Стоп</span>
-        </button>
-        <span class="seg seg-full flex-1 ctrl-mob-hide" role="radiogroup" aria-label="Управление">
-          <button role="radio" aria-checked="true" data-drive="auto">Авто</button>
-          <button role="radio" aria-checked="false" data-drive="manual">Ручное</button>
-        </span>
-        <span id="handleSeg" class="seg seg-full w-full" role="radiogroup" aria-label="Ручка контроллера" style="display:none;">
-          <button role="radio" aria-checked="false" data-handle="TRACTION" title="W или стрелка вверх">Тяга</button>
-          <button role="radio" aria-checked="true" data-handle="COAST" title="стрелка вправо">Выбег</button>
-          <button role="radio" aria-checked="false" data-handle="BRAKE" title="S или стрелка вниз">Тормоз</button>
-        </span>
-      </span>
-      <span class="ctrl-l">Погода</span>
-      <span class="seg seg-full" role="radiogroup" aria-label="Погода">
-        <button role="radio" aria-checked="true" data-weather="clear">Ясно</button>
-        <button role="radio" aria-checked="false" data-weather="rain">Дождь</button>
-        <button role="radio" aria-checked="false" data-weather="snow">Снег</button>
-      </span>
-      <span class="ctrl-l ctrl-mob-hide">Датчики</span>
-      <span class="seg seg-full ctrl-mob-hide" role="radiogroup" aria-label="Датчики колёс">
-        <button role="radio" aria-checked="true" data-sens="ok">Норма</button>
-        <button role="radio" aria-checked="false" data-sens="axle">Ось 1</button>
-        <button role="radio" aria-checked="false" data-sens="all">Все оси</button>
-      </span>
-    </div>
-    <div class="mt-3 pt-3 -mx-4 px-4 border-t border-[var(--line)]">
-      <div class="ctrl-l mb-2">Условия</div>
-      <div class="cond-row">
-        <button class="sw-btn" role="switch" aria-checked="false" id="swUrban" title="Плотная застройка, спутники пропадают" style="--sw: var(--warn);"><span class="sw-track"><span class="sw-knob"></span></span>Застройка</button>
-        <button class="sw-btn" role="switch" aria-checked="false" id="swRush" title="Час пик: больше пассажиров, масса растёт" style="--sw: var(--ok);"><span class="sw-track"><span class="sw-knob"></span></span>Час пик</button>
-      </div>
-      <div class="flex items-center gap-2 mt-2" title="Масса вагона в имитаторе (факт). Модель массу не оценивает: её поглощает масштаб тяги k_т">
-        <span class="ctrl-l">Масса</span> <span id="bMass">0</span>
-        <canvas id="massSpark" class="inline-block w-[56px] h-[14px] ml-auto" aria-hidden="true"></canvas>
-      </div>
-    </div>
-    <div class="mt-3 pt-3 -mx-4 px-4 border-t border-[var(--line)]"><span class="opacity-60">Впереди</span> <span id="aheadTxt">путь чистый</span></div>
+<!-- ПЕСОЧНИЦА: имитатор (приближение) + настоящее ядро пакета (JS-порт, сверен с Python) -->
+<section id="sbView" aria-label="Песочница">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="rv-title m-0">Песочница</h1>
+    <span class="k">имитатор трамвая — приближение; оценку считает <span id="sbPort">ядро пакета</span>; лист жюри <span class="num" id="sbSheet"></span></span>
   </div>
-
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 mt-4">
-    <div><div class="k">Скорость, модель</div><div class="big text-[28px] sm:text-[34px]" style="color: var(--ok);"><span id="bV">0</span><span class="text-[13px] opacity-60"> км/ч</span></div><div class="k" title="Тормозной путь по верхней границе скорости">тормозной путь <span id="bBrake" style="color: var(--ok);">0 м</span></div></div>
-    <div><div class="k" title="Наивная база по ТЗ: среднее показаний всех датчиков колёс">Колесо, среднее осей</div><div class="big text-[28px] sm:text-[34px]" style="color: var(--warn);"><span id="bW">0</span><span class="text-[13px] opacity-60"> км/ч</span></div><div class="k" title="Среднеквадратичная ошибка скорости: модель / только колесо">ошибка, км/ч <span id="bEm" style="color: var(--ok);">0.00</span> / <span id="bEb" style="color: var(--warn);">0.00</span></div></div>
-    <div><div class="k">Путь, модель</div><div class="big text-[28px] sm:text-[34px]"><span id="bS">0</span><span class="text-[13px] opacity-60"> м</span></div><div class="k">± <span id="bSig">0.5</span> м</div></div>
-    <div><div class="k">Режим</div><div class="big text-[22px] sm:text-[26px] pt-[4px] flex items-center gap-2 whitespace-nowrap" id="bH">Стоянка</div><div class="k truncate" id="bHsub">вагон стоит, скорость ноль</div></div>
-  </div>
-
-  <div class="k mt-2">Песочница: имитатор трамвая и <span id="portNote">JS-порт ядра пакета</span>, лист по умолчанию: 4 оси, паспортный привод. Реальные записи — «Прогон данных комиссии».</div>
-
-  <span hidden><span id="bAdh"></span><span id="bLo"></span><span id="bHi"></span><span id="bWsub"></span><span id="bAnc"></span><span id="bProf"></span><span id="bGrHat"></span><span id="bK"></span></span>
-
-  <div class="mob-hide flex flex-wrap justify-end items-center gap-2 mt-4 mb-1 text-[12px]" style="padding-right: 10px;">
-    <span class="flex flex-wrap gap-3">
-      <span class="flex items-center gap-1.5"><span class="w-3 h-[3px] rounded-full" style="background: var(--ok);"></span>Модель и интервал</span>
-      <span class="flex items-center gap-1.5"><span class="w-3 h-[3px] rounded-full" style="background: var(--warn);"></span>Колесо</span>
-      <span class="flex items-center gap-1.5"><span class="w-4 h-0 opacity-80" style="border-top: 1.5px dashed var(--fg);"></span>Эталон</span>
+  <div id="sbPresets" class="sb-presets" role="radiogroup" aria-label="Сценарий"></div>
+  <div class="rv-bar">
+    <button id="sbPlay" class="rv-btn" aria-pressed="false">Пауза</button>
+    <button id="sbRestart" class="rv-btn">Заново</button>
+    <span class="seg" role="radiogroup" aria-label="Скорость времени">
+      <button role="radio" aria-checked="false" data-sbsp="1">×1</button>
+      <button role="radio" aria-checked="true" data-sbsp="4">×4</button>
+      <button role="radio" aria-checked="false" data-sbsp="10">×10</button>
     </span>
+    <span id="sbTime" class="num">0:00</span>
+    <span class="seg" role="radiogroup" aria-label="Окно графиков">
+      <button role="radio" aria-checked="false" data-sbwin="30">30 с</button>
+      <button role="radio" aria-checked="true" data-sbwin="60">1 мин</button>
+      <button role="radio" aria-checked="false" data-sbwin="0">весь сценарий</button>
+    </span>
+    <button id="sbHelpBtn" class="rv-btn">Как читать экран</button>
   </div>
-  <div class="mob-hide relative flex-1 min-h-[90px]"><canvas id="bChart" class="absolute inset-0 w-full h-full" aria-label="График скорости в реальном времени"></canvas></div>
-  <canvas id="bStrip" class="mob-hide block w-full h-[6px] mt-2 rounded" aria-hidden="true" title="Полоса режимов: цвет совпадает со значком режима" style="-webkit-mask-image: linear-gradient(to right, transparent 28px, #000 10%, #000 94%, transparent); mask-image: linear-gradient(to right, transparent 28px, #000 10%, #000 94%, transparent);"></canvas>
+  <div id="sbAbout" class="rv-note sb-about"></div>
+  <div class="rv-card sb-scene-card"><div class="rv-cv h-scene"><canvas id="sbScene" aria-label="Вагон сбоку: две тележки, колёса, показания датчиков и решение модели"></canvas></div></div>
+  <div class="rv-grid">
+    <div class="rv-col">
+      <div class="rv-card">
+        <div class="rv-h"><b>Скорость, км/ч</b>
+          <span class="rv-lg">
+            <span><i class="dash"></i>истина (имитатор)</span>
+            <span><i style="background:#0E9AA7"></i>модель ± 2σ</span>
+            <span><i style="background:#E89B0C"></i>только колесо</span>
+            <span><i style="background:#8a7fd0"></i>передняя</span>
+            <span><i style="background:#b07fd0"></i>задняя</span>
+          </span>
+        </div>
+        <div class="rv-cv h-sp"><canvas id="sbSpeed" aria-label="Скорость: истина, модель, база, тележки"></canvas></div>
+        <canvas id="sbStrip" class="rv-strip" aria-hidden="true" title="Полоса режимов модели"></canvas>
+        <div class="rv-note">Фон: <span style="color:#D6443A">красный</span> — отказ или пропуск датчиков, <span style="color:#5AA9D6">синий</span> — скользкий рельс, <span style="color:#E89B0C">жёлтый</span> — масса, уклон или нет GNSS.</div>
+      </div>
+      <div class="rv-card">
+        <div class="rv-h"><b>Ошибка скорости относительно истины, км/ч</b><span class="k">полоса — ±2σ модели</span></div>
+        <div class="rv-cv h-er"><canvas id="sbErrV" aria-label="Ошибка скорости"></canvas></div>
+        <div class="rv-h" style="margin-top:10px"><b>Ошибка пути относительно истины, м</b><span class="k">полоса — ±2σ пути</span></div>
+        <div class="rv-cv h-er"><canvas id="sbErrS" aria-label="Ошибка пути"></canvas></div>
+      </div>
+    </div>
+    <div class="rv-col">
+      <div class="rv-card" id="sbThink" aria-live="off"></div>
+      <div class="rv-card" id="sbMetrics"></div>
+      <div class="rv-card">
+        <div class="rv-h"><b id="sbTrackH">Линия (pathgraph организаторов)</b>
+          <span class="seg" role="radiogroup" aria-label="Масштаб линии">
+            <button role="radio" aria-checked="false" data-sbzoom="all">вся линия</button>
+            <button role="radio" aria-checked="true" data-sbzoom="near">у вагона</button>
+          </span>
+        </div>
+        <div class="rv-cv h-map"><canvas id="sbTrack" aria-label="Линия: истина, модель и база на пути"></canvas></div>
+        <div class="rv-note">Кольцо — истина, <span style="color:#0E9AA7">точка</span> — путь по модели, <span style="color:#E89B0C">точка</span> — только колесо (обе отложены вдоль той же линии). <span id="sbTrackSrc">Точки — остановки карты пакета. Профиль высот и кривые — из pathgraph.</span></div>
+      </div>
+      <div class="rv-card" id="sbCtrl">
+        <div class="rv-h"><b>Условия и управление</b><span class="k">поверх сценария</span></div>
+        <div class="sb-ctrl">
+          <span class="k">Ручка</span>
+          <span>
+            <span id="sbManual" hidden>
+              <input id="sbHandle" type="range" min="-15" max="15" step="1" value="0" aria-label="Ручка контроллера −15…+15">
+              <b id="sbHandleV" class="num">0</b>
+              <span class="sb-hbtn"><button class="rv-btn" data-sbh="15">тяга +15</button><button class="rv-btn" data-sbh="0">выбег</button><button class="rv-btn" data-sbh="-15">тормоз −15</button></span>
+            </span>
+            <span id="sbHandleAuto" class="k"></span>
+          </span>
+          <span class="k">Рельс</span>
+          <span class="seg sb-wrap" role="radiogroup" aria-label="Сцепление">
+            <button role="radio" aria-checked="true" data-sbwx="">по сценарию</button>
+            <button role="radio" aria-checked="false" data-sbwx="dry">сухо</button>
+            <button role="radio" aria-checked="false" data-sbwx="rain">дождь</button>
+            <button role="radio" aria-checked="false" data-sbwx="leaves">листопад</button>
+            <button role="radio" aria-checked="false" data-sbwx="ice">наледь</button>
+          </span>
+          <label class="k" for="sbF0">Передняя</label>
+          <select id="sbF0" class="rv-sel"><option value="">по сценарию</option><option value="zero">показывает 0</option><option value="stuck">залипла</option><option value="dropout">нет сообщений</option><option value="noise">шум ×5</option><option value="outliers">выбросы ×3</option></select>
+          <label class="k" for="sbF1">Задняя</label>
+          <select id="sbF1" class="rv-sel"><option value="">по сценарию</option><option value="zero">показывает 0</option><option value="stuck">залипла</option><option value="dropout">нет сообщений</option><option value="noise">шум ×5</option><option value="outliers">выбросы ×3</option></select>
+        </div>
+        <div class="cond-row" style="margin-top:10px">
+          <button class="sw-btn" role="switch" aria-checked="false" id="sbMass" title="Масса +30 %: модель об этом не знает"><span class="sw-track"><span class="sw-knob"></span></span>час пик</button>
+          <button class="sw-btn" role="switch" aria-checked="false" id="sbDrop" title="Сообщения обеих тележек пропадают"><span class="sw-track"><span class="sw-knob"></span></span>нет сообщений</button>
+          <button class="sw-btn" role="switch" aria-checked="false" id="sbGnss" title="Спутники пропадают: модели GNSS нужен только на старте"><span class="sw-track"><span class="sw-knob"></span></span>застройка</button>
+          <button class="sw-btn" role="switch" aria-checked="true" id="sbWsp" title="Защита от буксования и юза в имитаторе"><span class="sw-track"><span class="sw-knob"></span></span>защита от юза</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="rv-note">Имитатор — приближение: сила привода и торможения из той же таблицы A(u, v) листа, что у модели, датчики как в записях (км/ч, ~9 Гц, общая метка тележек); характеристика сцепления, масса колёс, защита от юза и μ погоды подобраны на глаз. Оценку считает ядро пакета без изменений — на реальных записях его числа в «Прогоне данных комиссии».</p>
 </section>
-
-<!-- ROUTE PROGRESS: full width along the bottom, under the rails -->
-<div id="trackBar" class="fixed z-[2] num" aria-label="Положение на маршруте">
-  <div class="relative h-[12px]">
-    <div class="absolute left-0 right-0 top-1/2" style="height: 3px; margin-top: -1.5px; background: linear-gradient(to right, transparent, color-mix(in srgb, var(--fg) 24%, transparent) 12%, color-mix(in srgb, var(--fg) 24%, transparent) 88%, transparent);"></div>
-    <div id="tWet" class="absolute top-1/2 h-[3px] -mt-[1.5px] rounded-full" style="background: var(--wet); display:none;"></div>
-    <div id="tTun" class="absolute top-1/2 h-[3px] -mt-[1.5px] rounded-full" style="background: var(--warn); display:none;"></div>
-    <div id="tStops"></div>
-    <div id="tPos" class="absolute top-1/2 w-[11px] h-[11px] -mt-[5.5px] -ml-[5.5px] rounded-full border-2" style="background: var(--fg); border-color: var(--bg);"></div>
-  </div>
-  <div class="relative h-[16px] mt-1 text-[11px]">
-    <div id="tNames"></div>
-  </div>
-  <div class="flex justify-center gap-3 text-[11px] h-[14px]"><span id="lgWx" style="color: var(--wet); display:none;">наледь</span><span id="lgUrban" style="color: var(--warn); display:none;">застройка</span></div>
-</div>
-
-<!-- ROUTE MAP -->
-<aside id="map" class="glass map-glass fixed z-[3] rounded-2xl p-4 num" style="display:none;" aria-label="Карта маршрута">
-  <div class="flex items-center justify-between gap-3 mb-2">
-    <span class="text-[14px]" style="font-family: var(--font-heading); font-weight: 500;">Карта маршрута</span>
-  </div>
-  <div class="relative">
-    <canvas id="mapC" class="block w-full h-[130px] cursor-crosshair" aria-label="Схема кольца с поворотами и остановками"></canvas>
-    <div class="flex justify-between items-center mt-2 text-[11px]"><span class="opacity-60">Профиль высот <span id="mapZ"></span></span><span class="flex gap-2.5"><span style="color:#E8C15A">поворот</span><span style="color:#E0795A">подъём</span><span style="color:#6FA8DC">спуск</span></span></div>
-    <canvas id="profC" class="block w-full h-[44px] mt-1 cursor-crosshair" aria-label="Профиль подъёмов и спусков"></canvas>
-    <div id="mapTip" class="glass absolute pointer-events-none rounded-lg px-3 py-2 text-[12px]" style="display:none; min-width: 170px;"></div>
-  </div>
-</aside>
 
 <!-- ПРОГОН ДАННЫХ КОМИССИИ / ЖИВОЙ ROS 2: общий экран, данные — из экспорта прогона или из rosbridge -->
 <section id="runView" hidden aria-label="Прогон данных комиссии">
@@ -395,2301 +349,41 @@
         </div>
         <div class="rv-cv h-map"><canvas id="rvMap" aria-label="План: трасса GNSS, модель и база"></canvas></div>
         <div id="rvMapNote" class="rv-note"></div>
+        <div id="rvRefNote" class="rv-note"></div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- INFO MODAL -->
-<div id="modal" class="fixed inset-0 z-40 items-center justify-center p-4" style="display:none; background: rgba(0,0,0,.38);">
-  <div id="mCard" class="glass relative w-full max-w-[600px] max-h-full overflow-auto rounded-2xl p-6 sm:p-8" role="dialog" aria-modal="true" aria-labelledby="mTitle">
-    <button id="mClose" class="absolute right-5 top-4 text-[26px] leading-none hover:opacity-60 transition-opacity" aria-label="Закрыть">×</button>
-    <h2 id="mTitle" class="text-[24px] sm:text-[28px] tracking-tight pr-8" style="font-family: var(--font-heading); font-weight: 500;"></h2>
-    <div id="mText" class="relative mt-4 text-[16px] sm:text-[18px] leading-[1.55]">
-      <div id="ghost" aria-hidden="true" style="visibility: hidden; white-space: pre-line;"></div>
-      <p class="absolute inset-0 m-0" style="white-space: pre-line;"><span id="typed"></span><span id="cursor" class="cursor inline-block w-[2px] h-[1.1em] bg-[var(--fg)] align-middle ml-[2px]"></span></p>
-    </div>
-    <div id="mExtra" class="mt-5"></div>
+<!-- КАК ЧИТАТЬ ЭКРАН (песочница) -->
+<div id="sbHelpModal" class="sb-modal" hidden>
+  <div class="sb-modal-card rv-card" role="dialog" aria-modal="true" aria-labelledby="sbHelpTitle">
+    <button id="sbHelpClose" class="sb-close" aria-label="Закрыть">×</button>
+    <h2 id="sbHelpTitle" class="rv-title">Как читать экран</h2>
+    <ul class="sb-help">
+      <li><b>Что здесь настоящее.</b> Скорость, путь, σ, режим и решения по тележкам считает <b>ядро пакета</b> (estimator_core.py и связка Runner, перенесённые в JavaScript и сверенные с Python: расхождение не больше 6·10⁻¹³ м/с) с <b>листом жюри</b> config/tram.yaml — тем же, что запустит комиссия. Вход у него тот же, что у ноды: две тележки в км/ч и ручка −15…+15. GNSS модель не получает вовсе (в ноде он нужен только в первые 3 с для выставки положения).</li>
+      <li><b>Что здесь приближение.</b> «Истину» даёт <b>имитатор</b>: вагон с двумя тележками, сцепление с падающей характеристикой, колёса, которые могут буксовать и юзить, уклон, масса, датчики с шумом и пропусками. Сила привода — из той же откалиброванной таблицы, что у модели, поэтому на сухом рельсе имитатор ведёт себя как настоящий вагон; погода и защита от юза подобраны на глаз.</li>
+      <li><b>Сценарий</b> — кнопки сверху: каждый показывает одну трудность. Под кнопками — что происходит и что должна сделать модель. «Ручное управление» — ведите сами: W/S или ↑/↓, пробел — выбег.</li>
+      <li><b>Сцена.</b> Вагон сбоку, передняя тележка справа. Над тележкой — её показание и решение модели: <span style="color:#0E9AA7">принята</span>, <span style="color:#E89B0C">отброшена</span> (и почему), <span style="color:#D6443A">исключена</span> как неисправная. Колесо с синим ореолом буксует, с искрами — юзит, красное — заблокировано.</li>
+      <li><b>Скорость.</b> Пунктир — истина, <span style="color:#0E9AA7">бирюзовая</span> линия — модель, заливка — её <b>±2σ</b> (честная полоса: истина внутри ~95 % времени), <span style="color:#E89B0C">оранжевая</span> — «только колесо» (среднее показаний тележек, база из оценки), точки — сами тележки. Полоса под графиком — режим модели.</li>
+      <li><b>Ошибки.</b> Скорость и путь минус истина: модель против базы. Чем ближе к нулю и чем уже полоса — тем лучше. Путь — чистая одометрия: привязки к остановкам, которая есть в ноде, здесь нет.</li>
+      <li><b>«Что сейчас думает модель»</b> — простыми словами: кому из тележек она верит и почему, режим, оценка сцепления μ, масштабы привода, неопределённость. Ниже — что на самом деле происходит в имитаторе (модели это не известно).</li>
+      <li><b>Метрики</b> — с начала сценария: MAE скорости, наибольшая ошибка, ошибка пути, доля времени, когда истина внутри ±2σ; отдельно — в окне необычных условий.</li>
+      <li><b>Реальные данные</b> — режим «Прогон данных комиссии»: там оценку считает сам пакет ROS 2 по отложенной записи, эталон — GNSS.</li>
+    </ul>
   </div>
 </div>
 
-<!-- PRESENTATION CAPTION -->
-<div id="pres" class="glass map-glass fixed z-[5] rounded-2xl p-4" style="display:none;" role="status" aria-live="polite">
-  <div class="flex items-center justify-between gap-3"><span class="text-[14px]" style="font-family: var(--font-heading); font-weight: 500;">Сценарий 60 с</span><button id="presStop" class="nav-link text-[12px]">Остановить</button></div>
-  <div id="presStep" class="text-[12px] opacity-60 mt-2"></div>
-  <div id="presTxt" class="text-[14px] leading-[1.45] mt-1"></div>
-  <div class="h-[3px] rounded-full mt-3" style="background: var(--line);"><div id="presBar" class="h-full rounded-full" style="background: var(--ok); width: 0;"></div></div>
-</div>
-
 <script src="config.js"></script>
-<script>
-// ---- Tram state estimator: JavaScript port of estimator_core.py (UKF over the motion model), port of 25.09 ----
-// Перенос текущего ядра: лист параметров (позиции ручки, единицы и раскладка датчиков,
-// табличный привод), маска свежих показаний, восстанавливаемые отказы датчиков, согласие
-// осей, защёлка «стоим или скользим». Сверка с Python: js-port/record.py + compare.js.
-// PORT — ядро пакета, с которым порт сверен: sha1 estimator_core.py (переводы строк LF,
-// 12 знаков; так же его пишут tools/export_replay.py и js-port/record*.py). Страница
-// сравнивает его с ядром, которым посчитаны прогоны комиссии, и при расхождении
-// подписывает песочницу «упрощённое ядро». Перенёс правку ядра и сверил — обнови PORT
-// здесь и во вшитой копии в simulator/index.html (js-port/check.sh это проверяет).
-const TramEst = (() => {
-  const G = 9.81;
-  const PORT = { core_git: '56933cc', core_sha1: '674bab988601', checked: '25.09', dv: '6·10⁻¹³ м/с' };
-  const DEFAULT = {
-    M_nom: 28000.0, r_nom: 0.35, n_axles: 4, driven: [true, true, false, false], braked: [true, true, true, true], v_max_line: 20.0,
-    F_notch: 36000.0, F_brake: 30000.0, v_base: 8.0, v_ed_fade: 1.5, brake_hold_frac: 1.0,
-    notch_tract: [0.25, 0.5, 0.75, 1.0], notch_brake: [0.25, 0.5, 0.75, 1.0], acc_u: [], acc_v: [], acc_table: [],
-    tau_drive: 0.30, delay_drive: 0.10, T_dead: 0.05, t_confirm: 0.15,
-    res_A: 2400.0, res_B: 55.0, res_C: 3.5,
-    mu_nominal: 0.25, mu_min: 0.02, tau_sat: 0.3, tau_rec: 30.0, c_creep: 0.020, c_creep_drag: 0.002, sigma_creep: 0.004,
-    a_max_acc: 1.5, a_max_brake: 3.0, theta_max: 0.06, d_extra: 0.30, a_free_decel: 0.75, lock_ratio: 0.7, a_slip_margin: 1.0,
-    meas_units: 'rad_s', ppr: 200, meas_scale: 1.0, sensor_ratio: 1.0, sensors_per_axle: 2, sensor_axles: [true, true, true, true],
-    curve_ratio_max: 0.038, sigma_meas: 0.15, stuck_n: 60, stuck_dv: 0.5, recover_tol: 0.5, recover_rel: 0.1, t_recover: 2.0,
-    v_dead_ref: 2.0, axle_dot_alpha: 0.2, calib_gain: 0.01, calib_v_min: 2.0, scale_range: 0.10,
-    gate_nis: 9.0, sigma_rej_frac: 0.5, q_v: 0.05, q_d: 0.02, q_k: 0.003, p0_s: 1.0, p0_v: 1.0, p0_d: 0.30, p0_k: 0.10,
-    k_min: 0.4, k_max: 1.6, t_adapt: 3.0, sigma_k_meas: 0.05, adapt_f_min: 0.3, t_sat_hold: 3.0, v_adapt_min: 2.0, t_valid: 1.0,
-    agree_tol: 0.3, agree_age: 0.3, v_standstill: 0.30, t_standstill: 0.30, dt: 0.01
-  };
-  const ANGULAR_UNITS = { rad_s: 1.0, rpm: 2.0 * Math.PI / 60.0, hz: 2.0 * Math.PI };
-  const LINEAR_UNITS = { m_s: 1.0, km_h: 1.0 / 3.6 };
-  const COAST = 0, TRACTION = 1, BRAKE = 2, TRANSITION = 3, SLIP = 4, STANDSTILL = 5, DEGRADED = 6;
-  const MODE_NAMES = ['COAST', 'TRACTION', 'BRAKE', 'TRANSITION', 'SLIP', 'STANDSTILL', 'DEGRADED'];
-  const NX = 5, IS = 0, IV = 1, ID = 2, IKT = 3, IKB = 4;
-  const clip = (x, a, b) => Math.min(b, Math.max(a, x));
-  const count = a => a.reduce((p, c) => p + (c ? 1 : 0), 0);
-  const median = a => { const s = a.slice().sort((p, q) => p - q), n = s.length; return n % 2 ? s[(n - 1) / 2] : 0.5 * (s[n / 2 - 1] + s[n / 2]); };
-
-  // ---------------- модель ----------------
-  function interpGrid(x, fp) {                      // np.interp(x, 0..N, fp): за краем — край
-    const N = fp.length - 1;
-    if (x >= N) return fp[N];
-    if (x <= 0) return fp[0];
-    const j = Math.floor(x);
-    if (j === x) return fp[j];
-    const slope = (fp[j + 1] - fp[j]) / 1.0;
-    return slope * (x - j) + fp[j];
-  }
-  function notch_to_u(n, p) {
-    if (n > 0) return interpGrid(n, [0.0].concat(p.notch_tract));
-    if (n < 0) return -interpGrid(-n, [0.0].concat(p.notch_brake));
-    return 0.0;
-  }
-  function sensor_to_speed(meas, p) {
-    const unit = p.meas_units;
-    return meas.map(v => {
-      const m = v * p.meas_scale;
-      if (unit in LINEAR_UNITS) return m * LINEAR_UNITS[unit];
-      const k = unit === 'pulses_s' ? 2.0 * Math.PI / p.ppr : ANGULAR_UNITS[unit];
-      return m * k / p.sensor_ratio * p.r_nom;
-    });
-  }
-  function sensor_layout(p) {
-    const slots = []; let i = 0;
-    for (let a = 0; a < p.n_axles; a++) {
-      slots.push([]);
-      if (p.sensor_axles[a]) { for (let k = 0; k < p.sensors_per_axle; k++) slots[a].push(i + k); i += p.sensors_per_axle; }
-    }
-    return [slots, i];
-  }
-  const hasTable = p => p.acc_table && p.acc_table.length > 0;
-  function cell(grid, x) {                          // bisect_right - 1, края — край
-    let i = -1; for (let k = 0; k < grid.length; k++) if (grid[k] <= x) i = k; else break;
-    i = i < 0 ? 0 : (i > grid.length - 2 ? grid.length - 2 : i);
-    const w = (x - grid[i]) / (grid[i + 1] - grid[i]);
-    return [i, w < 0.0 ? 0.0 : w > 1.0 ? 1.0 : w];
-  }
-  function table_acc(u, v, p) {
-    const nv = p.acc_v.length, T = (i, j) => p.acc_table[i * nv + j];
-    const [i, wu] = cell(p.acc_u, u), [j, wv] = cell(p.acc_v, Math.abs(v));
-    const lo = (1.0 - wv) * T(i, j) + wv * T(i, j + 1);
-    const hi = (1.0 - wv) * T(i + 1, j) + wv * T(i + 1, j + 1);
-    return (1.0 - wu) * lo + wu * hi;
-  }
-  function drive_nominal(u, v, p) {
-    if (hasTable(p)) return p.M_nom * (table_acc(u, v, p) - table_acc(0.0, v, p));
-    const va = Math.abs(v);
-    if (u > 0) return p.F_notch * u * Math.min(1.0, p.v_base / Math.max(va, 1e-3));
-    const ed = Math.min(1.0, va / p.v_ed_fade);
-    return p.F_brake * u * (p.brake_hold_frac + (1.0 - p.brake_hold_frac) * ed);
-  }
-  const drive_force = (u, v, kt, kb, p) => u === 0 ? 0.0 : (u > 0 ? kt : kb) * drive_nominal(u, v, p);
-  function rated_force(traction, p) {
-    if (!hasTable(p)) return traction ? p.F_notch : p.F_brake;
-    return Math.max(...p.acc_v.map(v => Math.abs(drive_nominal(traction ? 1.0 : -1.0, v, p))));
-  }
-  function resistance(v, p) {
-    const a = Math.abs(v);
-    let W = p.res_A * (a > 0 ? 1 : 0) + p.res_B * a + p.res_C * a * a;
-    if (hasTable(p) && a > 0) W += Math.max(0.0, -p.M_nom * table_acc(0.0, a, p));
-    return W;
-  }
-  const axle_load = p => p.M_nom * G / p.n_axles;
-  function body_force(u, v, kt, kb, mu, p) {
-    const F = drive_force(u, v, kt, kb, p), N = axle_load(p);
-    if (F > 0) return Math.min(F, mu * N * Math.max(count(p.driven), 1));
-    return Math.max(F, -mu * N * Math.max(count(p.braked), 1));
-  }
-  function axle_shares(F, p) {
-    let sel, n;
-    if (F > 0) { sel = p.driven; n = Math.max(count(p.driven), 1); }
-    else if (F < 0) { sel = p.braked; n = Math.max(count(p.braked), 1); }
-    else return new Array(p.n_axles).fill(0);
-    return sel.map(s => s ? 1.0 / n : 0.0);
-  }
-  const creep = (F, p) => { const N = axle_load(p); return axle_shares(F, p).map(sh => p.c_creep * F * sh / N - p.c_creep_drag); };
-  function f_process(x, u, mu, p) {
-    const [s, v, d, kt, kb] = x;
-    let a = (body_force(u, v, kt, kb, mu, p) - resistance(v, p)) / p.M_nom + d;
-    if (v <= 0.0 && a < 0.0) a = 0.0;
-    return [s + v * p.dt, v + a * p.dt, d, kt, kb];
-  }
-  function h_axles(x, u, mu, p) {
-    const v = x[IV], F = body_force(u, v, 1.0, 1.0, mu, p);
-    return creep(F, p).map(xi => v * (1.0 + xi));
-  }
-  function h_axles_batch(pts, u, mu, p) {
-    const N = axle_load(p), sh = axle_shares(Math.sign(u), p);
-    return pts.map(pt => {
-      const v = pt[IV];
-      let F;
-      if (u > 0) F = Math.min(drive_nominal(u, v, p), mu * N * Math.max(count(p.driven), 1));
-      else if (u < 0) F = Math.max(drive_nominal(u, v, p), -mu * N * Math.max(count(p.braked), 1));
-      else F = 0.0;
-      return sh.map(s => v * (1.0 + (p.c_creep * F * s / N - p.c_creep_drag)));
-    });
-  }
-
-  // ---------------- линейная алгебра 5×5 ----------------
-  const zeros = n => Array.from({ length: n }, () => new Array(n).fill(0));
-  function cholRaw(A) {
-    const n = A.length, L = zeros(n);
-    for (let i = 0; i < n; i++) for (let j = 0; j <= i; j++) {
-      let s = A[i][j];
-      for (let k = 0; k < j; k++) s -= L[i][k] * L[j][k];
-      if (i === j) { if (!(s > 0)) return null; L[i][i] = Math.sqrt(s); } else L[i][j] = s / L[j][j];
-    }
-    return L;
-  }
-  function eighJacobi(A) {
-    const n = A.length, a = A.map(r => r.slice()), V = zeros(n);
-    for (let i = 0; i < n; i++) V[i][i] = 1;
-    for (let sweep = 0; sweep < 60; sweep++) {
-      let off = 0;
-      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += a[i][j] * a[i][j];
-      if (off < 1e-30) break;
-      for (let pI = 0; pI < n; pI++) for (let q = pI + 1; q < n; q++) {
-        if (Math.abs(a[pI][q]) < 1e-300) continue;
-        const th = (a[q][q] - a[pI][pI]) / (2 * a[pI][q]);
-        const t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
-        for (let k = 0; k < n; k++) { const akp = a[k][pI], akq = a[k][q]; a[k][pI] = c * akp - s * akq; a[k][q] = s * akp + c * akq; }
-        for (let k = 0; k < n; k++) { const apk = a[pI][k], aqk = a[q][k]; a[pI][k] = c * apk - s * aqk; a[q][k] = s * apk + c * aqk; }
-        for (let k = 0; k < n; k++) { const vkp = V[k][pI], vkq = V[k][q]; V[k][pI] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq; }
-      }
-    }
-    return { w: a.map((r, i) => r[i]), V };
-  }
-  function chol(A0) {
-    const n = A0.length, A = zeros(n);
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) A[i][j] = 0.5 * (A0[i][j] + A0[j][i]);
-    const B0 = zeros(n);
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) B0[i][j] = A[i][j] + (i === j ? 1e-12 : 0);
-    const L = cholRaw(B0);
-    if (L) return L;
-    const { w, V } = eighJacobi(A), B = zeros(n);
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-      let s = 0; for (let k = 0; k < n; k++) s += V[i][k] * Math.max(w[k], 1e-10) * V[j][k];
-      B[i][j] = s + (i === j ? 1e-12 : 0);
-    }
-    return cholRaw(B);
-  }
-  const sym = P => { for (let i = 0; i < NX; i++) for (let j = i + 1; j < NX; j++) { const m = 0.5 * (P[i][j] + P[j][i]); P[i][j] = m; P[j][i] = m; } return P; };
-
-  // ---------------- фильтр ----------------
-  class Estimator {
-    constructor(params) {
-      const p = this.p = Object.assign({}, DEFAULT, params || {});
-      this.x = [0, 0, 0, 1, 1];
-      this.P = zeros(NX);
-      [p.p0_s ** 2, p.p0_v ** 2, p.p0_d ** 2, p.p0_k ** 2, p.p0_k ** 2].forEach((v, i) => { this.P[i][i] = v; });
-      this.mu = p.mu_nominal;
-      this.mode = DEGRADED; this.mode_cand = DEGRADED; this.mode_timer = 0; this.u_filt = 0;
-      const nd = Math.round(p.delay_drive / p.dt);
-      this.notch_hist = new Array(nd + 1).fill(0.0);
-      [this.slots, this.nw] = sensor_layout(p);
-      this.healthy = new Array(this.nw).fill(true);
-      this.stuck_cnt = new Array(this.nw).fill(0);
-      this.stuck_ref = new Array(this.nw).fill(NaN);
-      this.agree_t = new Array(this.nw).fill(0);
-      this.prev_meas = new Array(this.nw).fill(0);
-      this.axle_prev = new Array(p.n_axles).fill(0);
-      this.axle_dot = new Array(p.n_axles).fill(0);
-      this.axle_seen = new Array(p.n_axles).fill(false);
-      this.axle_scale = new Array(p.n_axles).fill(1);
-      this.initialised = false; this.have_meas = false;
-      this.t_meas_i = new Array(this.nw).fill(-Infinity);
-      this.t_axle = new Array(p.n_axles).fill(-Infinity);
-      this.amb = false; this.amb_v = 0; this.s_extra = 0; this.last_acc_n = 0;
-      this.zero_t = 0; this.t_zero_start = null; this.adapting = false; this.mode_pre = DEGRADED; this.win_mode = null; this.t_last_sat = -1e9;
-      this.win_t = 0; this.win_v0 = 0; this.win_F = 0; this.win_W = 0; this.t_since_acc = 0; this.t = 0; this.sat = false;
-      this.n_acc = 0; this.n_rej = 0; this.n_override = 0;
-      const n = NX, alpha = 1.0, beta = 2.0, kappa = 1.0;
-      this.lam = alpha * alpha * (n + kappa) - n;
-      this.wm = new Array(2 * n + 1).fill(1.0 / (2.0 * (n + this.lam)));
-      this.wc = this.wm.slice();
-      this.wm[0] = this.lam / (n + this.lam);
-      this.wc[0] = this.wm[0] + (1.0 - alpha * alpha + beta);
-    }
-    _drive_model(notch) {
-      const p = this.p;
-      this.notch_hist.push(notch); this.notch_hist.shift();
-      const target = notch_to_u(this.notch_hist[0], p);
-      this.u_filt += (target - this.u_filt) * p.dt / p.tau_drive;
-      return this.u_filt;
-    }
-    _mode(u) {
-      const p = this.p, cand = Math.abs(u) < p.T_dead ? COAST : (u > 0 ? TRACTION : BRAKE);
-      if (cand !== this.mode_cand) { this.mode_cand = cand; this.mode_timer = 0; return TRANSITION; }
-      this.mode_timer += p.dt;
-      return this.mode_timer >= p.t_confirm ? cand : TRANSITION;
-    }
-    _diagnose(meas, dts, fm) {
-      const p = this.p, v_body = Math.abs(this.x[IV]);
-      const body_ok = this.initialised && this.t_since_acc <= p.t_valid;
-      const recent = this.t_meas_i.map(tm => (this.t - tm) <= p.t_valid);
-      for (let i = 0; i < this.nw; i++) {
-        if (!fm[i]) continue;
-        const dt = dts[i], others = [];
-        for (let j = 0; j < this.nw; j++) if (j !== i && this.healthy[j] && recent[j]) others.push(Math.abs(meas[j]));
-        const ref = others.length ? median(others) : null;
-        if (Math.abs(meas[i] - this.prev_meas[i]) > 1e-9) this.stuck_cnt[i] = 0;
-        else {
-          if (this.stuck_cnt[i] === 0) this.stuck_ref[i] = ref === null ? NaN : ref;
-          this.stuck_cnt[i] += 1;
-        }
-        if (this.healthy[i]) {
-          const stuck = this.stuck_cnt[i] > p.stuck_n && ref !== null && isFinite(this.stuck_ref[i]) && Math.abs(ref - this.stuck_ref[i]) > p.stuck_dv;
-          const dead = ref !== null && Math.abs(meas[i]) < 1e-6 && ref > p.v_dead_ref && v_body > p.v_dead_ref;
-          if (stuck || dead) { this.healthy[i] = false; this.agree_t[i] = 0.0; }
-        } else {
-          const w = Math.abs(meas[i]);
-          const tol = p.recover_tol + p.recover_rel * Math.max(ref || 0.0, v_body);
-          const agree = this.stuck_cnt[i] <= p.stuck_n && ((ref !== null && Math.abs(w - ref) <= tol) || (body_ok && Math.abs(w - v_body) <= tol));
-          this.agree_t[i] = agree ? this.agree_t[i] + dt : 0.0;
-          if (this.agree_t[i] >= p.t_recover) { this.healthy[i] = true; this.stuck_cnt[i] = 0; }
-        }
-      }
-      for (let i = 0; i < this.nw; i++) if (fm[i]) this.prev_meas[i] = meas[i];
-    }
-    _axle_speeds(meas, fm) {
-      const p = this.p, out = new Array(p.n_axles).fill(0), ok = new Array(p.n_axles).fill(false);
-      for (let a = 0; a < p.n_axles; a++) {
-        const hs = this.slots[a].filter(i => this.healthy[i] && fm[i]).map(i => meas[i]);
-        if (hs.length) { out[a] = hs.reduce((q, c) => q + c, 0) / hs.length * this.axle_scale[a]; ok[a] = true; }
-      }
-      return [out, ok];
-    }
-    _calibrate(z, acc) {
-      const p = this.p;
-      if (this.mode !== COAST || acc.length < 2 || Math.min(...acc.map(a => z[a])) < p.calib_v_min) return;
-      const med = median(acc.map(a => z[a]));
-      for (const a of acc) this.axle_scale[a] += p.calib_gain * (med / z[a] - 1.0);
-      this.axle_scale = this.axle_scale.map(s => clip(s, 1.0 - p.scale_range, 1.0 + p.scale_range));
-    }
-    _sigma() {
-      const n = NX, A = zeros(n);
-      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) A[i][j] = (n + this.lam) * this.P[i][j];
-      const S = chol(A), pts = [this.x.slice()];
-      for (let i = 0; i < n; i++) pts.push(this.x.map((xv, r) => xv + S[r][i]));
-      for (let i = 0; i < n; i++) pts.push(this.x.map((xv, r) => xv - S[r][i]));
-      return pts;
-    }
-    _predict(u) {
-      const p = this.p, pts = this._sigma(), prop = pts.map(pt => f_process(pt, u, this.mu, p));
-      const x = new Array(NX).fill(0);
-      prop.forEach((pr, j) => { for (let i = 0; i < NX; i++) x[i] += this.wm[j] * pr[i]; });
-      const P = zeros(NX);
-      prop.forEach((pr, j) => { for (let a = 0; a < NX; a++) for (let b = 0; b < NX; b++) P[a][b] += (pr[a] - x[a]) * this.wc[j] * (pr[b] - x[b]); });
-      P[IV][IV] += (p.q_v * p.dt) ** 2;
-      if (Math.abs(u) < p.T_dead) P[ID][ID] += p.q_d ** 2 * p.dt;
-      if (u > p.T_dead) P[IKT][IKT] += p.q_k ** 2 * p.dt;
-      if (u < -p.T_dead) P[IKB][IKB] += p.q_k ** 2 * p.dt;
-      this.x = x; this.P = sym(P);
-    }
-    _a_limit(u, accelerating) {
-      const p = this.p;
-      if (accelerating) return p.a_max_acc;
-      return u < -p.T_dead ? p.a_max_brake : p.a_free_decel;
-    }
-    _meas_var(F, v) {
-      const p = this.p;
-      return axle_shares(F, p).map(sh => {
-        let r = p.sigma_meas ** 2 + (v * p.sigma_creep) ** 2 * (sh > 0 ? 1 : 0);
-        if (p.sensors_per_axle === 1) r = r + (v * p.curve_ratio_max) ** 2;
-        return r;
-      });
-    }
-    _correct(z, ok, u, mode, handle_ok = true) {
-      const p = this.p, axles = [];
-      for (let a = 0; a < p.n_axles; a++) if (ok[a]) axles.push(a);
-      this.n_acc = this.n_rej = 0; this.sat = false;
-      const acc = [], rej = [];
-      if (!axles.length) return acc;
-      const v0 = this.x[IV], F0 = body_force(u, v0, 1.0, 1.0, this.mu, p);
-      const hbar = h_axles(this.x, u, this.mu, p), var0 = this._meas_var(F0, v0);
-      const key = a => Math.abs(z[a] - hbar[a]) / Math.sqrt(var0[a] + this.P[IV][IV]);
-      const order = axles.slice().sort((a, b) => key(a) - key(b));
-      const shares0 = axle_shares(F0, p);
-      let recent_sat = (this.t - this.t_last_sat) <= p.t_sat_hold;
-      const fast = v0 > p.v_adapt_min;
-      const mask = [1, 1, 1, 1, 1];
-      const moving = this.x[IV] > p.v_adapt_min;
-      mask[ID] = (mode === COAST && moving && handle_ok) ? 1 : 0;
-      mask[IKT] = 0; mask[IKB] = 0;
-      const spin_all = this.axle_dot.map(d => Math.abs(d) > (d > 0 ? p.a_max_acc : p.a_max_brake) + p.a_slip_margin);
-      const recent = this.t_axle.map(ta => (this.t - ta) <= p.agree_age);
-      const agreed = a => {
-        const others = [];
-        for (let b = 0; b < p.n_axles; b++) if (b !== a && (recent[b] || ok[b])) others.push(b);
-        if (!others.length || [a].concat(others).some(b => spin_all[b])) return false;
-        return others.every(b => Math.abs(z[a] - (ok[b] ? z[b] : this.axle_prev[b])) <= p.agree_tol);
-      };
-      let pts = this._sigma(), Zall = h_axles_batch(pts, u, this.mu, p);
-      for (const a of order) {
-        const dot = this.axle_dot[a], lim = dot > 0 ? p.a_max_acc : p.a_max_brake;
-        const spinning = Math.abs(dot) > lim + p.a_slip_margin;
-        let Z = Zall.map(r => r[a]);
-        let zh = 0; for (let j = 0; j < Z.length; j++) zh += this.wm[j] * Z[j];
-        let dz = Z.map(q => q - zh);
-        const Fv = body_force(u, this.x[IV], 1.0, 1.0, this.mu, p);
-        const R = this._meas_var(Fv, this.x[IV])[a];
-        let S = 0; for (let j = 0; j < dz.length; j++) S += this.wc[j] * (dz[j] * dz[j]); S += R;
-        let nu = z[a] - zh, nis = nu * nu / S;
-        const lock = F0 < 0 && nu < 0 && z[a] < p.lock_ratio * hbar[a];
-        const in_sat_dir = ((F0 > 0 && nu > 0) || lock) && shares0[a] > 0 && fast;
-        const forced = recent_sat && in_sat_dir && nis > 0.25 * p.gate_nis;
-        const held = this.amb && z[a] < p.v_standstill;
-        if (nis > p.gate_nis && !(spinning || forced || held) && agreed(a)) {
-          this.P[IV][IV] = Math.max(this.P[IV][IV], nu * nu);
-          this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * Math.max(this._a_limit(u, true), this._a_limit(u, false))) ** 2);
-          pts = this._sigma(); Zall = h_axles_batch(pts, u, this.mu, p);
-          Z = Zall.map(r => r[a]);
-          zh = 0; for (let j = 0; j < Z.length; j++) zh += this.wm[j] * Z[j];
-          dz = Z.map(q => q - zh);
-          S = 0; for (let j = 0; j < dz.length; j++) S += this.wc[j] * (dz[j] * dz[j]); S += R;
-          nu = z[a] - zh; nis = 0.0;
-          this.n_override += 1;
-        }
-        if (spinning || forced || held || nis > p.gate_nis) { rej.push([a, nu]); continue; }
-        const C = new Array(NX).fill(0);
-        for (let j = 0; j < pts.length; j++) for (let i = 0; i < NX; i++) C[i] += (pts[j][i] - this.x[i]) * this.wc[j] * dz[j];
-        const K = C.map((c, i) => c / S * mask[i]);
-        this.x = this.x.map((xv, i) => xv + K[i] * nu);
-        const P = zeros(NX);
-        for (let i = 0; i < NX; i++) for (let j = 0; j < NX; j++) P[i][j] = this.P[i][j] - K[i] * C[j] - C[i] * K[j] + K[i] * K[j] * S;
-        this.P = sym(P);
-        acc.push(a);
-        pts = this._sigma(); Zall = h_axles_batch(pts, u, this.mu, p);
-      }
-      this.n_acc = acc.length; this.n_rej = rej.length;
-      if (rej.length && fast) {
-        const sh = axle_shares(F0, p);
-        for (const [a, nu] of rej) {
-          const lock = F0 < 0 && nu < 0 && z[a] < p.lock_ratio * hbar[a];
-          if (sh[a] > 0 && ((F0 > 0 && nu > 0) || lock)) this.sat = true;
-        }
-      }
-      if (this.sat) this.t_last_sat = this.t;
-      recent_sat = (this.t - this.t_last_sat) <= p.t_sat_hold;
-      const idle_rejected = rej.some(([a]) => shares0[a] === 0);
-      if (!acc.length && rej.length && (!recent_sat || idle_rejected)) {
-        const up = median(rej.map(r => r[1])) > 0;
-        this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * this._a_limit(u, up)) ** 2);
-      }
-      const entry_ok = this.amb || this.t_since_acc <= p.t_valid;
-      const all_zero = axles.every(a => z[a] < p.v_standstill) && v0 > p.v_dead_ref;
-      if (!acc.length && rej.length && entry_ok && ((this.sat && F0 < 0) || all_zero)) {
-        if (!this.amb) this.amb_v = v0;
-        this.amb = true;
-        this.amb_v = Math.max(this.amb_v, v0);
-      }
-      return acc;
-    }
-    step(notch, meas, fresh = true, handle_ok = true) {
-      const p = this.p;
-      this.t += p.dt;
-      const u = this._drive_model(notch);
-      const fm = Array.isArray(fresh) ? fresh.map(Boolean) : new Array(this.nw).fill(Boolean(fresh));
-      const anyFresh = fm.some(Boolean);
-      let z = new Array(p.n_axles).fill(0), ok = new Array(p.n_axles).fill(false);
-      if (anyFresh) {
-        meas = Array.from(meas, Number);
-        if (meas.length !== this.nw) throw new Error(`ожидается ${this.nw} показаний датчиков, получено ${meas.length}`);
-        const dts = this.t_meas_i.map(tm => isFinite(tm) ? Math.min(this.t - tm, p.t_valid) : p.dt);
-        for (let i = 0; i < this.nw; i++) if (fm[i]) this.t_meas_i[i] = this.t;
-        this.have_meas = true;
-        const ms = sensor_to_speed(meas, p);
-        this._diagnose(ms, dts, fm);
-        [z, ok] = this._axle_speeds(ms, fm);
-        for (let a = 0; a < p.n_axles; a++) {
-          if (!ok[a]) continue;
-          if (!this.axle_seen[a]) { this.axle_prev[a] = z[a]; this.axle_seen[a] = true; this.t_axle[a] = this.t - p.dt; }
-          const raw = (z[a] - this.axle_prev[a]) / (this.t - this.t_axle[a]);
-          this.axle_dot[a] += p.axle_dot_alpha * (raw - this.axle_dot[a]);
-          this.axle_prev[a] = z[a];
-          this.t_axle[a] = this.t;
-        }
-        if (!this.initialised && ok.some(Boolean)) {
-          const zs = z.filter((_, a) => ok[a]);
-          const v0 = notch > 0 ? Math.min(...zs) : notch < 0 ? Math.max(...zs) : median(zs);
-          this.x[IV] = v0;
-          this.P[IV][IV] = p.sigma_meas ** 2 + (v0 * p.sigma_creep) ** 2;
-          this.initialised = true;
-        }
-      }
-      if (this.mode === STANDSTILL && Math.abs(u) > p.T_dead) this.P[IV][IV] = Math.max(this.P[IV][IV], p.sigma_meas ** 2);
-      this._predict(u);
-      const mode = this._mode(u);
-      this.mode_pre = mode;
-      let acc = [];
-      if (anyFresh) {
-        acc = this._correct(z, ok, u, mode, handle_ok);
-        this.last_acc_n = acc.length;
-        if (handle_ok) this._adapt_scale(u, mode, acc); else this.adapting = false;
-      }
-      return this._finish(u, z, ok, acc, anyFresh);
-    }
-    _adapt_scale(u, mode, acc) {
-      const p = this.p;
-      const active = (mode === TRACTION || mode === BRAKE) && acc.length >= 2 && this.x[IV] > p.v_adapt_min && !this.sat;
-      this.adapting = active;
-      if (!active || mode !== this.win_mode) {
-        this.win_mode = active ? mode : null;
-        this.win_t = 0; this.win_v0 = this.x[IV]; this.win_F = 0; this.win_W = 0;
-        return;
-      }
-      const v = this.x[IV];
-      this.win_F += drive_force(u, v, 1.0, 1.0, p) * p.dt;
-      this.win_W += resistance(v, p) * p.dt;
-      this.win_t += p.dt;
-      if (this.win_t < p.t_adapt) return;
-      const rated = rated_force(mode === TRACTION, p);
-      if (Math.abs(this.win_F) >= p.adapt_f_min * rated * p.t_adapt) {
-        const dv = v - this.win_v0;
-        const k_meas = (p.M_nom * (dv - this.x[ID] * this.win_t) + this.win_W) / this.win_F;
-        const idx = mode === TRACTION ? IKT : IKB;
-        const S = this.P[idx][idx] + p.sigma_k_meas ** 2;
-        if ((k_meas - this.x[idx]) ** 2 <= p.gate_nis * S) {
-          const K = this.P.map(r => r[idx] / S), row = this.P[idx].slice(), inn = k_meas - this.x[idx];
-          this.x = this.x.map((xv, i) => xv + K[i] * inn);
-          const P = zeros(NX);
-          for (let i = 0; i < NX; i++) for (let j = 0; j < NX; j++) P[i][j] = this.P[i][j] - K[i] * row[j];
-          this.P = sym(P);
-        }
-      }
-      this.win_t = 0; this.win_v0 = v; this.win_F = 0; this.win_W = 0;
-    }
-    step_open_loop(notch) {
-      const p = this.p;
-      this.t += p.dt;
-      const u = this._drive_model(notch);
-      this._predict(u);
-      this.mode_pre = this._mode(u);
-      this.adapting = false; this.n_acc = this.n_rej = 0; this.sat = false;
-      const lim = Math.max(this._a_limit(u, true), this._a_limit(u, false));
-      this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * lim) ** 2);
-      this.have_meas = false;
-      this.axle_seen.fill(false);
-      this.last_acc_n = 0;
-      return this._finish(u, new Array(p.n_axles).fill(0), new Array(p.n_axles).fill(false), [], false);
-    }
-    _finish(u, z, ok, acc, fresh) {
-      const p = this.p;
-      if (this.sat) this.mu += (p.mu_min - this.mu) * p.dt / p.tau_sat;
-      else if (this.last_acc_n) this.mu += (p.mu_nominal - this.mu) * p.dt / p.tau_rec;
-      this.t_since_acc = acc.length ? 0.0 : this.t_since_acc + p.dt;
-      if (fresh && this.amb && acc.length && !this.sat && Math.max(...acc.map(a => z[a])) > p.v_standstill) { this.amb = false; this.amb_v = 0.0; }
-      const d_max = G * Math.sin(p.theta_max) + p.d_extra;
-      this.x[IV] = clip(this.x[IV], 0.0, p.v_max_line);
-      this.x[ID] = clip(this.x[ID], -d_max, d_max);
-      this.x[IKT] = clip(this.x[IKT], p.k_min, p.k_max);
-      this.x[IKB] = clip(this.x[IKB], p.k_min, p.k_max);
-      if (fresh) {
-        const zero = acc.length > 0 && Math.max(...acc.map(a => z[a])) < p.v_standstill;
-        if (!zero) this.t_zero_start = null;
-        else if (this.t_zero_start === null) this.t_zero_start = this.t - p.dt;
-      } else if (!this.have_meas) this.t_zero_start = null;
-      this.zero_t = this.t_zero_start === null ? 0.0 : this.t - this.t_zero_start;
-      const standstill = this.zero_t >= p.t_standstill && this.x[IV] < 2.0 * p.v_standstill && !this.amb;
-      if (standstill) { this.x[IV] = 0.0; this.x[ID] = 0.0; this.P[IV][IV] = Math.min(this.P[IV][IV], 1e-4); }
-      if (fresh) this._calibrate(z, acc);
-      this.mode = this.mode_pre;
-      if (this.sat || this.amb) this.mode = SLIP;
-      if (standstill) this.mode = STANDSTILL;
-      const valid = this.have_meas && this.t_since_acc <= p.t_valid && !this.amb;
-      if (!this.have_meas || (!valid && !this.amb)) this.mode = DEGRADED;
-      let sv = Math.sqrt(Math.max(this.P[IV][IV], 0.0));
-      if (this.amb) { sv = Math.max(sv, 0.5 * this.amb_v); this.s_extra += 0.5 * this.amb_v * p.dt; }
-      const ss = Math.sqrt(Math.max(this.P[IS][IS], 0.0) + this.s_extra ** 2);
-      return {
-        v: this.x[IV], s: this.x[IS], d: this.x[ID], k_t: this.x[IKT], k_b: this.x[IKB], mu: this.mu,
-        sigma_v: sv, sigma_s: ss, mode: this.mode, healthy: this.healthy.slice(), slip: this.sat, ambiguous: this.amb,
-        n_accepted: this.n_acc, n_rejected: this.n_rej, odometry_used: acc.length > 0, valid, u
-      };
-    }
-  }
-  return { Estimator, DEFAULT, MODE_NAMES, COAST, TRACTION, BRAKE, TRANSITION, SLIP, STANDSTILL, DEGRADED, G, notch_to_u, sensor_to_speed, PORT };
-})();
-
-// ---- Tram plant: JavaScript port of plant.py (the "truth" the estimator never sees directly) ----
-const TramPlant = (() => {
-  const G = 9.81;
-  const P = {
-    M: 30000.0, r: 0.35, b: 0.762, n_axles: 4, motored: [true, true, false, false],
-    res_A: 2500.0, res_B: 60.0, res_C: 4.0,
-    J_motor: 30.0, J_wheel: 30.0, J_trailer: 12.0, k_tors: 4.0e4, c_tors: 1.6e2, T_max: 6300.0, v_base: 8.0,
-    tau_drive: 0.25, delay_drive: 0.08, jerk_lim: 3.0,
-    T_mech_max: 4000.0, v_ed_fade: 1.5, F_track_brake: 30000.0,
-    dv_peak_rel: 0.01, dv_peak_min: 0.05, B_wheel: 3.0,
-    ppr: 200, t_meas: 0.10, sensor_noise: 0.01, meas_delay: 0.02, dt_est: 0.01
-  };
-  function rng(seed) {
-    let a = seed >>> 0, spare = null;
-    const u = () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-    const normal = (m, sd) => {
-      if (spare !== null) { const r = spare; spare = null; return m + sd * r; }
-      let x, y, q; do { x = 2 * u() - 1; y = 2 * u() - 1; q = x * x + y * y; } while (q >= 1 || q === 0);
-      const f = Math.sqrt(-2 * Math.log(q) / q); spare = y * f; return m + sd * x * f;
-    };
-    return { uniform: (lo, hi) => lo + (hi - lo) * u(), normal };
-  }
-  function adhesion_mu(dv, v, mu_max) {
-    const dv0 = Math.max(P.dv_peak_rel * Math.abs(v), P.dv_peak_min), x = dv / dv0;
-    return 2.0 * mu_max * x / (1.0 + x * x);
-  }
-  class Plant {
-    // track: { grade(s), radius(s), mu(s, t) }
-    constructor(track, dt = 0.001, seed = 0) {
-      this.tr = track; this.dt = dt; this.rng = rng(seed);
-      this.nw = 2 * P.n_axles;
-      this.v = 0; this.s = 0; this.t = 0; this._accel = 0; this.u_filt = 0; this.notch_hist = [];
-      this.w = new Array(this.nw).fill(0); this.wm = new Array(this.nw).fill(0); this.phi = new Array(this.nw).fill(0);
-      this.scale = Array.from({ length: this.nw }, () => 1.0 + this.rng.uniform(-0.015, 0.015));
-      this.angle = new Array(this.nw).fill(0);
-      this.angle_hist = []; this.meas_hist = [];
-      this.faults = {}; this._stuck = {};
-      this.M = P.M;           // total mass, may change with passengers
-      // Addition for the demo (not in plant.py): wheel slip / slide protection, as fitted on real trams.
-      // Without it the plant lets a motored wheel spin up to hundreds of km/h on ice and even turn backwards under ED braking.
-      this.protect = true;
-      this.asr = new Array(this.nw).fill(1);
-      this.asrCut = new Array(this.nw).fill(false);   // срыв: момент снят до повторного сцепления
-      this.wheel_scale = 1;   // global odometry scale (worn tyres)
-    }
-    _axle_of(i) { return Math.floor(i / 2); }
-    _side(i) { return i % 2 === 0 ? 1 : -1; }
-    _rail_speed(i) {
-      const R = this.tr.radius(this.s);
-      if (!isFinite(R)) return this.v;
-      return this.v * (R + this._side(i) * P.b) / R;
-    }
-    _normal_load(i) {
-      const base = this.M * G / this.nw, transfer = -this._accel * 0.06 * base / G;
-      const sign = this._axle_of(i) < P.n_axles / 2 ? 1 : -1;
-      return Math.max(base + sign * transfer, 0.2 * base);
-    }
-    _drive(notch) {
-      const nd = Math.floor(P.delay_drive / this.dt);
-      this.notch_hist.push(notch);
-      if (this.notch_hist.length > nd + 1) this.notch_hist.shift();
-      const u_del = this.notch_hist.length > nd ? this.notch_hist[this.notch_hist.length - nd - 1] : 0;
-      const target = Math.min(1, Math.max(-1, u_del / 4.0));
-      const lag = (target - this.u_filt) * this.dt / P.tau_drive;
-      this.u_filt += Math.min(P.jerk_lim * this.dt, Math.max(-P.jerk_lim * this.dt, lag));
-      return this.u_filt;
-    }
-    step(notch, sand = false, track_brake = false) {
-      const dt = this.dt, u = this._drive(notch);
-      const fade = Math.abs(this.v) < P.v_base ? 1.0 : P.v_base / Math.abs(this.v);
-      let T_cmd_axle = u * P.T_max * fade;
-      if (u < 0 && Math.abs(this.v) < P.v_ed_fade) T_cmd_axle *= Math.abs(this.v) / P.v_ed_fade;
-      let F_tot = 0;
-      for (let i = 0; i < this.nw; i++) {
-        const ax = this._axle_of(i), mot = P.motored[ax], v_rail = this._rail_speed(i), dv = this.w[i] * P.r - v_rail;
-        if (this.protect) {
-          // Защита (как на вагоне): при срыве момент (тяговый или тормозной) снимается
-          // до нуля и подаётся снова только после повторного сцепления колеса.
-          const lim = Math.max(0.4, 0.08 * Math.abs(this.v));
-          const slipping = (u > 0 && dv > lim) || (u < 0 && -dv > lim);
-          if (slipping) this.asrCut[i] = true;
-          else if (Math.abs(dv) < 0.5 * lim) this.asrCut[i] = false;
-          this.asr[i] = this.asrCut[i] ? Math.max(0, this.asr[i] - dt * 8) : Math.min(1, this.asr[i] + dt * 0.7);
-        }
-        const g = this.protect ? this.asr[i] : 1;
-        let mu_max = this.tr.mu(this.s, this.t);
-        if (sand) mu_max = Math.min(mu_max * 2.5, 0.30);
-        const F = adhesion_mu(dv, this.v, mu_max) * this._normal_load(i);
-        F_tot += F;
-        let T_sh = 0;
-        if (mot) {
-          T_sh = P.k_tors * this.phi[i] + P.c_tors * (this.wm[i] - this.w[i]);
-          this.wm[i] += (T_cmd_axle / 2.0 * g - T_sh) / P.J_motor * dt;
-          this.phi[i] += (this.wm[i] - this.w[i]) * dt;
-        }
-        let T = T_sh - P.B_wheel * this.w[i];
-        if (u < 0) {
-          const blend = Math.abs(this.v) < P.v_ed_fade ? 1.0 : 0.3;
-          T -= Math.abs(this.w[i]) > 1e-2 ? Math.sign(this.w[i]) * P.T_mech_max * Math.abs(u) * blend * g : 0.0;
-        }
-        const J = mot ? P.J_wheel : P.J_trailer;
-        let w_new = this.w[i] + (T - P.r * F) / J * dt;
-        if (u < 0 && this.w[i] > 0 && w_new < 0) w_new = 0.0;
-        if (this.protect && w_new < 0 && this.v >= 0) w_new = 0.0;   // a wheel does not turn backwards while the tram rolls forward
-        this.w[i] = w_new;
-      }
-      const F_res = P.res_A + P.res_B * Math.abs(this.v) + P.res_C * this.v * this.v;
-      const F_grade = this.M * G * Math.sin(this.tr.grade(this.s));
-      const F_tb = track_brake ? P.F_track_brake : 0.0;
-      const F_drag = Math.abs(this.v) > 1e-3 ? (F_res + F_tb) * Math.sign(this.v) : 0.0;
-      let F_net = F_tot - F_grade - F_drag;
-      if (Math.abs(this.v) < 1e-3 && Math.abs(F_tot - F_grade) < F_res) F_net = 0.0;
-      this._accel = F_net / this.M;
-      this.v += this._accel * dt;
-      this.s += this.v * dt;
-      this.t += dt;
-      for (let i = 0; i < this.nw; i++) this.angle[i] += this.w[i] * this.scale[i] * this.wheel_scale * dt;
-      return this._accel;
-    }
-    measure() {
-      const nwin = Math.floor(P.t_meas / this.dt), quant = 2 * Math.PI / P.ppr;
-      this.angle_hist.push(this.angle.slice());
-      if (this.angle_hist.length > nwin + 1) this.angle_hist.shift();
-      let meas;
-      if (this.angle_hist.length > nwin) {
-        const old = this.angle_hist[this.angle_hist.length - nwin - 1];
-        meas = this.angle.map((a, i) => (Math.floor(a / quant) * quant - Math.floor(old[i] / quant) * quant) / P.t_meas);
-      } else meas = new Array(this.nw).fill(0);
-      meas = meas.map(m => m + this.rng.normal(0, P.sensor_noise));
-      for (const [k, [t0, kind]] of Object.entries(this.faults)) {
-        const i = +k;
-        if (this.t >= t0) {
-          if (kind === 'zero') meas[i] = 0.0;
-          else if (kind === 'stuck') { if (!(i in this._stuck)) this._stuck[i] = meas[i]; meas[i] = this._stuck[i]; }
-          else if (kind === 'noise') meas[i] += this.rng.normal(0, 3.0);
-        }
-      }
-      const nd = Math.floor(P.meas_delay / this.dt);
-      this.meas_hist.push(meas.slice());
-      if (this.meas_hist.length > nd + 1) this.meas_hist.shift();
-      return this.meas_hist.length > nd ? this.meas_hist[this.meas_hist.length - nd - 1] : new Array(this.nw).fill(0);
-    }
-  }
-  return { Plant, P, adhesion_mu };
-})();
-
-(() => {
-  const $ = id => document.getElementById(id);
-
-  // ---------- сверка JS-порта ----------
-  // TramEst.PORT — ядро пакета, с которым сверен порт. Режим прогонов читает replays/index.js:
-  // если прогоны посчитаны другим ядром (core_sha1), ядро менялось после сверки, и
-  // песочница честно подписана «упрощённое ядро (JS-порт от …)».
-  const PORT = TramEst.PORT;
-  function portClaim(kind) {
-    const stale = window.TV_PORT_STALE;
-    if (kind === 'badge') return stale ? `Песочница · упрощённое ядро (JS-порт от ${PORT.checked})` : `Песочница · JS-порт ядра, сверен ${PORT.checked}`;
-    if (kind === 'note') return stale ? `упрощённое ядро (JS-порт ядра пакета от ${PORT.checked}, ${PORT.core_git}; ядро пакета после этого менялось)` : `JS-порт ядра пакета (сверен с Python ${PORT.checked}, ядро ${PORT.core_git}, расхождение ≤ ${PORT.dv})`;
-    if (kind === 'short') return stale ? `упрощённое ядро (JS-порт от ${PORT.checked})` : `JS-порт ядра пакета (сверен с Python ${PORT.checked})`;
-    return stale ? `Песочница работает на упрощённом ядре: это JS-порт ядра пакета от ${PORT.checked} (${PORT.core_git}), а ядро пакета после этого менялось (прогоны комиссии посчитаны ядром ${stale}). Поведение песочницы может отличаться от пакета; числа пакета — в «Прогоне данных комиссии».`
-      : `Песочница работает на JS-порте ядра пакета (перенесён ${PORT.checked}, ядро ${PORT.core_git}; с Python-ядром совпадает до ${PORT.dv} на 15 сценариях и на записи комиссии с листом вагона).`;
-  }
-  function applyPort() {
-    const n = $('portNote'); if (n) n.textContent = portClaim('note');
-    const bs = document.querySelector('header .badge-sub');
-    if (bs && (window.__tvMode || 'sandbox') === 'sandbox') bs.textContent = portClaim('badge');
-  }
-  window.TV_PORT_CLAIM = portClaim; window.TV_PORT_APPLY = applyPort; window.TV_EST_PORT = PORT;
-  applyPort();
-
-  // ---------- info modal ----------
-  const INFO = {
-    model: ['Как устроена модель', 'Состояние из пяти величин: путь, скорость, возмущение (уклон, масса, ветер) и масштабы тяги и торможения. Прогноз строится по ручке через физику вагона: привод с запаздыванием, сопротивление движению, сила ограничена сцеплением μ.\nКоррекция по колёсам в сигма-точечном фильтре (UKF). Каждое показание оси проходит проверку правдоподобия: невязка и физический предел ускорения колеса. Отвергнутое показание состояние не меняет, поэтому буксующая ось не тянет оценку за собой. Крип колеса предсказывается и вычитается.\nМасштабы привода и возмущение подстраиваются только там, где они наблюдаемы, сцепление оценивается по признакам срыва. На остановке ошибка скорости обнуляется.\n{PORT} Лист песочницы — по умолчанию: 4 оси по 2 датчика, паспортный привод; имитатор упрощён, поэтому числа песочницы не равны числам на данных, а σ ядра ещё не откалибрована. Числа на реальных записях — в режиме «Прогон данных комиссии»: там оценку считает сам пакет ROS 2.'],
-    ros: ['Пакет ROS 2', '']
-  };
-  const typed = $('typed'), cursorEl = $('cursor'), ghost = $('ghost'), modal = $('modal');
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let typeTimer = 0, current = null;
-  const EXTRA = {
-    ros: [760, `<p class="text-[16px] leading-[1.5]">Ядро оценщика написано без зависимостей от ROS, нода только тонкая обёртка вокруг него. Та же связка считает офлайн-оценку по записям, поэтому числа оценки и работа ноды совпадают.</p>
-      <div class="grid sm:grid-cols-2 gap-3 mt-4 text-[13px]">
-        <div class="rounded-xl border border-[var(--line)] p-3">
-          <div class="text-[12px] opacity-60 mb-2">Вход (по ТЗ)</div>
-          <div class="flex justify-between gap-2"><span>/vehicle/front_bogie_velocity</span><span class="opacity-60">~10 Гц, км/ч</span></div>
-          <div class="flex justify-between gap-2 mt-1"><span>/vehicle/rear_bogie_velocity</span><span class="opacity-60">~10 Гц, км/ч</span></div>
-          <div class="flex justify-between gap-2 mt-1"><span>/vehicle/driver_position_cmd</span><span class="opacity-60">20 Гц, ±15</span></div>
-          <div class="flex justify-between gap-2 mt-1 opacity-60"><span>/sensing/gnss/*/fix</span><span>только выставка, 3 с</span></div>
-        </div>
-        <div class="rounded-xl border border-[var(--line)] p-3">
-          <div class="text-[12px] opacity-60 mb-2">Выход</div>
-          <div class="flex justify-between gap-2"><span>/result/velocity</span><span class="opacity-60">скорость, м/с</span></div>
-          <div class="flex justify-between gap-2 mt-1"><span>/result/position</span><span class="opacity-60">x, y (MGRS), z, σ</span></div>
-          <div class="flex justify-between gap-2 mt-1"><span>/result/acceleration</span><span class="opacity-60">ускорение</span></div>
-          <div class="flex justify-between gap-2 mt-1"><span>/tram/estimator_status</span><span class="opacity-60">режим, μ, k, σ, тележки</span></div>
-        </div>
-      </div>
-      <div class="flex flex-wrap gap-2 mt-3 text-[12px]">
-        <span class="rounded-full border border-[var(--line)] px-3 py-1">выход 20 Гц</span>
-        <span class="rounded-full border border-[var(--line)] px-3 py-1">ROS 2 Humble</span>
-        <span class="rounded-full border border-[var(--line)] px-3 py-1">шаг по меткам header.stamp</span>
-        <span class="rounded-full border border-[var(--line)] px-3 py-1">UKF, состояние s, v, d, k_т, k_б</span>
-      </div>
-      <div class="text-[12px] opacity-60 mt-6 mb-2">Схема пакета: топики по ТЗ, значения — из песочницы (JS-порт ядра, лист песочницы: 4 оси)</div>
-      <canvas id="rosC" class="block w-full h-[240px]"></canvas>
-      <div class="text-[12px] opacity-60 mt-6">Время шага JS-порта ядра в этом браузере</div>
-      <div class="grid grid-cols-3 gap-4 mt-2">
-        <div><div class="k">медиана</div><div class="big text-[24px] num"><span id="bMed">…</span> <span class="text-[13px] opacity-60">мкс</span></div></div>
-        <div><div class="k">99 % шагов быстрее</div><div class="big text-[24px] num"><span id="bP99">…</span> <span class="text-[13px] opacity-60">мкс</span></div></div>
-        <div><div class="k">занято от бюджета 100 Гц</div><div class="big text-[24px] num" style="color: var(--ok);"><span id="bLoad">…</span> <span class="text-[13px] opacity-60">%</span></div></div>
-      </div>
-      <canvas id="benchC" class="block w-full h-[64px] mt-3"></canvas>
-      <div class="text-[11px] opacity-50 mt-2">Замер шага JS-порта ядра в песочнице (UKF, 5 состояний, 4 оси, 100 Гц) на входах из текущей поездки. Это не замер пакета: Python-ядро ноды шагает 20 Гц, бюджет шага 50 000 мкс; его время — в docs/EVAL.md.</div>`],
-    metrics: [880, '<div id="metTable"></div>'],
-    replay: [940, `<canvas id="repC" class="block w-full h-[260px] cursor-crosshair"></canvas>
-      <input id="repR" type="range" min="0" max="1" value="1" class="w-full mt-3" aria-label="Перемотка записи" style="accent-color: var(--ok);">
-      <div id="repInfo" class="flex flex-wrap gap-x-4 gap-y-1 text-[12px] mt-2 num"></div>
-      <div class="text-[11px] opacity-50 mt-3">Запись идёт с открытия страницы, последние 13 минут. Наведите на график или двигайте ползунок.</div>`]
-  };
-  INFO.metrics = ['Метрики: модель против колеса', ''];
-  INFO.replay = ['Запись поездки', ''];
-  let metTimer = 0;
-  function openInfo(key) {
-    current = key;
-    const [title, txt0] = INFO[key];
-    const txt = txt0.replace('{PORT}', portClaim('model'));
-    const ex = EXTRA[key];
-    $('mCard').style.maxWidth = (ex ? ex[0] : 600) + 'px';
-    $('mExtra').innerHTML = ex ? ex[1] : '';
-    $('mText').style.display = txt ? '' : 'none';
-    clearInterval(metTimer);
-    if (key === 'metrics') { renderMetrics(); metTimer = setInterval(renderMetrics, 1000); }
-    if (key === 'replay') {
-      repI = -1;
-      $('repR').addEventListener('input', e => { repI = +e.target.value; });
-      $('repC').addEventListener('mousemove', e => { const r = e.currentTarget.getBoundingClientRect(); repI = Math.max(0, Math.min(REC.length - 1, Math.round((e.clientX - r.left - 28) / (r.width - 28) * (REC.length - 1)))); });
-    }
-    $('mTitle').textContent = title; ghost.textContent = txt; typed.textContent = '';
-    modal.style.display = 'flex'; cursorEl.style.display = '';
-    document.querySelectorAll('[data-open]').forEach(p => p.setAttribute('aria-pressed', p.dataset.open === key));
-    clearInterval(typeTimer);
-    if (reduce) { typed.textContent = txt; cursorEl.style.display = 'none'; }
-    else {
-      let i = 0;
-      typeTimer = setInterval(() => {
-        i += 2; typed.textContent = txt.slice(0, i);
-        if (i >= txt.length) { clearInterval(typeTimer); cursorEl.style.display = 'none'; }
-      }, 16);
-    }
-    $('mClose').focus();
-  }
-  function closeInfo() {
-    current = null; clearInterval(typeTimer); clearInterval(metTimer); modal.style.display = 'none';
-    document.querySelectorAll('[data-open]').forEach(p => p.setAttribute('aria-pressed', 'false'));
-  }
-  document.querySelectorAll('[data-open]').forEach(el => el.addEventListener('click', e => { e.preventDefault(); current === el.dataset.open ? closeInfo() : openInfo(el.dataset.open); }));
-  $('mClose').addEventListener('click', closeInfo);
-  $('recBtn').addEventListener('click', () => openInfo('replay'));
-  modal.addEventListener('click', e => { if (e.target === modal) closeInfo(); });
-  addEventListener('keydown', e => { if (e.key === 'Escape' && current) closeInfo(); });
-
-  // ---------- world ----------
-  // Tunnel scenario is kept but switched off for now (TUNNEL_ON = true brings it back).
-  const TUNNEL_ON = false;
-  const TOTAL = 3600, T0 = 1596, T1 = 2432;
-  const PLATFORMS = [{ p: 78, n: 'Депо' }, { p: 778, n: 'Заводская' }, { p: 1518, n: 'Речная' }, { p: 2179, n: 'Площадь' }, { p: 2880, n: 'Парк' }];
-  const TIME_SCALE = 4, VMAX = 20, V_CRUISE = 11.5;
-  // evenly spaced constellation moving at one speed: never bunches up, never leaves the sky empty
-  const SATS = [0.05, 0.12, 0.03, 0.09, 0.06].map((hh, i, arr) => ({ o: i / arr.length, sp: 1 / 45, h: hh }));
-  // ---------- route: plan view (turns) and elevation (grades) ----------
-  const G = 9.81, RS = 5, RN = 3600 / RS;
-  const ROUTE = (() => {
-    const C = [[0, 0], [520, -60], [860, 40], [1000, 260], [1240, 330], [1300, 560], [1060, 720], [760, 660], [520, 800], [220, 760], [40, 560], [-120, 300]];
-    const dense = [];
-    const n = C.length;
-    for (let i = 0; i < n; i++) {
-      const p0 = C[(i - 1 + n) % n], p1 = C[i], p2 = C[(i + 1) % n], p3 = C[(i + 2) % n];
-      for (let t = 0; t < 1; t += 0.02) {
-        const t2 = t * t, t3 = t2 * t;
-        dense.push([0, 1].map(k => 0.5 * ((2 * p1[k]) + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3)));
-      }
-    }
-    const cum = [0];
-    for (let i = 1; i <= dense.length; i++) { const a = dense[i - 1], b = dense[i % dense.length]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
-    const L0 = cum[cum.length - 1], k = 3600 / L0;
-    const X = new Float32Array(RN), Y = new Float32Array(RN), K = new Float32Array(RN), Z = new Float32Array(RN), GR = new Float32Array(RN);
-    let j = 0;
-    for (let i = 0; i < RN; i++) {
-      const d = i * RS / k;
-      while (cum[j + 1] < d) j++;
-      const a = dense[j], b = dense[(j + 1) % dense.length], f = (d - cum[j]) / (cum[j + 1] - cum[j]);
-      X[i] = (a[0] + (b[0] - a[0]) * f) * k; Y[i] = (a[1] + (b[1] - a[1]) * f) * k;
-    }
-    const hd = i => { const a = (i - 2 + RN) % RN, b = (i + 2) % RN; return Math.atan2(Y[b] - Y[a], X[b] - X[a]); };
-    const raw = new Float32Array(RN);
-    for (let i = 0; i < RN; i++) { let d = hd((i + 1) % RN) - hd((i - 1 + RN) % RN); d = Math.atan2(Math.sin(d), Math.cos(d)); raw[i] = d / (2 * RS); }
-    for (let i = 0; i < RN; i++) { let sum = 0; for (let q = -3; q <= 3; q++) sum += raw[(i + q + RN) % RN]; K[i] = sum / 7; }
-    // elevation: rolling hills, but every stop sits on a level stretch
-    const zRaw = m => { const u = 2 * Math.PI * m / 3600; return 6 * Math.sin(2 * u + 0.6) + 2.2 * Math.sin(5 * u + 1.9); };
-    const smooth = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
-    for (let i = 0; i < RN; i++) {
-      const m = i * RS;
-      let z = zRaw(m);
-      for (const q of PLATFORMS) {
-        let d = Math.abs(m - q.p); d = Math.min(d, 3600 - d);
-        const w = 1 - smooth((d - 30) / 200);  // flat within 30 m, blends back by 230 m
-        if (w > 0) z = z * (1 - w) + zRaw(q.p) * w;
-      }
-      Z[i] = z;
-    }
-    for (let i = 0; i < RN; i++) GR[i] = (Z[(i + 1) % RN] - Z[(i - 1 + RN) % RN]) / (2 * RS);
-    return { X, Y, K, Z, GR };
-  })();
-  const ri = m => { const q = (((m % 3600) + 3600) % 3600) / RS; return [Math.floor(q) % RN, q - Math.floor(q)]; };
-  const lerpR = (arr, m) => { const [i, f] = ri(m); return arr[i] + (arr[(i + 1) % RN] - arr[i]) * f; };
-  const gradeAt = m => lerpR(ROUTE.GR, m);
-  const radiusAt = m => { const k = Math.abs(lerpR(ROUTE.K, m)); return k < 1 / 600 ? Infinity : 1 / k; };
-  const vlimAt = m => { const R = radiusAt(m); return R > 250 ? 99 : Math.max(4, Math.sqrt(0.55 * R)); };
-
-  const HANDLE = { TRACTION: 'Тяга', COAST: 'Выбег', BRAKE: 'Торможение', STAND: 'Стоянка' };
-  const ZONE_AHEAD = 100, ZONE_LEN = { urban: 260 };
-  const M_EMPTY = 28.2, M_PAX = 0.075; // tonnes: 24 passengers on board gives the plant's nominal 30 t
-
-  let curveBrk = false;
-  let prevS = 78;
-  let s = 78, v = 0, handle = 'STAND', running = true, dwell = 1.2, dwellTotal = 1.2, cruising = false, lastStop = 'Депо';
-  let D = 0, simT = 0; // total distance travelled (zones are placed in it), simulated time
-  const zones = { wx: null, urban: null };
-  const trail = { wx: [], urban: [] }; // zones already passed, still drawn until off screen
-  function retire(key) { if (zones[key]) trail[key].push(zones[key]); zones[key] = null; }
-  let weather = 'clear', wxA = 0;
-  let wheelV = 0, wheelAng = 0, ramp = 0, fade = 0, gnssA = 1, noG = false;
-  let sensMode = 'ok', manual = false, manualH = 'COAST', rush = false, wearOn = false;
-  const dir = 1;
-  // passengers: waiting at each platform, on board, boarding progress
-  const pax = PLATFORMS.map(() => 2 + Math.floor(Math.random() * 5));
-  let onboard = 24, boardIdx = -1, boardN = 0, alightN = 0;
-  let mTrue = M_EMPTY + onboard * M_PAX;
-
-  const est = {
-    st: 'DEGRADED', v: 0, lo: 0, hi: 0, s: 78, sig: 1, anchor: 'Депо',
-    seM: 0, seB: 0, n: 0, sensor: 0, adapt: false, kt: 1, kb: 1, mu: 0.25, d: 0, valid: false,
-    mHat: 0, kHat: 1, grHat: 0, brake: 0,
-    segM: 0, segB: 0, segFrom: 'Депо', segCond: {}, rampT: -1
-  };
-  const zHatLap = new Float32Array(RN).fill(NaN);
-  const massHist = [];
-
-  // ---------- metrics per condition ----------
-  const COND = ['Сухо', 'Дождь', 'Наледь', 'Застройка', 'Отказ оси', 'Отказ всех осей', 'Час пик'];
-  const MET = Object.fromEntries(COND.map(c => [c, { t: 0, sqM: 0, sqB: 0, maxM: 0, inInt: 0, segM: [], segB: [] }]));
-  const slipDelays = [], slipMissed = { n: 0, short: 0 };
-  function currentConds(wk, vk) {
-    const c = [];
-    const wz = zones.wx && inZone(zones.wx, D) ? zones.wx.kind : null;
-    if (wz === 'wet') c.push('Дождь');
-    if (wz === 'ice') c.push('Наледь');
-    if (noG) c.push('Застройка');
-    if (sensMode === 'axle') return ['Отказ оси'];
-    if (sensMode === 'all') return ['Отказ всех осей'];
-    if (rush) c.push('Час пик');
-    if (!c.length) c.push('Сухо');
-    return c;
-  }
-
-  const inZone = (z, d) => !!z && d > z.a && d < z.b;
-  const zoneWorld = z => z ? [s + z.a - D, s + z.b - D] : null;
-
-  function setSwitch(id, on) { $(id).setAttribute('aria-checked', on); }
-  function setSeg(attr, val) { document.querySelectorAll(`[${attr}]`).forEach(b => b.setAttribute('aria-checked', b.getAttribute(attr) === val)); }
-  function toggleZone(key, id, force) {
-    const on = force === undefined ? !zones[key] : force;
-    if (!on) {
-      if (zones[key]) { zones[key].b = Math.max(zones[key].a + 40, D + 60); retire(key); }
-      setSwitch(id, false); return;
-    }
-    if (zones[key]) return;
-    zones[key] = { a: D + ZONE_AHEAD, b: Infinity };
-    setSwitch(id, true);
-  }
-  function setWeather(w) {
-    weather = w; setSeg('data-weather', w);
-    retire('wx');
-    zones.wx = w === 'clear' ? null : { a: D + ZONE_AHEAD, b: D + ZONE_AHEAD + 160, kind: w === 'snow' ? 'ice' : 'wet' };
-  }
-  function setSens(m) { sensMode = m; setSeg('data-sens', m); applySensorFaults(); }
-  function setManual(on) {
-    manual = on; setSeg('data-drive', on ? 'manual' : 'auto');
-    $('handleSeg').style.display = on ? '' : 'none';
-    if (on) { manualH = v > 0.3 ? 'COAST' : 'BRAKE'; setSeg('data-handle', manualH); }
-  }
-  function setHandle(hh) { manualH = hh; setSeg('data-handle', hh); }
-  function setRush(on) { rush = on; setSwitch('swRush', on); }
-  document.querySelectorAll('[data-weather]').forEach(b => b.addEventListener('click', () => setWeather(b.dataset.weather)));
-  document.querySelectorAll('[data-sens]').forEach(b => b.addEventListener('click', () => setSens(b.dataset.sens)));
-  document.querySelectorAll('[data-drive]').forEach(b => b.addEventListener('click', () => setManual(b.dataset.drive === 'manual')));
-  document.querySelectorAll('[data-handle]').forEach(b => b.addEventListener('click', () => setHandle(b.dataset.handle)));
-  $('swUrban').addEventListener('click', () => toggleZone('urban', 'swUrban'));
-  $('swRush').addEventListener('click', () => setRush(!rush));
-  function setRunning(r) {
-    running = r;
-    $('bRunTxt').textContent = r ? 'Стоп' : 'Старт';
-    $('bRun').setAttribute('aria-label', r ? 'Стоп' : 'Старт');
-    $('icoStop').style.display = r ? '' : 'none';
-    $('icoStart').style.display = r ? 'none' : '';
-  }
-  $('bRun').addEventListener('click', () => setRunning(!running));
-  addEventListener('keydown', e => {
-    if ((window.__tvMode || 'sandbox') !== 'sandbox') return;
-    if (e.target.closest && e.target.closest('input, select')) return;
-    if (manual && ['ArrowUp', 'w', 'W', 'ц', 'Ц'].includes(e.key)) { e.preventDefault(); setHandle('TRACTION'); return; }
-    if (manual && ['ArrowDown', 's', 'S', 'ы', 'Ы'].includes(e.key)) { e.preventDefault(); setHandle('BRAKE'); return; }
-    if (manual && ['ArrowRight', 'ArrowLeft'].includes(e.key)) { e.preventDefault(); setHandle('COAST'); return; }
-    if (e.key === ' ' && !(e.target.closest && e.target.closest('button'))) { e.preventDefault(); setRunning(!running); }
-  });
-
-  // ---------- sound: soft arrival chime, motor hum, wheel clicks on rail joints ----------
-  let actx = null, soundOn = true, hum = null;
-  function ensureAudio() {
-    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state !== 'running') actx.resume(); } catch (_) { actx = null; }
-    if (actx && !hum) {
-      const o1 = actx.createOscillator(), o2 = actx.createOscillator(), lp = actx.createBiquadFilter(), g = actx.createGain();
-      o1.type = 'sawtooth'; o2.type = 'triangle'; lp.type = 'lowpass'; lp.frequency.value = 320; lp.Q.value = 0.7;
-      g.gain.value = 0;
-      o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(actx.destination);
-      o1.start(); o2.start();
-      hum = { o1, o2, lp, g };
-    }
-  }
-  function setSound(on) {
-    soundOn = on;
-    if (on) { ensureAudio(); chime(); }
-  }
-  // browsers only allow audio after the first user gesture: unlock it silently then
-  const unlock = () => { if (soundOn) ensureAudio(); removeEventListener('pointerdown', unlock); removeEventListener('keydown', unlock); };
-  addEventListener('pointerdown', unlock); addEventListener('keydown', unlock);
-
-  function tone(freq, start, dur, gain) {
-    const o = actx.createOscillator(), g = actx.createGain(), lp = actx.createBiquadFilter();
-    o.type = 'sine'; o.frequency.value = freq;
-    lp.type = 'lowpass'; lp.frequency.value = 1400; lp.Q.value = 0.3;
-    o.connect(g); g.connect(lp); lp.connect(actx.destination);
-    g.gain.setValueAtTime(0.0001, start);
-    g.gain.exponentialRampToValueAtTime(gain, start + 0.08);
-    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-    o.start(start); o.stop(start + dur + 0.05);
-  }
-  function chime() {
-    if (!soundOn || !actx) return;
-    const t = actx.currentTime + 0.03;
-    tone(587.33, t, 1.8, 0.09);
-    tone(440.00, t + 0.55, 2.4, 0.08);
-    tone(880.00, t + 0.55, 1.2, 0.012);
-  }
-  let noiseBuf = null;
-  function click(at, gain) {
-    if (!actx) return;
-    if (!noiseBuf) {
-      noiseBuf = actx.createBuffer(1, Math.round(actx.sampleRate * 0.05), actx.sampleRate);
-      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (d.length * 0.18));
-    }
-    const src = actx.createBufferSource(), bp = actx.createBiquadFilter(), g = actx.createGain();
-    src.buffer = noiseBuf; bp.type = 'bandpass'; bp.frequency.value = 650; bp.Q.value = 1.2; g.gain.value = gain;
-    src.connect(bp); bp.connect(g); g.connect(actx.destination); src.start(at);
-  }
-  let lastJoint = 0;
-  function updateSound() {
-    if (!actx || !hum) return;
-    const t = actx.currentTime, on = soundOn && !document.hidden;
-    const f = 34 + v * 6.5;
-    hum.o1.frequency.setTargetAtTime(f, t, 0.15); hum.o2.frequency.setTargetAtTime(f * 1.5, t, 0.15);
-    const g = on && v > 0.2 ? Math.min(1, v / 4) * (handle === 'TRACTION' ? 0.03 : 0.014) : 0;
-    hum.g.gain.setTargetAtTime(g, t, 0.25);
-  }
-  function announceArrival() { chime(); }
-
-  function nextStop() {
-    let best = null;
-    for (const q of PLATFORMS) {
-      let d = q.p - s; if (d < -8 || q.n === lastStop) d += TOTAL; if (d < 0 && q.n !== lastStop) d = Math.max(d, 0);
-      if (!best || d < best.d) best = { q, d };
-    }
-    return best;
-  }
-
-  // ---------- the real thing: plant (truth) + the team's estimator, ported 1:1 from Python ----------
-  const S0 = 78;                                  // world position of the depot where the plant starts
-  const MU = { dry: 0.25, wet: 0.10, ice: 0.04 };
-  const plant = new TramPlant.Plant({
-    grade: ps => gradeAt(S0 + ps),
-    radius: ps => radiusAt(S0 + ps),
-    mu: ps => { const z = zones.wx && inZone(zones.wx, ps) ? zones.wx.kind : null; return z === 'ice' ? MU.ice : z === 'wet' ? MU.wet : MU.dry; }
-  }, 0.001, 7);
-  let estimator = new TramEst.Estimator();
-  let notch = 0, sand = false, lastOut = null, estAcc = 0;
-  const BENCH_IN = [];                            // recent inputs, replayed by the step-time benchmark
-
-  function applySensorFaults() {
-    const t = plant.t;
-    plant.faults = sensMode === 'axle' ? { 0: [t, 'zero'], 1: [t, 'zero'] }
-      : sensMode === 'all' ? Object.fromEntries([...Array(8).keys()].map(i => [i, [t, 'zero']])) : {};
-    // После починки датчики возвращаются сами (ядро: согласие с остальными t_recover), без вмешательства.
-  }
-
-  const segLen = (from, to) => {
-    const a = PLATFORMS.find(q => q.n === from).p, b = PLATFORMS.find(q => q.n === to).p;
-    return ((b - a) % TOTAL + TOTAL) % TOTAL || TOTAL;
-  };
-
-  function arrive(q) {
-    const idx = PLATFORMS.indexOf(q);
-    boardIdx = idx; boardN = pax[idx]; alightN = Math.round(onboard * (0.15 + Math.random() * 0.3));
-    dwell = dwellTotal = 2.4 + Math.min(2, (boardN + alightN) * 0.03);
-    // end-of-segment position error: model vs wheel-only, against the known length of the segment
-    const L = segLen(est.segFrom, q.n);
-    const eM = est.segM - L, eB = est.segB - L;
-    const segT = Object.values(est.segCond).reduce((a, b) => a + b, 0) || 1;
-    for (const [c, tc] of Object.entries(est.segCond)) if (tc / segT > 0.3) { MET[c].segM.push(Math.abs(eM)); MET[c].segB.push(Math.abs(eB)); }
-    est.segM = 0; est.segB = 0; est.segFrom = q.n; est.segCond = {};
-    lastStop = q.n; est.anchor = q.n;
-    announceArrival(q);
-  }
-
-  // Driver: picks a controller notch (-4..+4) from what a driver sees (true speed and position).
-  const NOTCH_DECEL = 0.53;                       // m/s² per brake notch on dry rail (plant: ~63 kN at full brake, 30 t)
-  let brakingForStop = false, stallT = 0;
-  function driver(sdt) {
-    const ns = nextStop(), gr = gradeAt(s), vHere = vlimAt(s);
-    const wz = zones.wx && inZone(zones.wx, plant.s) ? zones.wx.kind : null;
-    sand = false;
-    if (dwell > 0) return -2;
-    if (manual) {
-      // тяга не выше скорости линии (72 км/ч): выше — выбег
-      const hn = manualH === 'TRACTION' ? (v < VMAX - 0.8 ? 4 : 0) : manualH === 'BRAKE' ? -3 : 0;
-      if (hn > 0 && wz && (gr > 0.015 || v < 3)) sand = true;
-      if (hn < 0 && v < 0.05) {
-        const q = PLATFORMS.find(q => Math.abs(q.p - s) < 14);
-        if (q && q.n !== lastStop) arrive(q);
-      }
-      if (hn < 0 && wz === 'ice') sand = true;
-      return hn;
-    }
-    if (!running) { if (wz === 'ice') sand = true; return v > 0.05 ? -3 : -2; }
-    // arrived
-    if (ns.d < 2.5 && v < 0.15) { arrive(ns.q); brakingForStop = false; return -2; }
-    const brakeFor = need => {                    // notch that gives at least the needed deceleration, grade included
-      const n = Math.ceil(Math.max(0, need - G * gr) / NOTCH_DECEL);
-      if (wz === 'ice') sand = true;              // driver sands the rail on ice, as real trams do
-      return -Math.min(4, Math.max(1, n));
-    };
-    // stopping at the platform
-    const dStop = Math.max(0.3, ns.d - 0.8), need = v * v / (2 * dStop);
-    if (brakingForStop ? need > 0.2 : need > 0.6) {
-      brakingForStop = true;
-      if (v < 0.6 && ns.d > 3) return 1;          // stopped short: creep up to the platform
-      return brakeFor(need);
-    }
-    brakingForStop = false;
-    // curves ahead and line speed
-    let curveNeed = 0;
-    for (let d = 10; d <= 260; d += 10) {
-      const l = vlimAt(s + d);
-      if (l < v) curveNeed = Math.max(curveNeed, (v * v - l * l) / (2 * Math.max(1, d - 8)));
-    }
-    const target = Math.min(V_CRUISE, vHere);
-    if (curveBrk ? (curveNeed > 0.12 || v > target + 0.3) : (curveNeed > 0.35 || v > target + 1.2)) { curveBrk = true; return brakeFor(Math.max(0.4, curveNeed)); }
-    curveBrk = false;
-    if (v < 1 && ns.d > 3 && ns.d <= 60) return 1; // встал, не доехав: подтянуться к платформе, а не ползти выбегом
-    if (ns.d <= v * v / (2 * 0.6) + 60) return 0; // coast into the stop
-    if (v < target - 2.5) cruising = false;
-    if (v >= target) cruising = true;
-    if (cruising) return 0;
-    // Трогание и подъём на скользком рельсе: песок (и в дождь), тяга по уклону.
-    // Вагон не едет под тягой дольше 3 с — песок и полная тяга.
-    stallT = v < 0.3 ? stallT + sdt : 0;
-    if (stallT > 3) { sand = true; return 4; }
-    if (wz) { sand = wz === 'ice' || gr > 0.015 || v < 3; return gr > 0.02 ? 4 : gr > 0.01 ? 3 : 2; }
-    if (gr > 0.02 && v < target - 1) return 4;
-    return v < target - 4 ? 4 : 2;
-  }
-
-  function step(dt) {
-    const sdt = dt * TIME_SCALE;
-    simT += sdt;
-    // passengers keep arriving at platforms
-    PLATFORMS.forEach((q, i) => { if (i !== boardIdx && Math.random() < dt * (rush ? 0.9 : 0.25)) pax[i] = Math.min(rush ? 26 : 12, pax[i] + 1); });
-    if (dwell > 0) {
-      dwell -= dt;
-      if (dwell <= 0) {
-        onboard = Math.max(0, onboard + boardN - alightN);
-        if (boardIdx >= 0) pax[boardIdx] = 0;
-        boardIdx = -1;
-      }
-    }
-    mTrue = M_EMPTY + onboard * M_PAX;
-    plant.M = mTrue * 1000;
-
-    // 1 kHz plant, 100 Hz driver + estimator, exactly as in the team's test bench
-    const n = Math.round(sdt / plant.dt);
-    for (let k = 0; k < n; k++) {
-      plant.step(notch, sand);
-      if (plant.v < 0.02) {                        // удержание: стоящий вагон не катится назад (и под тягой на подъёме)
-        plant.v = Math.max(0, plant.v);
-        if (notch < 0 && plant.v < 0.005) { plant.v = 0; plant.w.fill(0); plant.wm.fill(0); }
-      }
-      const m = plant.measure();
-      estAcc += plant.dt;
-      if (estAcc >= 0.01 - 1e-9) {
-        estAcc -= 0.01;
-        s = ((S0 + plant.s) % TOTAL + TOTAL) % TOTAL; v = plant.v; D = plant.s;
-        notch = driver(0.01);
-        lastOut = estimator.step(notch, m);
-        BENCH_IN.push([notch, m]); if (BENCH_IN.length > 400) BENCH_IN.shift();
-        const wk = Math.abs(m.reduce((a, b) => a + b, 0) / m.length * TramPlant.P.r);   // база по ТЗ: среднее всех датчиков
-        est.segM += lastOut.v * 0.01; est.segB += wk * 0.01;
-        // Задержка обнаружения срыва: от начала срыва по истине (любая моторная ось,
-        // |ω·r − v| > max(0,3; 0,05·v) м/с) до первого включения флага. Событие —
-        // только если флаг в начале срыва не горел; срыв, закончившийся раньше
-        // флага, считается пропущенным. Повторов нет: следующее событие — после
-        // окончания срыва по истине и погасшего флага.
-        const r_ = TramPlant.P.r, lim_ = Math.max(0.3, 0.05 * plant.v);
-        let slipTrue = false;
-        for (let i = 0; i < plant.nw; i++) if (TramPlant.P.motored[Math.floor(i / 2)] && Math.abs(plant.w[i] * r_ - plant.v) > lim_) slipTrue = true;
-        const tNow = simT - dt * TIME_SCALE + (k + 1) * plant.dt;
-        if (est.rampT === -1 && slipTrue && !lastOut.slip) est.rampT = tNow;          // начало события
-        else if (est.rampT >= 0 && lastOut.slip) { slipDelays.push((tNow - est.rampT) * 1000); est.rampT = -2; }
-        else if (est.rampT >= 0 && !slipTrue) { if (tNow - est.rampT >= 0.5) slipMissed.n++; else slipMissed.short++; est.rampT = -2; }   // срыв короче 0,5 с не учитывается
-        if (est.rampT === -2 && !slipTrue && !lastOut.slip) est.rampT = -1;          // готов к новому событию
-      }
-    }
-    s = ((S0 + plant.s) % TOTAL + TOTAL) % TOTAL; v = plant.v; D = plant.s;
-    if (s < prevS - TOTAL / 2) { fade = 1; }
-    prevS = s;
-    fade = Math.max(0, fade - dt * 1.6);
-    handle = v < 0.05 && notch <= 0 ? 'STAND' : notch > 0 ? 'TRACTION' : notch < 0 ? 'BRAKE' : 'COAST';
-
-    // zones
-    if (zones.urban && D > zones.urban.b + 30) { retire('urban'); setSwitch('swUrban', false); }
-    for (const k of ['wx', 'urban']) trail[k] = trail[k].filter(z => D < z.b + 500);
-    if (weather !== 'clear' && zones.wx && D > zones.wx.b + 20) {
-      const a0 = D + 140 + Math.random() * 120;
-      retire('wx');
-      zones.wx = { a: a0, b: a0 + 130 + Math.random() * 70, kind: weather === 'snow' ? 'ice' : 'wet' };
-    }
-    wxA += ((weather === 'clear' ? 0 : 1) - wxA) * Math.min(1, dt * 1.5);
-    noG = inZone(zones.urban, D) || trail.urban.some(z => inZone(z, D)) || (TUNNEL_ON && s > T0 && s < T1);
-
-    // wheel on screen turns with the real axle 1 (so it visibly spins on ice or locks)
-    wheelAng += plant.w[0] * sdt;
-    wheelV = plant.w[0] * TramPlant.P.r;
-
-    // ---- estimator output to the board ----
-    if (lastOut) {
-      const o = lastOut, sv = o.sigma_v;
-      const m = plant.meas_hist.length ? plant.meas_hist[plant.meas_hist.length - 1] : [0, 0];
-      est.sensor = Math.abs(m.reduce((a, b) => a + b, 0) / m.length * TramPlant.P.r);
-      est.st = TramEst.MODE_NAMES[o.mode];
-      est.v = o.v * 3.6; est.lo = Math.max(0, (o.v - 2 * sv) * 3.6); est.hi = (o.v + 2 * sv) * 3.6;
-      est.s = ((S0 + o.s) % TOTAL + TOTAL) % TOTAL; est.sig = o.sigma_s;
-      est.adapt = estimator.adapting || (o.mode === TramEst.COAST && o.v > 2);
-      est.kt = o.k_t; est.kb = o.k_b; est.mu = o.mu; est.d = o.d; est.valid = o.valid; est.amb = !!o.ambiguous;
-      est.grHat = -o.d / G;
-      const vUp = o.v + 2 * sv, aAvail = Math.max(0.3, Math.min(1.2, o.mu * G * 0.5));
-      est.brake = vUp * vUp / (2 * aAvail);
-      const vk = v * 3.6, wk = est.sensor * 3.6;
-      if (v > 0.3) {
-        est.seM += (est.v - vk) ** 2; est.seB += (wk - vk) ** 2; est.n++;
-        for (const c of currentConds(wk, vk)) {
-          const mm = MET[c]; mm.t += dt; mm.sqM += (est.v - vk) ** 2 * dt; mm.sqB += (wk - vk) ** 2 * dt;
-          mm.maxM = Math.max(mm.maxM, Math.abs(est.v - vk)); if (vk >= est.lo - 1e-6 && vk <= est.hi + 1e-6) mm.inInt += dt;
-          est.segCond[c] = (est.segCond[c] || 0) + dt;
-        }
-      }
-    }
-    gnssA += ((noG ? 0 : 1) - gnssA) * Math.min(1, dt * 4);
-    return TUNNEL_ON && s > T0 && s < T1;
-  }
-
-  // ---------- rendering ----------
-  const cv = document.getElementById('scene'), ctx = cv.getContext('2d');
-  let W = 0, H = 0;
-  function resize() {
-    const dpr = Math.min(2, devicePixelRatio || 1);
-    W = innerWidth; H = innerHeight;
-    cv.width = W * dpr; cv.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    layoutBoard();
-  }
-  addEventListener('resize', resize);
-
-  const PAL = {
-    light: { skyTop: '#f7f9fb', skyBot: '#e3e8ed', g1: '#e6eaee', g2: '#dce1e6', far: '#d6dde4', mid: '#c4cdd6', roof: '#b7c1cb', win: 'rgba(80,96,112,0.28)', lit: 'rgba(80,96,112,0.28)',
-      fog: '244,246,248', pole: 'rgba(40,48,58,0.5)', wire: 'rgba(40,48,58,0.42)', rail: '#4a525c', ballast: 'rgba(90,100,110,0.16)',
-      sleeper: 'rgba(70,78,88,0.32)', body: '#fbfcfd', bodyStroke: 'rgba(0,0,0,0.2)', glass: 'rgba(24,30,40,0.88)', door: 'rgba(24,30,40,0.7)',
-      roofBox: '#e4e8ec', bogie: '#2b3138', hub: '#8a939d', label: 'rgba(20,25,30,0.55)', tunnel: '#cdd3d9', earth: '#d6dbe0',
-      tint: 'rgba(20,26,34,0.09)', lamp: 'rgba(232,155,12,0.8)', shadow: 'rgba(0,0,0,0.13)', urban: '#b9c3cd', urbanEdge: '#a7b2bd', road: '#d3d9df', lane: 'rgba(255,255,255,0.9)', tree: '#b3bec7', trunk: '#9aa6b0', verge0: 'rgba(170,185,170,0.25)', verge1: 'rgba(150,165,150,0.35)', curb: '#c3cad1', fence: 'rgba(60,70,80,0.35)', plat: '#cfd6dd', platEdge: '#e7c65a' },
-    dark: { skyTop: '#0a0d11', skyBot: '#161b22', g1: '#12161c', g2: '#0d1015', far: '#252d39', mid: '#181e27', roof: '#202731', win: 'rgba(255,255,255,0.035)', lit: '',
-      fog: '13,16,20', pole: 'rgba(200,210,220,0.32)', wire: 'rgba(200,210,220,0.28)', rail: '#8b95a1', ballast: 'rgba(150,160,170,0.09)',
-      sleeper: 'rgba(150,160,170,0.22)', body: '#2a3038', bodyStroke: 'rgba(255,255,255,0.14)', glass: 'rgba(255,212,140,0.62)', door: 'rgba(255,212,140,0.45)',
-      roofBox: '#343b44', bogie: '#06080a', hub: '#58616b', label: 'rgba(230,235,240,0.5)', tunnel: '#262c33', earth: '#1b2027',
-      tint: 'rgba(0,0,0,0.28)', lamp: 'rgba(232,155,12,0.9)', shadow: 'rgba(0,0,0,0.45)', urban: '#1c232c', urbanEdge: '#27303b', road: '#141a21', lane: 'rgba(255,255,255,0.1)', tree: '#10151a', trunk: '#0c1014', verge0: 'rgba(20,28,24,0.6)', verge1: 'rgba(14,20,17,0.85)', curb: '#1b2128', fence: 'rgba(200,210,220,0.18)', plat: '#2a313a', platEdge: '#a88a2e' }
-  };
-  const OK = '14,154,167', WARN = '232,155,12', WET = '90,169,214';
-  const mq = matchMedia('(prefers-color-scheme: dark)');
-  let night = false;
-  function setTheme(t) {
-    document.documentElement.dataset.theme = t;
-    night = t === 'dark';
-    $('themeTxt').textContent = night ? 'Ночь' : 'День';
-    $('icoSun').style.display = night ? 'none' : '';
-    $('icoMoon').style.display = night ? '' : 'none';
-    $('themeBtn').setAttribute('aria-pressed', night);
-    try { localStorage.setItem('vectra-theme', t); } catch (_) {}
-  }
-  let saved = null;
-  try { saved = localStorage.getItem('vectra-theme'); } catch (_) {}
-  setTheme(saved === 'dark' || saved === 'light' ? saved : (mq.matches ? 'dark' : 'light'));
-  $('themeBtn').addEventListener('click', () => setTheme(night ? 'light' : 'dark'));
-  function pal() {
-    const t = document.documentElement.dataset.theme;
-    return (t === 'dark' || (t !== 'light' && mq.matches)) ? PAL.dark : PAL.light;
-  }
-  const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
-
-  function draw(time, inT) {
-    const P = pal();
-    const mobile = W < 768, mid = !mobile && W < 1200;
-    const ppm = Math.max(9, Math.min(22, W / 70));
-    const railY = mobile ? H * 0.82 : H * 0.84;
-    const horizonY = mobile ? H * 0.7 : H * 0.68;
-    const camX = W * 0.5;
-    const X = m => camX + (m - s) * ppm;
-    const mMin = s - camX / ppm - 40, mMax = s + (W - camX) / ppm + 40;
-    const wireY = railY - 5.6 * ppm;
-
-    // sky and ground
-    let g = ctx.createLinearGradient(0, 0, 0, horizonY);
-    g.addColorStop(0, P.skyTop); g.addColorStop(1, P.skyBot);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, horizonY);
-    g = ctx.createLinearGradient(0, horizonY, 0, railY);
-    g.addColorStop(0, P.skyBot); g.addColorStop(1, P.g2);
-    ctx.fillStyle = g; ctx.fillRect(0, horizonY, W, H - horizonY);
-
-    // skylines
-    const skyline = (par, stepPx, maxH, col, seed, detail) => {
-      const off = s * ppm * par;
-      const k0 = Math.floor(off / stepPx) - 1, k1 = Math.floor((off + W) / stepPx) + 1;
-      for (let k = k0; k <= k1; k++) {
-        const w = stepPx * (0.7 + hash(k * 3 + seed) * 0.45);
-        const bh = maxH * (0.3 + hash(k * 7 + seed * 13) * 0.7);
-        const x = k * stepPx - off + hash(k * 11 + seed) * stepPx * 0.2, y = horizonY - bh;
-        ctx.fillStyle = col; ctx.fillRect(x, y, w, bh + 1);
-        // roof details
-        const r = hash(k * 17 + seed);
-        ctx.fillStyle = detail ? P.roof : col;
-        if (r < 0.35) ctx.fillRect(x + w * 0.2, y - 5, w * 0.25, 5);
-        else if (r < 0.55) ctx.fillRect(x + w * 0.6, y - 9, 2, 9);
-        if (!detail && !night) continue;
-        // windows
-        const cw = detail ? 7 : 6, chh = detail ? 9 : 8, ww = detail ? 3 : 2, wh = detail ? 4 : 3;
-        const cols = Math.floor((w - 8) / cw), rows = Math.floor((bh - 10) / chh);
-        for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
-          const q = hash(k * 131 + i * 17 + j * 7 + seed);
-          if (night) {
-            if (q > (detail ? 0.74 : 0.86)) {
-              const t = hash(q * 97.3), al = (detail ? 0.28 : 0.2) + hash(q * 41.1) * 0.3;
-              const rgb = t < 0.7 ? '240,200,140' : t < 0.9 ? '250,220,175' : '185,205,235';
-              ctx.fillStyle = `rgba(${rgb},${al})`; ctx.fillRect(x + 5 + i * cw, y + 7 + j * chh, ww, wh);
-            }
-          } else if (q > 0.15) { ctx.fillStyle = P.win; ctx.fillRect(x + 5 + i * cw, y + 7 + j * chh, ww, wh); }
-        }
-      }
-    };
-    if (night) {
-      for (let i = 0; i < 90; i++) {
-        const sx = hash(i * 1.37) * W, sy = hash(i * 7.91) * horizonY * 0.85;
-        const tw = 0.35 + 0.45 * Math.abs(Math.sin(time * 0.0012 + i));
-        ctx.fillStyle = `rgba(230,236,245,${tw * (0.4 + hash(i * 3.3) * 0.6)})`;
-        ctx.fillRect(sx, sy, hash(i * 5.5) > 0.85 ? 2 : 1.2, hash(i * 5.5) > 0.85 ? 2 : 1.2);
-      }
-    }
-    // moon at night, sun by day: in the free patch of sky between the chart and the right column
-    if (mobile || W >= 1200) {
-      const cx = mobile ? W * 0.82 : Math.min(W * 0.7, W - 420), cy = mobile ? H * 0.64 : H * 0.14;
-      const r = mobile ? 14 : Math.max(18, Math.min(28, W * 0.016));
-      if (night) {
-        const halo = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r * 5);
-        halo.addColorStop(0, 'rgba(210,222,240,0.16)'); halo.addColorStop(0.4, 'rgba(210,222,240,0.05)'); halo.addColorStop(1, 'rgba(210,222,240,0)');
-        ctx.fillStyle = halo; ctx.fillRect(cx - r * 5, cy - r * 5, r * 10, r * 10);
-        const disc = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
-        disc.addColorStop(0, '#f3f5f8'); disc.addColorStop(1, '#cfd6df');
-        ctx.fillStyle = disc; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(150,162,178,0.35)';
-        [[-0.3, -0.2, 0.22], [0.25, 0.1, 0.16], [-0.05, 0.4, 0.12], [0.35, -0.35, 0.09]].forEach(([dx, dy, rr]) => {
-          ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, rr * r, 0, Math.PI * 2); ctx.fill();
-        });
-      } else {
-        const halo = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r * 6);
-        halo.addColorStop(0, 'rgba(255,214,140,0.45)'); halo.addColorStop(0.3, 'rgba(255,214,140,0.14)'); halo.addColorStop(1, 'rgba(255,214,140,0)');
-        ctx.fillStyle = halo; ctx.fillRect(cx - r * 6, cy - r * 6, r * 12, r * 12);
-        const disc = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        disc.addColorStop(0, '#fff6dc'); disc.addColorStop(0.7, '#ffd98a'); disc.addColorStop(1, '#f7c45e');
-        ctx.fillStyle = disc; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-      }
-    }
-    skyline(0.1, 70, H * 0.2, P.far, 1, false);
-    g = ctx.createLinearGradient(0, horizonY - H * 0.12, 0, horizonY + H * 0.04);
-    g.addColorStop(0, `rgba(${P.fog},0)`); g.addColorStop(0.8, `rgba(${P.fog},0.55)`); g.addColorStop(1, `rgba(${P.fog},0)`);
-    ctx.fillStyle = g; ctx.fillRect(0, horizonY - H * 0.12, W, H * 0.16);
-    skyline(0.3, 96, H * 0.12, P.mid, 2, true);
-
-    // ground depth: far street, tree line, near curb
-    {
-      const gap = railY - horizonY;
-      // far street with lane marks and street lights
-      const ry = horizonY + gap * 0.16, rh = Math.max(4, gap * 0.07);
-      ctx.fillStyle = P.road; ctx.fillRect(0, ry, W, rh);
-      const offR = s * ppm * 0.45;
-      ctx.fillStyle = P.lane;
-      for (let x = -(offR % 46); x < W; x += 46) ctx.fillRect(x, ry + rh / 2 - 0.5, 20, 1);
-    }
-    const gapG = railY - horizonY, curbY = railY - gapG * 0.2;
-
-    // dense urban zone: tall blocks close to the track
-    const uzList = [zones.urban, ...trail.urban].filter(Boolean).map(zoneWorld);
-    const izList = [zones.wx, ...trail.wx].filter(Boolean).map(z => [...zoneWorld(z), z.kind]);
-    const inList = (list, m) => list.some(z => m > z[0] && m < z[1]);
-    const inIce = m => izList.some(z => m > z[0] && m < z[1]);
-    for (const uz of uzList) {
-      const ua = Math.max(uz[0] - 6, Math.floor((mMin - 40) / 16) * 16), ub = Math.min(uz[1] + 6, mMax + 40);
-      if (X(ub) > -50 && X(ua) < W + 50) {
-        for (let m = Math.floor(ua / 16) * 16; m < ub; m += 16) {
-          if (m < ua - 8) continue;
-          const k = Math.round(m / 16), bw = (11 + hash(k * 3.7) * 5) * ppm;
-          const edge = Math.min(1, (m - (uz[0] - 6)) / 30, (uz[1] + 6 - m) / 30);
-          const bh = (railY - H * 0.2) * (0.5 + 0.5 * hash(k * 5.3)) * Math.max(0.35, edge);
-          const bx = X(m), by = curbY + 1 - bh;
-          ctx.fillStyle = P.urban; ctx.fillRect(bx, by, bw, bh);
-          ctx.fillStyle = P.urbanEdge; ctx.fillRect(bx, by, bw, Math.max(3, 0.25 * ppm));
-          const cw = 1.6 * ppm, chh = 2.2 * ppm;
-          for (let i = 0; i < Math.floor((bw - 0.8 * ppm) / cw); i++) for (let j = 0; j < Math.floor((bh - 1.5 * ppm) / chh); j++) {
-            const q = hash(k * 91 + i * 13 + j * 7);
-            if (night) { if (q > 0.72) { ctx.fillStyle = `rgba(240,200,140,${0.22 + hash(q * 7) * 0.3})`; ctx.fillRect(bx + 0.6 * ppm + i * cw, by + 1 * ppm + j * chh, 0.8 * ppm, 1.1 * ppm); } }
-            else if (q > 0.1) { ctx.fillStyle = P.win; ctx.fillRect(bx + 0.6 * ppm + i * cw, by + 1 * ppm + j * chh, 0.8 * ppm, 1.1 * ppm); }
-          }
-        }
-      }
-    }
-
-    // curb and low fence in front of the buildings
-    ctx.fillStyle = P.curb; ctx.fillRect(0, curbY, W, Math.max(2, gapG * 0.025));
-    const offC = s * ppm * 0.92;
-    ctx.fillStyle = P.fence;
-    for (let x = -(offC % 26); x < W; x += 26) ctx.fillRect(x, curbY - gapG * 0.06, 1.5, gapG * 0.06);
-    ctx.fillRect(0, curbY - gapG * 0.05, W, 1);
-
-    // tunnel (cutaway, behind the tram)
-    const x0 = X(T0), x1 = X(T1);
-    const roofTop = railY - 7.7 * ppm, roofBot = railY - 6.5 * ppm;
-    const tunnelVisible = TUNNEL_ON && x1 > -80 && x0 < W + 80;
-    if (tunnelVisible) {
-      ctx.fillStyle = P.earth;
-      ctx.beginPath();
-      ctx.moveTo(x0 - 6 * ppm, railY); ctx.lineTo(x0, roofTop - 1.6 * ppm); ctx.lineTo(x1, roofTop - 1.6 * ppm); ctx.lineTo(x1 + 6 * ppm, railY);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = P.tint; ctx.fillRect(x0, roofBot, x1 - x0, railY - roofBot + 0.6 * ppm);
-      ctx.fillStyle = P.tunnel;
-      ctx.fillRect(x0, roofTop, x1 - x0, roofBot - roofTop);
-      ctx.fillRect(x0, roofTop, 1.3 * ppm, railY - roofTop);
-      ctx.fillRect(x1 - 1.3 * ppm, roofTop, 1.3 * ppm, railY - roofTop);
-      ctx.fillStyle = P.lamp;
-      for (let m = Math.ceil(Math.max(T0 + 4, mMin) / 12) * 12; m < Math.min(T1 - 4, mMax); m += 12) {
-        ctx.fillRect(X(m) - 0.35 * ppm, roofBot, 0.7 * ppm, Math.max(2, 0.12 * ppm));
-      }
-    }
-
-    // ---- elevation: the camera follows the tram's height, the track ahead rises or dips ----
-    const EX = 1.6, zS = lerpR(ROUTE.Z, s);
-    // soft limits so a dip never runs into the route bar at the bottom and a rise stays on screen
-    const maxDown = Math.max(12, H - 62 - railY - 1.1 * ppm), maxUp = railY * 0.35;
-    const YO = m => {
-      const y = -(lerpR(ROUTE.Z, m) - zS) * ppm * EX;
-      return y > 0 ? maxDown * Math.tanh(y / maxDown) : maxUp * Math.tanh(y / maxUp);
-    };
-    const RY = m => railY + YO(m);
-    const m0 = Math.floor(mMin / 2) * 2;
-
-    // catenary: contact wire follows the track
-    ctx.strokeStyle = P.wire; ctx.lineWidth = 1;
-    ctx.beginPath(); for (let m = m0; m <= mMax; m += 2) ctx.lineTo(X(m), wireY + YO(m)); ctx.stroke();
-    const SP = 35;
-    const outside = m => !TUNNEL_ON || m < T0 - 2 || m > T1 + 2;
-    for (let m = Math.floor(mMin / SP) * SP; m <= mMax; m += SP) {
-      const n = m + SP, yo = YO(m);
-      if (outside(m)) {
-        const x = X(m);
-        ctx.fillStyle = P.pole;
-        ctx.fillRect(x - Math.max(1.5, 0.1 * ppm), railY + yo - 7.2 * ppm, Math.max(3, 0.2 * ppm), 7.5 * ppm);
-        ctx.fillRect(x - Math.max(3, 0.25 * ppm), railY + yo - 0.1 * ppm, Math.max(6, 0.5 * ppm), 0.35 * ppm);
-        if (night) {
-          const lx = x - 0.9 * ppm, lyy = railY + yo - 7.2 * ppm;
-          const LR = 5 * ppm;
-          const lg = ctx.createRadialGradient(lx, lyy, 0, lx, lyy, LR);
-          lg.addColorStop(0, 'rgba(255,214,150,0.26)'); lg.addColorStop(0.15, 'rgba(255,214,150,0.14)');
-          lg.addColorStop(0.4, 'rgba(255,214,150,0.05)'); lg.addColorStop(0.7, 'rgba(255,214,150,0.012)'); lg.addColorStop(1, 'rgba(255,214,150,0)');
-          ctx.fillStyle = lg; ctx.fillRect(lx - LR, lyy - LR, LR * 2, LR * 2);
-          ctx.fillStyle = P.pole; ctx.fillRect(x - 1.2 * ppm, lyy - 0.12 * ppm, 1.2 * ppm, 0.12 * ppm + 1);
-          ctx.fillStyle = '#ffe2ad'; ctx.fillRect(lx - 0.25 * ppm, lyy, 0.5 * ppm, Math.max(2, 0.1 * ppm));
-        }
-      }
-      if (outside(m) && outside(n)) {
-        const xa = X(m), xb = X(n), ya = railY + yo - 6.6 * ppm, yb = railY + YO(n) - 6.6 * ppm;
-        ctx.strokeStyle = P.wire; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(xa, ya); ctx.quadraticCurveTo((xa + xb) / 2, (ya + yb) / 2 + 1.4 * ppm, xb, yb); ctx.stroke();
-        for (let k = 1; k < 5; k++) {
-          const t = k / 5, xd = xa + (xb - xa) * t;
-          const yd = (1 - t) * (1 - t) * ya + 2 * (1 - t) * t * ((ya + yb) / 2 + 1.4 * ppm) + t * t * yb;
-          ctx.beginPath(); ctx.moveTo(xd, yd); ctx.lineTo(xd, wireY + YO(m + SP * t)); ctx.stroke();
-        }
-      }
-    }
-
-    // embankment so rises and dips sit on solid ground
-    ctx.fillStyle = P.g2;
-    ctx.beginPath(); ctx.moveTo(-10, H);
-    for (let m = m0; m <= mMax; m += 2) ctx.lineTo(X(m), RY(m) + 0.5 * ppm);
-    ctx.lineTo(W + 10, H); ctx.closePath(); ctx.fill();
-
-    // platforms with waiting passengers (behind the track)
-    PLATFORMS.forEach((q, qi) => {
-      const pa = X(q.p - 15), pb = X(q.p + 15);
-      if (pb < -40 || pa > W + 40) return;
-      const yb = RY(q.p);
-      ctx.fillStyle = P.plat; ctx.fillRect(pa, yb - 0.55 * ppm, pb - pa, 0.55 * ppm);
-      ctx.fillStyle = P.platEdge; ctx.fillRect(pa, yb - 0.55 * ppm, pb - pa, Math.max(2, 0.08 * ppm));
-      const sa = X(q.p + 5), sb = X(q.p + 12), roofY = yb - 3.4 * ppm;
-      ctx.fillStyle = P.pole;
-      ctx.fillRect(sa, roofY, Math.max(2, 0.12 * ppm), 2.85 * ppm);
-      ctx.fillRect(sb - Math.max(2, 0.12 * ppm), roofY, Math.max(2, 0.12 * ppm), 2.85 * ppm);
-      ctx.fillStyle = P.roofBox; ctx.fillRect(sa - 0.4 * ppm, roofY - 0.2 * ppm, sb - sa + 0.8 * ppm, 0.3 * ppm);
-      ctx.fillStyle = P.tint; ctx.fillRect(sa, roofY + 0.1 * ppm, sb - sa, 2.75 * ppm);
-      // passengers: boarding ones walk to the nearest door and disappear
-      let n = pax[qi], boardP = 0;
-      if (qi === boardIdx && dwellTotal > 0) boardP = Math.min(1, Math.max(0, 1 - dwell / dwellTotal) * 1.25);
-      for (let i = 0; i < n; i++) {
-        const hsh = hash(qi * 37 + i * 3.3);
-        let px = q.p - 12 + hsh * 24;
-        if (qi === boardIdx) {
-          const door = [-7.6, 0, 7.6].reduce((b, d) => Math.abs(q.p + d - px) < Math.abs(q.p + b - px) ? d : b, 0);
-          const my = Math.min(1, Math.max(0, boardP * 1.6 - hash(i * 7.7) * 0.6));
-          if (my >= 1) continue;
-          px = px + (q.p + door - px) * my;
-        }
-        const x = X(px), hgt = (1.5 + hash(i * 5.1 + qi) * 0.3) * ppm, y = yb - 0.55 * ppm;
-        const cols = night ? ['#39424e', '#4a4452', '#3d4a47', '#514a3f'] : ['#7d8793', '#8e7f8f', '#7a8f88', '#98876f'];
-        ctx.fillStyle = cols[Math.floor(hash(i * 2.9 + qi) * 4)];
-        ctx.fillRect(x - 0.18 * ppm, y - hgt * 0.78, 0.36 * ppm, hgt * 0.78);
-        ctx.beginPath(); ctx.arc(x, y - hgt * 0.78 - 0.2 * ppm, 0.2 * ppm, 0, Math.PI * 2); ctx.fill();
-      }
-      const sx = X(q.p - 13);
-      ctx.fillStyle = P.pole; ctx.fillRect(sx - 1, yb - 3.6 * ppm, 2, 3.05 * ppm);
-      ctx.font = `500 ${Math.max(10, Math.min(13, 0.6 * ppm))}px system-ui, "Segoe UI", Roboto, sans-serif`;
-      const tw = ctx.measureText(q.n).width + 12;
-      ctx.fillStyle = P.bogie; ctx.fillRect(sx - tw / 2, yb - 4.5 * ppm, tw, Math.max(16, 0.9 * ppm));
-      ctx.fillStyle = '#f2f4f6'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(q.n, sx, yb - 4.5 * ppm + Math.max(16, 0.9 * ppm) / 2);
-      ctx.textBaseline = 'alphabetic';
-    });
-
-    // track bed
-    ctx.fillStyle = P.ballast;
-    ctx.beginPath();
-    for (let m = m0; m <= mMax; m += 2) ctx.lineTo(X(m), RY(m));
-    for (let m = Math.floor(mMax / 2) * 2; m >= m0; m -= 2) ctx.lineTo(X(m), RY(m) + 0.55 * ppm);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = P.sleeper;
-    for (let m = Math.floor(mMin / 0.75) * 0.75; m <= mMax; m += 0.75) ctx.fillRect(X(m), RY(m) + 1, Math.max(2, 0.25 * ppm), Math.max(2, 0.22 * ppm));
-    const railLine = (a, b, off, col, lw) => {
-      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath();
-      for (let m = a; m <= b; m += 1) ctx.lineTo(X(m), RY(m) + off);
-      ctx.stroke();
-    };
-    railLine(m0, mMax, -0.07 * ppm, P.rail, Math.max(2, 0.14 * ppm));
-    // wet or icy rails: only the rail itself changes colour, fading in and out at the ends
-    for (const iz of izList) {
-      const a = Math.max(Math.ceil(iz[0]), Math.floor(mMin)), b = Math.min(Math.floor(iz[1]), Math.ceil(mMax));
-      if (b <= a) continue;
-      const rgb = iz[2] === 'wet' ? '72,128,182' : '222,240,252';
-      ctx.lineWidth = Math.max(2, 0.16 * ppm); ctx.lineCap = 'butt';
-      for (let m = a; m < b; m++) {
-        const al = Math.min(1, (m - iz[0]) / 20, (iz[1] - m - 1) / 20);
-        if (al <= 0) continue;
-        ctx.strokeStyle = `rgba(${rgb},${(iz[2] === 'wet' ? 0.85 : 0.95) * al})`;
-        ctx.beginPath(); ctx.moveTo(X(m), RY(m) - 0.08 * ppm); ctx.lineTo(X(m + 1) + 0.5, RY(m + 1) - 0.08 * ppm); ctx.stroke();
-      }
-    }
-
-    // data line along the rail
-    const flow = time * 0.0025;
-    ctx.lineWidth = Math.max(2, 0.1 * ppm); ctx.lineCap = 'round';
-    for (let m = Math.floor(mMin / 2) * 2; m <= mMax; m += 2) {
-      const mm = m + (flow % 2);
-      const tun = inList(uzList, mm) || (TUNNEL_ON && mm > T0 && mm < T1), wt = inIce(mm);
-      ctx.strokeStyle = `rgba(${tun ? WARN : wt ? WET : OK},0.75)`;
-      ctx.beginPath(); ctx.moveTo(X(mm), RY(mm) + 0.8 * ppm); ctx.lineTo(X(mm + 1.1), RY(mm + 1.1) + 0.8 * ppm); ctx.stroke();
-    }
-    ctx.lineCap = 'butt';
-
-    // satellites and links
-    const top = railY - 0.62 * ppm - 2.75 * ppm;
-    const ant = { x: X(s + 9.5), y: top - 0.2 * ppm };
-    const tsec = time / 1000;
-    const sats = SATS.map(q => {
-      const u = (q.o + tsec * q.sp) % 1;
-      const xMin = mobile ? -40 : W * 0.5;
-      const x = xMin + u * (W + 40 - xMin);
-      const yTop = mobile ? H * (0.36 + q.h * 0.6) : H * q.h;
-      const sag = (horizonY - yTop) * (mobile ? 0.35 : 0.5);
-      const y = yTop + sag * (2 * u - 1) ** 2;
-      const vis = Math.min(1, Math.sin(Math.PI * u) * 3);
-      return [x, y, vis];
-    });
-    ctx.setLineDash([2, 6]); ctx.lineDashOffset = -time * 0.03;
-    sats.forEach(([sx, sy, vis]) => {
-      if (gnssA * vis > 0.02) {
-        ctx.strokeStyle = `rgba(${OK},${0.55 * gnssA * vis})`; ctx.lineWidth = 1.2;
-        ctx.beginPath(); ctx.moveTo(ant.x, ant.y); ctx.lineTo(sx, sy); ctx.stroke();
-      }
-    });
-    ctx.setLineDash([]);
-    sats.forEach(([sx, sy, vis]) => {
-      ctx.save(); ctx.translate(sx, sy); ctx.globalAlpha = (0.25 + 0.75 * gnssA) * vis;
-      ctx.fillStyle = P.label; ctx.strokeStyle = P.label; ctx.lineWidth = 1.2;
-      ctx.rotate(Math.PI / 4); ctx.fillRect(-3.5, -3.5, 7, 7); ctx.rotate(-Math.PI / 4);
-      ctx.strokeRect(-15, -2.5, 8, 5); ctx.strokeRect(7, -2.5, 8, 5);
-      if (gnssA < 0.5) {
-        ctx.strokeStyle = `rgba(${WARN},${1 - gnssA * 2})`; ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.moveTo(-5, 10); ctx.lineTo(5, 20); ctx.moveTo(5, 10); ctx.lineTo(-5, 20); ctx.stroke();
-      }
-      ctx.restore();
-    });
-
-    ctx.save();
-    ctx.translate(X(s), railY); ctx.rotate(-Math.atan(gradeAt(s) * 1.6)); ctx.translate(-X(s), -railY);
-    drawTram(P, ppm, railY, X, wireY, inT);
-    ctx.restore();
-
-    // weather particles
-    if (wxA > 0.01) drawWeather(time);
-
-    // readability fade behind the dashboard
-    const fw = mobile ? W : Math.min(W, W * 0.62 + 120), fh = mobile ? H * 0.72 : H * 0.66;
-    g = ctx.createLinearGradient(0, 0, fw, 0);
-    g.addColorStop(0, `rgba(${P.fog},0.9)`); g.addColorStop(mobile ? 1 : 0.7, `rgba(${P.fog},0.8)`); g.addColorStop(1, `rgba(${P.fog},${mobile ? 0.8 : 0})`);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, fw, fh);
-    for (let i = 0; i < 12; i++) { ctx.globalAlpha = 1 - (i + 1) / 13; ctx.fillRect(0, fh + i * H * 0.008, fw, H * 0.008); }
-    ctx.globalAlpha = 1;
-    if (fade > 0) { ctx.fillStyle = `rgba(${P.fog},${fade})`; ctx.fillRect(0, 0, W, H); }
-  }
-
-  const FLAKES = Array.from({ length: 220 }, (_, i) => ({ x: hash(i * 1.1), y: hash(i * 2.3), z: 0.4 + hash(i * 3.7) * 0.6, ph: hash(i * 4.9) * 6.28 }));
-  let lastWx = 0;
-  function drawWeather(time) {
-    const t = time / 1000, dt = Math.min(0.05, t - lastWx || 0); lastWx = t;
-    const snow = weather === 'snow' || (weather === 'clear' && zones.wx === null && lastKind === 'snow');
-    if (weather !== 'clear') lastKind = weather;
-    const kind = weather === 'clear' ? lastKind : weather;
-    const n = Math.round(FLAKES.length * wxA);
-    if (kind === 'snow') {
-      ctx.fillStyle = night ? 'rgba(230,236,245,0.85)' : 'rgba(255,255,255,0.95)';
-      for (let i = 0; i < n; i++) {
-        const f = FLAKES[i];
-        f.y += dt * (0.05 + 0.08 * f.z); f.x += dt * (0.01 * Math.sin(t + f.ph) - v * 0.004 * f.z);
-        if (f.y > 1) { f.y -= 1; f.x = Math.random(); } if (f.x < 0) f.x += 1; if (f.x > 1) f.x -= 1;
-        const r = 1 + 2.2 * f.z;
-        ctx.globalAlpha = 0.35 + 0.6 * f.z;
-        ctx.beginPath(); ctx.arc(f.x * W, f.y * H, r, 0, Math.PI * 2); ctx.fill();
-      }
-    } else if (kind === 'rain') {
-      ctx.strokeStyle = night ? 'rgba(170,190,215,0.55)' : 'rgba(90,110,135,0.45)'; ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let i = 0; i < n; i++) {
-        const f = FLAKES[i];
-        f.y += dt * (0.9 + 0.8 * f.z); f.x -= dt * (0.08 + v * 0.004);
-        if (f.y > 1) { f.y -= 1; f.x = Math.random(); } if (f.x < 0) f.x += 1;
-        const x = f.x * W, y = f.y * H, L = 10 + 14 * f.z;
-        ctx.moveTo(x, y); ctx.lineTo(x - L * 0.18, y + L);
-      }
-      ctx.globalAlpha = 1; ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  }
-  let lastKind = 'snow';
-
-  const SPARKS = [];
-  function drawTram(P, ppm, railY, X, wireY, inT) {
-    const L = 26, cx = X(s);
-    const left = X(s - L / 2), right = X(s + L / 2);
-    const bottom = railY - 0.62 * ppm, top = bottom - 2.75 * ppm;
-    const r = 0.5 * ppm, nose = 1.3 * ppm;
-
-
-    // pantograph
-    const bx = X(s + 0.4), by = top - 0.4 * ppm;
-    ctx.strokeStyle = P.bogie; ctx.lineWidth = Math.max(1.5, 0.08 * ppm);
-    const kneeX = bx + 1.1 * ppm, kneeY = by - (by - wireY) * 0.5;
-    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kneeX, kneeY); ctx.lineTo(bx - 0.2 * ppm, wireY + 0.1 * ppm); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(bx - 1 * ppm, wireY + 0.1 * ppm); ctx.lineTo(bx + 0.7 * ppm, wireY + 0.1 * ppm); ctx.stroke();
-    // pantograph sparks: at night, more often in rain or snow and under traction
-    const sparkP = (night ? 1 : 0.25) * (weather !== 'clear' ? 3 : 0.6) * (handle === 'TRACTION' ? 2 : 0.6) * (v > 1 ? 1 : 0);
-    if (Math.random() < 0.02 * sparkP) {
-      const n = 3 + Math.floor(Math.random() * 6);
-      for (let i = 0; i < n; i++) SPARKS.push({ x: bx - 0.2 * ppm + (Math.random() - 0.5) * 0.6 * ppm, y: wireY + 0.1 * ppm, vx: -(0.5 + Math.random() * 2.2) * ppm, vy: (Math.random() - 0.7) * 1.6 * ppm, life: 0.25 + Math.random() * 0.35, age: 0, flash: i === 0 });
-    }
-    const nowS = performance.now() / 1000, sdt = Math.min(0.05, nowS - (SPARKS.t || nowS)); SPARKS.t = nowS;
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = SPARKS.length - 1; i >= 0; i--) {
-      const p = SPARKS[i]; p.age += sdt;
-      if (p.age > p.life) { SPARKS.splice(i, 1); continue; }
-      p.vy += 4 * ppm * sdt; p.x += p.vx * sdt; p.y += p.vy * sdt;
-      const k = 1 - p.age / p.life;
-      if (p.flash && p.age < 0.08) {
-        const fr = 1.4 * ppm, fg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, fr);
-        fg.addColorStop(0, `rgba(190,215,255,${0.55 * (1 - p.age / 0.08)})`); fg.addColorStop(1, 'rgba(190,215,255,0)');
-        ctx.fillStyle = fg; ctx.fillRect(p.x - fr, p.y - fr, fr * 2, fr * 2);
-      }
-      ctx.fillStyle = `rgba(215,230,255,${0.9 * k})`;
-      ctx.fillRect(p.x, p.y, 1.6, 1.6);
-    }
-    ctx.restore();
-
-    // roof boxes
-    ctx.fillStyle = P.roofBox; ctx.strokeStyle = P.bodyStroke; ctx.lineWidth = 1;
-    [[-2.6, 2.6], [-11, -7.4], [7.4, 11]].forEach(([a, b]) => {
-      ctx.beginPath(); ctx.roundRect(X(s + a), top - 0.4 * ppm, (b - a) * ppm, 0.5 * ppm, 0.15 * ppm); ctx.fill(); ctx.stroke();
-    });
-
-    // body path
-    const body = new Path2D();
-    body.moveTo(left + nose, top);
-    body.lineTo(right - nose, top);
-    body.quadraticCurveTo(right, top, right, top + nose);
-    body.lineTo(right, bottom - r);
-    body.quadraticCurveTo(right, bottom, right - r, bottom);
-    body.lineTo(left + r, bottom);
-    body.quadraticCurveTo(left, bottom, left, bottom - r);
-    body.lineTo(left, top + nose);
-    body.quadraticCurveTo(left, top, left + nose, top);
-    body.closePath();
-    ctx.fillStyle = P.body; ctx.fill(body);
-
-    ctx.save(); ctx.clip(body);
-    // accent stripe
-    ctx.fillStyle = est.st === 'DEGRADED' ? '#D6443A' : est.st === 'SLIP' ? `rgb(${WET})` : (inT || noG) ? `rgb(${WARN})` : `rgb(${OK})`;
-    ctx.fillRect(left, bottom - 0.62 * ppm, right - left, 0.2 * ppm);
-    // window band with pillars
-    const wTop = top + 0.45 * ppm, wH = 1.1 * ppm;
-    ctx.fillStyle = P.glass; ctx.fillRect(X(s - 11.6), wTop, 23.2 * ppm, wH);
-    ctx.fillStyle = P.body;
-    for (let m = -11.6; m <= 11.6; m += 1.75) ctx.fillRect(X(s + m) - 0.1 * ppm, wTop, 0.2 * ppm, wH);
-    // windshields
-    ctx.fillStyle = P.glass;
-    ctx.fillRect(left, top + 0.25 * ppm, 1.25 * ppm, 1.5 * ppm);
-    ctx.fillRect(right - 1.25 * ppm, top + 0.25 * ppm, 1.25 * ppm, 1.5 * ppm);
-    // doors
-    [-7.6, 0, 7.6].forEach(d => {
-      const dx = X(s + d - 0.7), dw = 1.4 * ppm, dt = top + 0.35 * ppm, dh = bottom - 0.15 * ppm - dt;
-      ctx.fillStyle = P.body; ctx.fillRect(dx - 0.08 * ppm, dt - 0.08 * ppm, dw + 0.16 * ppm, dh + 0.1 * ppm);
-      ctx.fillStyle = P.door; ctx.fillRect(dx, dt, dw, dh);
-      ctx.fillStyle = P.body; ctx.fillRect(dx + dw / 2 - 0.05 * ppm, dt, 0.1 * ppm, dh);
-    });
-    // articulations
-    ctx.restore();
-    ctx.strokeStyle = P.bodyStroke; ctx.lineWidth = 1; ctx.stroke(body);
-
-    // lights
-    const fx = dir >= 0 ? right - 0.35 * ppm : left + 0.35 * ppm;
-    const bxL = dir >= 0 ? left + 0.35 * ppm : right - 0.35 * ppm;
-    const ly = bottom - 0.45 * ppm;
-    const lightsOn = night || inT;
-    if (lightsOn) {
-      // soft diffused beam along the track
-      const len = (night ? 40 : 24) * ppm, k = night ? 1 : 0.7;
-      ctx.save();
-      ctx.filter = `blur(${Math.max(6, 0.7 * ppm)}px)`;
-      const bg = ctx.createLinearGradient(fx, 0, fx + dir * len, 0);
-      bg.addColorStop(0, `rgba(255,236,196,${0.55 * k})`);
-      bg.addColorStop(0.15, `rgba(255,236,196,${0.3 * k})`);
-      bg.addColorStop(0.45, `rgba(255,236,196,${0.12 * k})`);
-      bg.addColorStop(0.75, `rgba(255,236,196,${0.04 * k})`);
-      bg.addColorStop(1, 'rgba(255,236,196,0)');
-      ctx.fillStyle = bg;
-      ctx.beginPath();
-      ctx.moveTo(fx, ly - 0.1 * ppm);
-      ctx.quadraticCurveTo(fx + dir * len * 0.5, ly - 1.4 * ppm, fx + dir * len, railY - 2.8 * ppm);
-      ctx.lineTo(fx + dir * len, railY + 0.5 * ppm);
-      ctx.quadraticCurveTo(fx + dir * len * 0.4, railY + 0.2 * ppm, fx, ly + 0.15 * ppm);
-      ctx.closePath(); ctx.fill();
-      ctx.restore();
-      // light falling on the rails ahead
-      const px = fx + dir * len * 0.3, pr = len * 0.55;
-      ctx.save(); ctx.translate(px, railY); ctx.scale(1, 0.06);
-      const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, pr);
-      pool.addColorStop(0, `rgba(255,236,196,${0.22 * k})`); pool.addColorStop(0.5, `rgba(255,236,196,${0.07 * k})`); pool.addColorStop(1, 'rgba(255,236,196,0)');
-      ctx.fillStyle = pool; ctx.fillRect(-pr, -pr, pr * 2, pr * 2);
-      ctx.restore();
-    }
-    ctx.fillStyle = lightsOn ? '#fff6e0' : 'rgba(255,243,212,0.7)'; ctx.beginPath(); ctx.ellipse(fx - dir * 0.04 * ppm, ly, Math.max(1, 0.06 * ppm), Math.max(1.5, 0.1 * ppm), 0, 0, Math.PI * 2); ctx.fill();
-    if (lightsOn) {
-      const tg = ctx.createRadialGradient(bxL, ly, 0, bxL, ly, 0.6 * ppm);
-      tg.addColorStop(0, 'rgba(214,68,58,0.6)'); tg.addColorStop(1, 'rgba(214,68,58,0)');
-      ctx.fillStyle = tg; ctx.fillRect(bxL - 0.6 * ppm, ly - 0.6 * ppm, 1.2 * ppm, 1.2 * ppm);
-    }
-    ctx.fillStyle = '#d6443a'; ctx.beginPath(); ctx.arc(bxL, ly, Math.max(1.5, 0.1 * ppm), 0, Math.PI * 2); ctx.fill();
-    // antenna
-    ctx.fillStyle = P.bogie; ctx.fillRect(X(s + 9.5) - 1, top - 0.35 * ppm, 2, 0.35 * ppm);
-    ctx.beginPath(); ctx.arc(X(s + 9.5), top - 0.35 * ppm, Math.max(2, 0.1 * ppm), 0, Math.PI * 2); ctx.fill();
-
-    // bogies and wheels
-    const wr = 0.36 * ppm, wy = railY - 0.14 * ppm - wr, ang = wheelAng;
-    [-10.2, 0, 10.2].forEach(bp => {
-      ctx.fillStyle = P.bogie;
-      ctx.fillRect(X(s + bp - 1.35), bottom - 0.02 * ppm, 2.7 * ppm, 0.3 * ppm);
-      [-0.9, 0.9].forEach(w => {
-        const wx = X(s + bp + w);
-        ctx.fillStyle = P.bogie; ctx.beginPath(); ctx.arc(wx, wy, wr, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = P.hub; ctx.lineWidth = Math.max(1, 0.06 * ppm);
-        ctx.beginPath();
-        for (let k = 0; k < 2; k++) {
-          const t = ang + k * Math.PI / 2;
-          ctx.moveTo(wx - Math.cos(t) * wr * 0.75, wy - Math.sin(t) * wr * 0.75);
-          ctx.lineTo(wx + Math.cos(t) * wr * 0.75, wy + Math.sin(t) * wr * 0.75);
-        }
-        ctx.stroke();
-        ctx.fillStyle = P.hub; ctx.beginPath(); ctx.arc(wx, wy, wr * 0.22, 0, Math.PI * 2); ctx.fill();
-      });
-    });
-  }
-
-
-  // ---------- board ----------
-  const ST_RU = { TRANSITION: 'Смена режима', COAST: 'Выбег', TRACTION: 'Тяга', BRAKE: 'Торможение', SLIP: 'Проскальзывание', STANDSTILL: 'Стоянка', DEGRADED: 'Отказ датчика' };
-  const ST_SUB = {
-    TRANSITION: 'привод набирает или сбрасывает момент',
-    COAST: 'колесо показывает точную скорость', TRACTION: 'колесо может только завышать',
-    BRAKE: 'колесо может только занижать', SLIP: 'колесо срывается, его показания отвергнуты',
-    STANDSTILL: 'вагон стоит, скорость ноль', DEGRADED: 'нечему верить, считаем по модели'
-  };
-  const ST_ICO = {
-    TRANSITION: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h13l-3-3M20 15H7l3 3"/></svg>',
-    COAST: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h13"/><path d="m13 7 5 5-5 5"/></svg>',
-    TRACTION: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>',
-    BRAKE: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M8 12h8"/></svg>',
-    SLIP: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M3 15c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>',
-    STANDSTILL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M10 16V8h3a2.5 2.5 0 0 1 0 5h-3"/></svg>',
-    DEGRADED: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>'
-  };
-  window.__tvIcons = ST_ICO;
-  const ST_COL = { TRANSITION: '#7E8B98', COAST: '#0E9AA7', TRACTION: '#9AA7B4', BRAKE: '#6B7785', SLIP: '#5AA9D6', STANDSTILL: '#3C4450', DEGRADED: '#D6443A' };
-  const ST_KEYS = Object.keys(ST_COL);
-  const HSUB = { COAST: 'колесо = точная скорость', TRACTION: 'колесо = верхняя граница', BRAKE: 'колесо = нижняя граница', STAND: 'скорость = 0' };
-  const WIN = 30, SAMPLE = 0.1, NH = WIN / SAMPLE;
-  const hist = Array.from({ length: 300 }, () => ({ vk: 0, wk: 0, ev: 0, lo: 0, hi: 0, st: 'STANDSTILL' }));
-  let sampleAcc = 0;
-
-  function zoneBar(el, z) {
-    if (!z) { el.style.display = 'none'; return; }
-    if (!isFinite(z.b) && D >= z.a) { el.style.display = ''; el.style.left = '0%'; el.style.width = '100%'; return; }
-    const a = ((s + z.a - D) % TOTAL + TOTAL) % TOTAL, len = z.b - z.a;
-    el.style.display = ''; el.style.left = (a / TOTAL * 100) + '%';
-    el.style.width = (Math.min(len, TOTAL - a) / TOTAL * 100) + '%';
-  }
-  function zoneNote(z) {
-    if (!z) return '';
-    if (D < z.a) return `через ${Math.ceil(z.a - D)} м`;
-    if (D < z.b) return 'сейчас';
-    return 'позади';
-  }
-  const edgeFade = x => Math.min(1, x / 0.1, (1 - x) / 0.1);
-  $('tStops').innerHTML = PLATFORMS.map(q => `<div class="absolute top-1/2 w-[2px] h-[10px] -mt-[5px] -ml-[1px]" title="${q.n}" style="left:${q.p / TOTAL * 100}%;background:var(--fg);opacity:${(.45 * Math.max(.25, edgeFade(q.p / TOTAL))).toFixed(2)}"></div>`).join('');
-  $('tNames').innerHTML = PLATFORMS.map(q => `<span class="absolute whitespace-nowrap" style="left:${q.p / TOTAL * 100}%;transform:translateX(${q.p / TOTAL < 0.05 ? '-4px' : '-50%'});opacity:${(.6 * Math.max(.5, edgeFade(q.p / TOTAL))).toFixed(2)}">${q.n}</span>`).join('');
-
-  let mapOn = false;
-  function setMap(on) {
-    mapOn = on; $('map').style.display = on ? '' : 'none';
-    layoutBoard();
-  }
-  function layoutBoard() {
-    const c = $('ctrl'), pr = $('pres'), mp = $('map');
-    const presOn = pr.style.display !== 'none';
-    if (innerWidth >= 900) {
-      c.classList.add('ctrl-side');
-      let top = 80;
-      if (presOn) top += pr.offsetHeight + 12;
-      mp.style.top = top + 'px';
-      if (mapOn) top += mp.offsetHeight + 12;
-      c.style.top = top + 'px';
-    } else { c.classList.remove('ctrl-side'); c.style.top = ''; mp.style.top = ''; }
-  }
-  let mapHover = -1;
-  const mapGeo = { sc: 1, ox: 0, oy: 0 };
-  function mapIdxAt(ev) {
-    const c = $('mapC'), r = c.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
-    let best = -1, bd = 1e9;
-    for (let i = 0; i < RN; i += 2) {
-      const x = mapGeo.ox + ROUTE.X[i] * mapGeo.sc, y = mapGeo.oy + ROUTE.Y[i] * mapGeo.sc, d = (x - mx) ** 2 + (y - my) ** 2;
-      if (d < bd) { bd = d; best = i; }
-    }
-    return bd < 900 ? best : -1;
-  }
-  $('mapC').addEventListener('mousemove', e => { mapHover = mapIdxAt(e); });
-  $('mapC').addEventListener('mouseleave', () => { mapHover = -1; });
-  $('profC').addEventListener('mousemove', e => { const r = e.currentTarget.getBoundingClientRect(); mapHover = Math.max(0, Math.min(RN - 1, Math.round((e.clientX - r.left) / r.width * RN))); });
-  $('profC').addEventListener('mouseleave', () => { mapHover = -1; });
-
-  function segColor(i) {
-    const R = 1 / Math.max(1e-6, Math.abs(ROUTE.K[i]));
-    return R < 250 ? '#E8C15A' : null;
-  }
-  function drawMap() {
-    if (!mapOn) return;
-    const [c, w, hh] = fit($('mapC'));
-    const css = getComputedStyle(document.documentElement), fg = css.getPropertyValue('--fg').trim();
-    c.clearRect(0, 0, w, hh);
-    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-    for (let i = 0; i < RN; i++) { x0 = Math.min(x0, ROUTE.X[i]); x1 = Math.max(x1, ROUTE.X[i]); y0 = Math.min(y0, ROUTE.Y[i]); y1 = Math.max(y1, ROUTE.Y[i]); }
-    const padX = 68, padY = 16, sc = Math.min((w - padX * 2) / (x1 - x0), (hh - padY * 2) / (y1 - y0));
-    const ox = (w - (x1 - x0) * sc) / 2 - x0 * sc, oy = (hh - (y1 - y0) * sc) / 2 - y0 * sc;
-    Object.assign(mapGeo, { sc, ox, oy });
-    const P = i => [ox + ROUTE.X[i] * sc, oy + ROUTE.Y[i] * sc];
-    // base line
-    c.lineCap = 'round'; c.lineJoin = 'round';
-    c.strokeStyle = fg; c.globalAlpha = .28; c.lineWidth = 5;
-    c.beginPath(); for (let i = 0; i <= RN; i++) c.lineTo(...P(i % RN)); c.stroke(); c.globalAlpha = 1;
-    // curves
-    c.lineWidth = 5; c.strokeStyle = '#E8C15A';
-    for (let i = 0; i < RN; i++) { if (segColor(i)) { c.beginPath(); c.moveTo(...P(i)); c.lineTo(...P((i + 1) % RN)); c.stroke(); } }
-    // zones
-    const zoneSeg = (z, col) => {
-      if (!z) return;
-      const a = s + z.a - D, b = s + z.b - D;
-      c.strokeStyle = col; c.lineWidth = 3; c.beginPath();
-      for (let m = a; m <= Math.min(b, a + 3600); m += RS) { const [i] = ri(m); c.lineTo(...P(i)); }
-      c.stroke();
-    };
-    zoneSeg(zones.wx, '#5AA9D6'); zoneSeg(zones.urban, '#E89B0C');
-    // stops
-    c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.textBaseline = 'middle';
-    const cx0 = ox + (x0 + x1) / 2 * sc;
-    PLATFORMS.forEach(q => {
-      const [i] = ri(q.p), [x, y] = P(i);
-      c.fillStyle = fg; c.beginPath(); c.arc(x, y, 3.2, 0, Math.PI * 2); c.fill();
-      // label outside the loop, to the left or right of the stop
-      const right = x >= cx0;
-      const lx = right ? Math.max(x + 10, ox + x1 * sc + 8) : Math.min(x - 10, ox + x0 * sc - 8);
-      c.strokeStyle = fg; c.globalAlpha = .3; c.lineWidth = 1;
-      c.beginPath(); c.moveTo(x + (right ? 5 : -5), y); c.lineTo(lx, y); c.stroke();
-      c.globalAlpha = .8; c.fillStyle = fg; c.textAlign = right ? 'left' : 'right';
-      c.fillText(q.n, lx + (right ? 4 : -4), y); c.globalAlpha = 1;
-    });
-    // tram
-    const [ti, tf] = ri(s), [ax, ay] = P(ti), [bx, by] = P((ti + 1) % RN);
-    const tx = ax + (bx - ax) * tf, ty = ay + (by - ay) * tf, ang = Math.atan2(by - ay, bx - ax);
-    const pulse = 6 + 3 * Math.abs(Math.sin(performance.now() / 400));
-    c.fillStyle = 'rgba(14,154,167,0.25)'; c.beginPath(); c.arc(tx, ty, pulse, 0, Math.PI * 2); c.fill();
-    c.save(); c.translate(tx, ty); c.rotate(ang);
-    c.fillStyle = '#0E9AA7'; c.beginPath(); c.moveTo(7, 0); c.lineTo(-5, -4.5); c.lineTo(-3, 0); c.lineTo(-5, 4.5); c.closePath(); c.fill();
-    c.restore();
-    // hover marker
-    const tip = $('mapTip');
-    if (mapHover >= 0) {
-      const [hx, hy] = P(mapHover);
-      c.strokeStyle = fg; c.lineWidth = 1.5; c.beginPath(); c.arc(hx, hy, 6, 0, Math.PI * 2); c.stroke();
-      const m = mapHover * RS, R = radiusAt(m), gpm = ROUTE.GR[mapHover] * 1000;
-      tip.innerHTML = `<div class="opacity-60 mb-1">${m} м</div>
-        <div>${R < 250 ? `поворот R ${Math.round(R / 5) * 5} м, до ${Math.round(vlimAt(m) * 3.6)} км/ч` : 'прямой участок'}</div>
-        <div>${Math.abs(gpm) < 5 ? 'ровно' : (gpm > 0 ? 'подъём ' : 'спуск ') + Math.abs(gpm).toFixed(0) + ' ‰'}, высота ${ROUTE.Z[mapHover].toFixed(1)} м</div>`;
-      tip.style.display = 'block';
-      tip.style.left = Math.min(w - tip.offsetWidth, Math.max(0, hx - tip.offsetWidth / 2)) + 'px';
-      tip.style.top = (hy > hh / 2 ? hy - tip.offsetHeight - 12 : hy + 12) + 'px';
-    } else tip.style.display = 'none';
-    drawProfile(fg);
-  }
-  function drawProfile(fg) {
-    const [c, w, hh] = fit($('profC'));
-    c.clearRect(0, 0, w, hh);
-    let z0 = 1e9, z1 = -1e9; for (let i = 0; i < RN; i++) { z0 = Math.min(z0, ROUTE.Z[i]); z1 = Math.max(z1, ROUTE.Z[i]); }
-    const X = i => i / (RN - 1) * w, Y = z => hh - 4 - (z - z0) / (z1 - z0) * (hh - 10);
-    for (let i = 0; i < RN - 1; i++) {
-      const g = ROUTE.GR[i] * 1000;
-      c.fillStyle = Math.abs(g) < 5 ? 'rgba(128,128,128,0.18)' : g > 0 ? 'rgba(224,121,90,0.35)' : 'rgba(111,168,220,0.35)';
-      c.beginPath(); c.moveTo(X(i), hh); c.lineTo(X(i), Y(ROUTE.Z[i])); c.lineTo(X(i + 1), Y(ROUTE.Z[i + 1])); c.lineTo(X(i + 1), hh); c.closePath(); c.fill();
-    }
-    c.strokeStyle = fg; c.globalAlpha = .6; c.lineWidth = 1.2; c.beginPath();
-    for (let i = 0; i < RN; i++) c.lineTo(X(i), Y(ROUTE.Z[i])); c.stroke(); c.globalAlpha = 1;
-    PLATFORMS.forEach(q => { const i = q.p / RS; c.fillStyle = fg; c.globalAlpha = .5; c.fillRect(X(i) - .5, 0, 1, hh); c.globalAlpha = 1; });
-    const ti = (s % 3600) / RS;
-    c.fillStyle = '#0E9AA7'; c.fillRect(X(ti) - 1, 0, 2, hh);
-    c.beginPath(); c.arc(X(ti), Y(lerpR(ROUTE.Z, s)), 4, 0, Math.PI * 2); c.fill();
-    if (mapHover >= 0) { c.fillStyle = fg; c.globalAlpha = .7; c.fillRect(X(mapHover) - .5, 0, 1, hh); c.globalAlpha = 1; }
-    $('mapZ').textContent = `${lerpR(ROUTE.Z, s).toFixed(1)} м`;
-  }
-
-  function fit(c) {
-    const dpr = Math.min(2, devicePixelRatio || 1), w = c.clientWidth, h = c.clientHeight;
-    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
-    const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return [x, w, h];
-  }
-
-  function drawChart() {
-    const [c, w, h] = fit($('bChart'));
-    const css = getComputedStyle(document.documentElement);
-    const fg = css.getPropertyValue('--fg').trim(), line = css.getPropertyValue('--line').trim();
-    c.clearRect(0, 0, w, h);
-    const PL = 28, PR = 4, PT = 6, PB = 16, pw = w - PL - PR, ph = h - PT - PB;
-    let top = 40;
-    hist.forEach(p => { top = Math.max(top, p.hi, p.wk, p.vk); });
-    const ymax = Math.min(100, Math.ceil((top + 4) / 10) * 10);
-    const X = i => PL + (i + (NH - hist.length)) / (NH - 1) * pw, Y = val => PT + ph - Math.min(ymax, val) / ymax * ph;
-    c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.strokeStyle = line; c.lineWidth = 1; c.fillStyle = fg;
-    c.textAlign = 'right'; c.textBaseline = 'middle';
-    const stepY = ymax > 60 ? 20 : 10;
-    for (let y = 0; y <= ymax; y += stepY) {
-      c.beginPath(); c.moveTo(PL, Y(y) + .5); c.lineTo(w - PR, Y(y) + .5); c.stroke();
-      c.globalAlpha = .5; c.fillText(y, PL - 6, Y(y)); c.globalAlpha = 1;
-    }
-    c.textAlign = 'center'; c.textBaseline = 'top'; c.globalAlpha = .5;
-    [[-20, 1 / 3], [-10, 2 / 3], [0, 1]].forEach(([t, f]) => {
-      c.textAlign = f === 0 ? 'left' : f === 1 ? 'right' : 'center';
-      c.fillText(t === 0 ? 'сейчас' : `${t} с`, PL + f * pw, h - PB + 3);
-    });
-    c.globalAlpha = 1;
-    if (hist.length < 2) return;
-    c.save(); c.beginPath(); c.rect(PL, PT, pw, ph); c.clip();
-    c.beginPath();
-    hist.forEach((p, i) => c.lineTo(X(i), Y(p.hi)));
-    for (let i = hist.length - 1; i >= 0; i--) c.lineTo(X(i), Y(hist[i].lo));
-    c.closePath(); c.fillStyle = 'rgba(14,154,167,0.22)'; c.fill();
-    const path = (key, col, lw, al) => {
-      c.beginPath(); c.strokeStyle = col; c.lineWidth = lw; c.globalAlpha = al; c.lineJoin = 'round';
-      hist.forEach((p, i) => c.lineTo(X(i), Y(p[key])));
-      c.stroke(); c.globalAlpha = 1;
-    };
-    // the model usually sits right on the truth, so the truth goes on top as a dashed line
-    path('ev', '#0E9AA7', 2.5, 1);
-    path('wk', '#E89B0C', 1.5, .95);
-    c.setLineDash([5, 5]); path('vk', fg, 1.4, .85); c.setLineDash([]);
-    c.restore();
-    // soft fade of grid and lines at both sides
-    c.save(); c.globalCompositeOperation = 'destination-out';
-    const fl = pw * 0.1, fr = pw * 0.06;
-    let eg = c.createLinearGradient(PL - 1, 0, PL + fl, 0);
-    eg.addColorStop(0, 'rgba(0,0,0,1)'); eg.addColorStop(1, 'rgba(0,0,0,0)');
-    c.fillStyle = eg; c.fillRect(PL - 1, 0, fl + 1, PT + ph + 1);
-    eg = c.createLinearGradient(w - PR - fr, 0, w, 0);
-    eg.addColorStop(0, 'rgba(0,0,0,0)'); eg.addColorStop(1, 'rgba(0,0,0,0.85)');
-    c.fillStyle = eg; c.fillRect(w - PR - fr, 0, fr + PR, PT + ph + 1);
-    c.restore();
-    const last = hist[hist.length - 1];
-    c.fillStyle = '#0E9AA7'; c.beginPath(); c.arc(X(hist.length - 1), Y(last.ev), 3, 0, Math.PI * 2); c.fill();
-  }
-
-  function drawStrip() {
-    const cv2 = $('bStrip'); const [c, w, h] = fit(cv2);
-    c.clearRect(0, 0, w, h);
-    const PL = 28, PR = 4, pw = w - PL - PR;
-    const X = i => PL + (i + (NH - hist.length)) / (NH - 1) * pw;
-    // draw runs of the same status as single blocks: no sub-pixel shimmer while the history scrolls
-    let start = 0;
-    for (let i = 1; i <= hist.length; i++) {
-      if (i < hist.length && hist[i].st === hist[start].st) continue;
-      const x0 = Math.round(X(start)), x1 = Math.round(i < hist.length ? X(i) : X(i - 1) + pw / NH);
-      c.fillStyle = ST_COL[hist[start].st];
-      c.fillRect(x0, 0, Math.max(1, x1 - x0), h);
-      start = i;
-    }
-  }
-
-  let lastSt = null;
-  const shown = { st: 'STANDSTILL', pend: null, since: 0, h: 'STAND', ph: null, hs: 0 };
-  function updateBoard() {
-    const nowT = performance.now() / 1000;
-    if (est.st !== shown.st) {
-      if (shown.pend !== est.st) { shown.pend = est.st; shown.since = nowT; }
-      else if (nowT - shown.since > 0.5) shown.st = est.st;
-    } else shown.pend = null;
-    if (handle !== shown.h) {
-      if (shown.ph !== handle) { shown.ph = handle; shown.hs = nowT; }
-      else if (nowT - shown.hs > 0.5) shown.h = handle;
-    } else shown.ph = null;
-    $('bV').textContent = est.v.toFixed(1);
-    $('bLo').textContent = est.lo.toFixed(1); $('bHi').textContent = est.hi.toFixed(1);
-    $('bW').textContent = (est.sensor * 3.6).toFixed(1);
-    $('bWsub').textContent = '';
-    $('bGrHat').textContent = `${(est.grHat * 1000).toFixed(0)} ‰`;
-    $('bBrake').textContent = v > 0.3 ? `≤ ${Math.round(est.brake)} м` : '0 м';
-    $('bBrake').style.color = est.st === 'SLIP' || (zones.wx && inZone(zones.wx, D)) ? 'var(--wet)' : 'var(--ok)';
-    $('bMass').textContent = `${mTrue.toFixed(1)} т (имитатор), k_т ${est.kt.toFixed(2)}`;
-
-    drawMassSpark();
-    $('bS').textContent = est.s.toFixed(1);
-    $('bSig').textContent = est.sig.toFixed(1);
-    const diff = wheelV * 3.6 - v * 3.6;
-    const adh = est.st === 'SLIP' ? (diff > 0 ? 'боксование' : 'юз') : 'в норме';
-    $('bAdh').textContent = adh; $('bAdh').style.color = est.st === 'SLIP' ? 'var(--wet)' : '';
-    $('bG').textContent = noG ? 'нет сигнала' : 'на связи';
-    { const gc = noG ? 'var(--warn)' : 'var(--ok)'; $('gPill').style.color = gc; $('gDot').style.background = gc; }
-    zoneBar($('tWet'), zones.wx); zoneBar($('tTun'), zones.urban);
-    $('lgWx').style.display = zones.wx ? '' : 'none';
-    $('lgWx').textContent = zones.wx && zones.wx.kind === 'wet' ? 'мокрые рельсы' : 'наледь';
-    $('lgUrban').style.display = zones.urban ? '' : 'none';
-    const parts = [];
-    if (zones.wx) parts.push(`<span style="color:var(--wet)">${zones.wx.kind === 'wet' ? 'мокрые рельсы' : 'наледь'} ${zoneNote(zones.wx)}</span>`);
-    if (zones.urban) parts.push(`<span style="color:var(--warn)">застройка ${zoneNote(zones.urban)}</span>`);
-    const gpm = gradeAt(s) * 1000;
-    $('bProf').innerHTML = Math.abs(gpm) < 5 ? 'ровно' : `<span style="color:${gpm > 0 ? '#E0795A' : '#6FA8DC'}">${gpm > 0 ? 'подъём' : 'спуск'} ${Math.abs(gpm).toFixed(0)} ‰</span>`;
-    $('aheadTxt').innerHTML = parts.length ? parts.join(', ') : 'путь чистый';
-    $('bEm').textContent = est.n ? Math.sqrt(est.seM / est.n).toFixed(2) : '0.00';
-    $('bEb').textContent = est.n ? Math.sqrt(est.seB / est.n).toFixed(2) : '0.00';
-    $('bAnc').textContent = est.anchor;
-    $('tPos').style.left = (s / TOTAL * 100) + '%';
-    if (shown.st !== lastSt) {
-      lastSt = shown.st;
-      const col = ST_COL[shown.st] === '#3C4450' ? 'var(--fg)' : ST_COL[shown.st];
-      $('bH').innerHTML = `<span class="mode-ico" style="color:${col}">${ST_ICO[shown.st]}</span><span>${ST_RU[shown.st]}</span>`;
-      $('bH').title = `Режим оценщика: ${shown.st}`;
-      $('bHsub').textContent = shown.st === 'SLIP' && est.amb ? 'колёса не свидетельствуют: стоим или скользим?' : ST_SUB[shown.st];
-    }
-  }
-
-  // ---------- recording of the whole ride ----------
-  const REC = []; let recAcc = 0;
-  function record(dt) {
-    recAcc += dt;
-    if (recAcc < 0.2) return;
-    recAcc = 0;
-    REC.push({ t: simT, vk: v * 3.6, wk: est.sensor * 3.6, ev: est.v, lo: est.lo, hi: est.hi, st: est.st, s: est.s, h: handle, c: currentConds().join(', ') });
-    if (REC.length > 4000) REC.splice(0, REC.length - 4000);
-  }
-
-  // ---------- presentation: a 60 second scripted run ----------
-  const PRES = [
-    { t: 0, txt: 'Чистый путь. На выбеге колесо точное, модель совпадает с ним, интервал узкий.', act: () => { setWeather('clear'); toggleZone('urban', 'swUrban', false); setSens('ok'); setManual(false); setRush(false); setRunning(true); } },
-    { t: 9, txt: 'Дождь. Мокрые рельсы: под тягой колёса боксуют, при торможении юз. Колесо врёт, модель держит интервал.', act: () => setWeather('rain') },
-    { t: 19, txt: 'Плотная застройка. Спутников нет, а оценке они и не нужны: только ручка и колёса.', act: () => toggleZone('urban', 'swUrban', true) },
-    { t: 29, txt: 'Снег и наледь. Тормозной путь считается по верхней границе скорости и вытягивается на льду.', act: () => setWeather('snow') },
-    { t: 39, txt: 'Отказ оси 1. Её датчики показывают ноль и исключаются, оценка идёт по остальным осям.', act: () => setSens('axle') },
-    { t: 47, txt: 'Отказ всех осей: все колёса показывают ноль. Ядро не принимает нули за остановку: режим «стоим или скользим?», скорость по модели, σ расширяется до всей возможной скорости. На записи комиссии — «Прогон данных», вариант «обе тележки 0 км/ч».', act: () => setSens('all') },
-    { t: 55, txt: 'Всё восстановлено. Итоговые метрики по каждому условию.', act: () => { setSens('ok'); setWeather('clear'); toggleZone('urban', 'swUrban', false); } },
-    { t: 60, txt: '', act: () => { stopPres(); openInfo('metrics'); } }
-  ];
-  let presT = -1, presI = 0;
-  let mapBeforePres = false;
-  function startPres() { closeInfo(); presT = 0; presI = 0; $('pres').style.display = ''; $('presBtn').setAttribute('aria-pressed', 'true'); mapBeforePres = mapOn; if (mapOn && innerWidth >= 900) setMap(false); layoutBoard(); }
-  function stopPres() { presT = -1; $('pres').style.display = 'none'; $('presBtn').setAttribute('aria-pressed', 'false'); if (mapBeforePres) setMap(true); mapBeforePres = false; layoutBoard(); }
-  $('presBtn').addEventListener('click', () => presT >= 0 ? stopPres() : startPres());
-  $('presStop').addEventListener('click', stopPres);
-  function presTick(dt) {
-    if (presT < 0) return;
-    presT += dt;
-    while (presI < PRES.length && presT >= PRES[presI].t) {
-      const st = PRES[presI]; st.act();
-      if (presT >= 0 && st.txt) { $('presTxt').textContent = st.txt; $('presStep').textContent = `Шаг ${presI + 1} из ${PRES.length - 1}`; layoutBoard(); }
-      presI++;
-    }
-    if (presT >= 0) $('presBar').style.width = Math.min(100, presT / 60 * 100) + '%';
-  }
-
-  // ---------- metrics table ----------
-  function renderMetrics() {
-    const f = (x, d = 2) => x === null ? '<span class="opacity-40">нет</span>' : x.toFixed(d);
-    const avg = a => a.length ? a.reduce((p, c) => p + c, 0) / a.length : null;
-    let rows = '';
-    for (const c of COND) {
-      const m = MET[c];
-      if (m.t < 0.5 && !m.segM.length) { rows += `<tr class="opacity-40"><td class="py-1.5 pr-3">${c}</td><td colspan="6" class="py-1.5">ещё не встречалось</td></tr>`; continue; }
-      const rM = Math.sqrt(m.sqM / m.t), rB = Math.sqrt(m.sqB / m.t);
-      rows += `<tr style="border-top:1px solid var(--line)"><td class="py-1.5 pr-3">${c}</td>
-        <td class="py-1.5 pr-3" style="color:var(--ok)">${f(rM)}</td><td class="py-1.5 pr-3" style="color:var(--warn)">${f(rB)}</td>
-        <td class="py-1.5 pr-3">${f(m.maxM, 1)}</td>
-        <td class="py-1.5 pr-3" style="color:var(--ok)">${f(avg(m.segM), 1)}</td><td class="py-1.5 pr-3" style="color:var(--warn)">${f(avg(m.segB), 1)}</td>
-        <td class="py-1.5">${(m.inInt / m.t * 100).toFixed(1)} %</td></tr>`;
-    }
-    const sd = slipDelays.slice().sort((a, b) => a - b), med = sd.length ? sd[Math.floor(sd.length / 2)] : null;
-    $('metTable').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-[13px] num text-left">
-      <thead class="opacity-60 text-[12px]"><tr>
-        <th class="pb-2 pr-3 font-normal">Условие</th>
-        <th class="pb-2 pr-3 font-normal" colspan="2">Ошибка скорости, км/ч<br><span style="color:var(--ok)">модель</span> / <span style="color:var(--warn)">только колесо</span></th>
-        <th class="pb-2 pr-3 font-normal">Макс. ошибка<br>модели, км/ч</th>
-        <th class="pb-2 pr-3 font-normal" colspan="2">Ошибка пути на конец<br>перегона, м: <span style="color:var(--ok)">модель</span> / <span style="color:var(--warn)">колесо</span></th>
-        <th class="pb-2 font-normal" title="Доля времени, когда истинная скорость внутри ±2σ оценки. У честной σ около 95 %">Истина в ±2σ<br><span class="opacity-60">цель ≈ 95 %</span></th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
-      <div class="flex flex-wrap gap-x-6 gap-y-1 mt-4 text-[13px]">
-        <span title="От начала срыва колеса по истине до первого включения флага SLIP; событие засчитывается, только если флаг в начале срыва не горел"><span class="opacity-60">Обнаружение срыва, медиана:</span> ${med === null ? (slipMissed.n ? 'флаг не включался' : 'срывов ещё не было') : Math.round(med) + ' мс'} <span class="opacity-60">(обнаружено ${sd.length}, пропущено ${slipMissed.n}; срывы короче 0,5 с не считаются)</span></span>
-        <span><span class="opacity-60">Масштаб тяги k<sub>т</sub> / торможения k<sub>б</sub>:</span> ${est.kt.toFixed(2)} / ${est.kb.toFixed(2)}</span>
-        <span><span class="opacity-60">Сцепление μ, оценка:</span> ${est.mu.toFixed(3)}</span>
-        <span><span class="opacity-60">Масса вагона:</span> ${mTrue.toFixed(1)} т</span>
-      </div>
-      <div class="text-[11px] opacity-50 mt-3">Считается с начала сессии по живой поездке в песочнице. Ядро — ${portClaim('short')}, лист песочницы по умолчанию (4 оси, паспортный привод); σ ядра ещё не откалибрована, поэтому доля «в ±2σ» ниже цели 95 %. «Колесо» — среднее показаний всех датчиков (база по ТЗ). Имитатор — порт plant.py с противобуксовочной и противоюзной защитой и удержанием на подъёме. Числа на реальных записях — в режиме «Прогон данных комиссии».</div>`;
-  }
-
-  // ---------- ROS 2 live diagram and step-time benchmark ----------
-  const KB = { samples: [] };   // замеры шага JS-порта ядра
-  // замер шага JS-порта ядра на недавних входах поездки
-  let benchTick = 0, benchEst = null, benchI = 0;
-  function bench() {
-    if (++benchTick % 6 || BENCH_IN.length < 50) return;
-    benchEst = benchEst || new TramEst.Estimator();
-    const N = 120, t0 = performance.now();
-    for (let i = 0; i < N; i++) { const [nn, m] = BENCH_IN[benchI++ % BENCH_IN.length]; benchEst.step(nn, m); }
-    const us = (performance.now() - t0) * 1000 / N;
-    KB.samples.push(us); if (KB.samples.length > 400) KB.samples.shift();
-  }
-  function drawBench() {
-    const c0 = $('benchC'); if (!c0) return;
-    const [c, w, hh] = fit(c0);
-    const css = getComputedStyle(document.documentElement), fg = css.getPropertyValue('--fg').trim(), line = css.getPropertyValue('--line').trim();
-    c.clearRect(0, 0, w, hh);
-    const S = KB.samples; if (S.length < 3) return;
-    const a = S.slice().sort((p, q) => p - q);
-    const med = a[Math.floor(a.length / 2)], p99 = a[Math.min(a.length - 1, Math.floor(a.length * 0.99))];
-    $('bMed').textContent = med.toFixed(1); $('bP99').textContent = p99.toFixed(1);
-    $('bLoad').textContent = (p99 / 10000 * 100).toFixed(2);
-    const top = Math.max(p99 * 1.6, med * 2, 1), n = 120, arr = S.slice(-n);
-    const X = i => i / Math.max(1, arr.length - 1) * w, Y = v => hh - 2 - Math.min(1, v / top) * (hh - 6);
-    c.strokeStyle = line; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(0, hh - 1.5); c.lineTo(w, hh - 1.5); c.stroke();
-    c.setLineDash([4, 4]); c.strokeStyle = fg; c.globalAlpha = .35;
-    c.beginPath(); c.moveTo(0, Y(p99)); c.lineTo(w, Y(p99)); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
-    const g = c.createLinearGradient(0, 0, 0, hh);
-    g.addColorStop(0, 'rgba(14,154,167,0.35)'); g.addColorStop(1, 'rgba(14,154,167,0)');
-    c.beginPath(); c.moveTo(X(0), hh); arr.forEach((v, i) => c.lineTo(X(i), Y(v))); c.lineTo(X(arr.length - 1), hh); c.closePath();
-    c.fillStyle = g; c.fill();
-    c.beginPath(); arr.forEach((v, i) => c.lineTo(X(i), Y(v))); c.strokeStyle = '#0E9AA7'; c.lineWidth = 1.6; c.lineJoin = 'round'; c.stroke();
-    c.fillStyle = fg; c.globalAlpha = .5; c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'right'; c.textBaseline = 'bottom';
-    c.fillText(`99 %: ${p99.toFixed(1)} мкс`, w, Y(p99) - 2); c.globalAlpha = 1;
-  }
-  function drawRos(time) {
-    const c0 = $('rosC'); if (!c0) return;
-    const [c, w, hh] = fit(c0);
-    const css = getComputedStyle(document.documentElement), fg = css.getPropertyValue('--fg').trim(), line = css.getPropertyValue('--line').trim();
-    c.clearRect(0, 0, w, hh);
-    const box = (x, y, bw, bh, title, sub, col) => {
-      c.strokeStyle = col || line; c.lineWidth = 1; c.beginPath(); c.roundRect(x, y, bw, bh, 8); c.stroke();
-      c.fillStyle = fg; c.font = '500 12px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText(title, x + bw / 2, y + bh / 2 - (sub ? 7 : 0));
-      if (sub) { c.globalAlpha = .6; c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.fillText(sub, x + bw / 2, y + bh / 2 + 8); c.globalAlpha = 1; }
-    };
-    const flow = (x1, y1, x2, y2, hz, col) => {
-      c.strokeStyle = line; c.lineWidth = 1.2; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-      const k = 4, sp = hz === 50 ? 0.35 : 0.5, tt = performance.now() / 1000;
-      c.fillStyle = col;
-      for (let i = 0; i < k; i++) {
-        const f = (tt * sp + i / k) % 1, x = x1 + (x2 - x1) * f, y = y1 + (y2 - y1) * f;
-        c.globalAlpha = Math.sin(Math.PI * f) ** 0.8;
-        c.beginPath(); c.arc(x, y, 2.6, 0, Math.PI * 2); c.fill();
-      }
-      c.globalAlpha = 1;
-    };
-    const iw = w * 0.2, ow = w * 0.22, mx = w * 0.29, mw = w * 0.42, pad = 16;
-    const ys = [hh * 0.3, hh * 0.7], yo = [hh * 0.2, hh * 0.5, hh * 0.8];
-    box(0, ys[0] - 22, iw, 44, '/vehicle/driver_position_cmd', `20 Гц, ${HANDLE[handle].toLowerCase()}`);
-    box(0, ys[1] - 22, iw, 44, '/vehicle/*_bogie_velocity', `~10 Гц, ${(est.sensor * 3.6).toFixed(1)} км/ч`, sensMode !== 'ok' ? '#D6443A' : null);
-    // node
-    c.strokeStyle = '#0E9AA7'; c.lineWidth = 1.5; c.beginPath(); c.roundRect(mx, 8, mw, hh - 16, 12); c.stroke();
-    c.fillStyle = '#0E9AA7'; c.font = '500 12px system-ui, "Segoe UI", Roboto, sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('tram_state_estimator', mx + pad, 16);
-    const sw = (mw - pad * 2 - 10) / 2, sh = (hh - 16 - 30 - pad - 12) / 3;
-    const subs = [['Привод и режим', `ручка ${notch > 0 ? '+' : ''}${notch}, ${ST_RU[est.st] ? ST_RU[est.st].toLowerCase() : ''}`], ['Проверка осей', lastOut ? `принято ${lastOut.n_accepted}, отвергнуто ${lastOut.n_rejected}` : ''], ['UKF: s, v, d', `v ${est.v.toFixed(1)} км/ч`], ['Масштабы привода', `k_т ${est.kt.toFixed(2)}, k_б ${est.kb.toFixed(2)}`], ['Сцепление μ', est.mu.toFixed(3)], ['Возмущение d', `${est.d.toFixed(2)} м/с²`]];
-    subs.forEach(([t, sub], i) => box(mx + pad + (i % 2) * (sw + 10), 8 + 30 + Math.floor(i / 2) * (sh + 6), sw, sh, t, sub));
-    const labels = [['/result/velocity', `${est.v.toFixed(1)} ± ${((est.hi - est.lo) / 2).toFixed(1)} км/ч`], ['/result/position', `путь ${est.s.toFixed(0)} м`], ['/tram/estimator_status', est.st]];
-    labels.forEach(([t, sub], i) => box(w - ow, yo[i] - 22, ow, 44, t, sub, i === 2 ? ST_COL[est.st] : null));
-    flow(iw + 4, ys[0], mx - 4, ys[0], 50, fg);
-    flow(iw + 4, ys[1], mx - 4, ys[1], 100, sensMode !== 'ok' ? '#D6443A' : fg);
-    yo.forEach(y => flow(mx + mw + 4, y, w - ow - 4, y, 20, '#0E9AA7'));
-  }
-
-  // ---------- replay of the recorded ride ----------
-  let repI = -1;
-  function drawReplay() {
-    const c0 = $('repC'); if (!c0 || REC.length < 2) return;
-    const [c, w, hh] = fit(c0);
-    const css = getComputedStyle(document.documentElement), fg = css.getPropertyValue('--fg').trim(), line = css.getPropertyValue('--line').trim();
-    c.clearRect(0, 0, w, hh);
-    const PL = 28, PB = 18, pw = w - PL, ph = hh - PB - 6, N = REC.length;
-    let top = 40; REC.forEach(p => { top = Math.max(top, p.hi, p.wk); });
-    const ymax = Math.min(100, Math.ceil((top + 4) / 10) * 10);
-    const X = i => PL + i / (N - 1) * pw, Y = val => 6 + ph - Math.min(ymax, val) / ymax * ph;
-    c.font = '11px system-ui, "Segoe UI", Roboto, sans-serif'; c.strokeStyle = line; c.fillStyle = fg; c.textAlign = 'right'; c.textBaseline = 'middle';
-    for (let y = 0; y <= ymax; y += ymax > 60 ? 20 : 10) { c.beginPath(); c.moveTo(PL, Y(y) + .5); c.lineTo(w, Y(y) + .5); c.stroke(); c.globalAlpha = .5; c.fillText(y, PL - 6, Y(y)); c.globalAlpha = 1; }
-    c.beginPath(); REC.forEach((p, i) => c.lineTo(X(i), Y(p.hi))); for (let i = N - 1; i >= 0; i--) c.lineTo(X(i), Y(REC[i].lo)); c.closePath(); c.fillStyle = 'rgba(14,154,167,0.22)'; c.fill();
-    const path = (k, col, lw, al) => { c.beginPath(); c.strokeStyle = col; c.lineWidth = lw; c.globalAlpha = al; REC.forEach((p, i) => c.lineTo(X(i), Y(p[k]))); c.stroke(); c.globalAlpha = 1; };
-    path('ev', '#0E9AA7', 2, 1); path('wk', '#E89B0C', 1.2, .9); c.setLineDash([4, 4]); path('vk', fg, 1.2, .85); c.setLineDash([]);
-    // status strip
-    for (let i = 0; i < N; i++) { c.fillStyle = ST_COL[REC[i].st]; c.fillRect(X(i), hh - 10, pw / N + 1, 6); }
-    const i = repI < 0 ? N - 1 : Math.min(N - 1, repI);
-    c.strokeStyle = fg; c.globalAlpha = .7; c.beginPath(); c.moveTo(X(i) + .5, 6); c.lineTo(X(i) + .5, hh - 10); c.stroke(); c.globalAlpha = 1;
-    const p = REC[i], m = Math.floor(p.t / 60), sec = Math.floor(p.t % 60);
-    $('repInfo').innerHTML = `<span class="opacity-60">${m} мин ${String(sec).padStart(2, '0')} с</span>
-      <span>режим <b style="color:${ST_COL[p.st]}">${ST_RU[p.st].toLowerCase()}</b></span>
-      <span>ручка ${HANDLE[p.h].toLowerCase()}</span>
-      <span>эталон ${p.vk.toFixed(1)}</span>
-      <span style="color:var(--warn)">колесо ${p.wk.toFixed(1)}</span>
-      <span style="color:var(--ok)">модель ${p.ev.toFixed(1)} [${p.lo.toFixed(1)}; ${p.hi.toFixed(1)}] км/ч</span>
-      <span>путь ${p.s.toFixed(0)} м</span><span class="opacity-60">${p.c}</span>`;
-    const r = $('repR'); r.max = N - 1; if (repI < 0) r.value = N - 1;
-  }
-
-  function drawMassSpark() {
-    massHist.push([mTrue]); if (massHist.length > 600) massHist.shift();
-    const [c, w, hh] = fit($('massSpark'));
-    c.clearRect(0, 0, w, hh);
-    let lo = 1e9, hi = -1e9; massHist.forEach(([a]) => { lo = Math.min(lo, a); hi = Math.max(hi, a); });
-    if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
-    const X = i => i / 599 * w, Y = m => hh - 2 - (m - lo) / (hi - lo) * (hh - 4);
-    const css = getComputedStyle(document.documentElement), fg = css.getPropertyValue('--fg').trim();
-    c.lineWidth = 1; c.strokeStyle = fg; c.globalAlpha = .4; c.beginPath(); massHist.forEach(([a], i) => c.lineTo(X(i + 600 - massHist.length), Y(a))); c.stroke();
-    c.globalAlpha = 1;
-  }
-  // ---------- loop ----------
-  let last = performance.now();
-  // Цикл: следующий кадр заказывается первым, исключение кадра пишется в консоль (один раз на
-  // текст) и не останавливает страницу.
-  const frameErr = new Set();
-  function frame(t) {
-    requestAnimationFrame(frame);
-    try { frameBody(t); } catch (e) { const k = String(e && e.message || e); if (!frameErr.has(k)) { frameErr.add(k); console.error('кадр песочницы:', e); } }
-  }
-  function frameBody(t) {
-    if ((window.__tvMode || 'sandbox') !== 'sandbox') { last = t; return; }   // другой режим: песочница на паузе
-    const dt = Math.min(0.05, (t - last) / 1000); last = t;
-    const inT = step(dt);
-    sampleAcc += dt;
-    while (sampleAcc >= SAMPLE) {
-      sampleAcc -= SAMPLE;
-      hist.push({ vk: v * 3.6, wk: est.sensor * 3.6, ev: est.v, lo: est.lo, hi: est.hi, st: shown.st });
-      if (hist.length > NH) hist.shift();
-    }
-    record(dt); presTick(dt); updateSound();
-    draw(t, inT);
-    updateBoard();
-    drawChart(); drawStrip(); drawMap();
-    if (current === 'ros') { bench(); drawRos(t); drawBench(); }
-    if (current === 'replay') drawReplay();
-  }
-  resize();
-  setMap(innerWidth >= 900);
-  addEventListener('resize', () => { if (presT < 0) setMap(innerWidth >= 900); });
-  requestAnimationFrame(frame);
-})();
-</script>
+<!-- ядро пакета (JS-порт estimator_core.py и связки Runner, сверены с Python: js-port/check.sh), лист жюри, линия -->
+<script src="js/est.js"></script>
+<script src="js/runner.js"></script>
+<script src="js/sheet.js"></script>
+<script src="js/track.js"></script>
+<!-- имитатор (приближение), сценарии, экран песочницы -->
+<script src="js/plant.js"></script>
+<script src="js/sandbox.js"></script>
+<script src="js/sandbox_ui.js"></script>
 <script>
 // ---- Режимы «Прогон данных комиссии» и «Живой ROS 2» ----
 // Данные прогона считает сам пакет (tools/export_replay.py: Runner как в ноде,
@@ -2725,6 +419,8 @@ const TramPlant = (() => {
     document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-checked', b.dataset.mode === m));
     document.body.classList.toggle('rv-on', m !== 'sandbox');
     $('runView').hidden = m === 'sandbox';
+    $('sbView').hidden = m !== 'sandbox';
+    $('helpBtn').hidden = m !== 'sandbox';
     $('rvBarReplay').hidden = m !== 'replay';
     $('rvBarLive').hidden = m !== 'live';
     $('rvTitle').textContent = m === 'live' ? 'Живой ROS 2' : 'Прогон данных комиссии';
@@ -2818,7 +514,9 @@ const TramPlant = (() => {
     const inj = M.inject && M.inject.t0 != null ? ` Аномалия: <b>${M.inject.ru.toLowerCase()}</b>, с ${fmtT(M.inject.t0 - M.t0)}; внесена в записанные входы тележек (${M.inject.src}).` : '';
     $('rvNote').innerHTML = `Запись <b>${M.run}</b> (${fmtT(M.dur)}, ${(S.path_m / 1000).toFixed(2)} км) — ${M.split === 'holdout_scored' ? 'отложенная: в подборе карты и разбиения не участвовала' : 'обучающая'}. `
       + `Оценку посчитал пакет ROS 2 офлайн той же связкой, что нода (Runner, лист ${M.sheet}${M.sheet_label ? ' — ' + M.sheet_label : ''}, карта ${M.map || 'нет'}); сообщения в порядке записи, GNSS в оценщик — только первые 3 с, дальше он только эталон.${inj}${sheetW}`;
-    $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране — метры от первой точки GNSS master (x — восток, y — север). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
+    const refL = M.frame.ref_label || 'антенна GNSS master';
+    $('rvRefNote').textContent = '';
+    $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране — метры от первой точки эталона (x — восток, y — север). Эталон положения — ${refL}: та же точка вагона, что на выходе модели. Серая полоса — трасса эталона, фиолетовый пунктир — pathgraph организаторов (ось пути, оба направления). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
     $('rvSub').textContent = `экспорт ${M.made || ''}${M.git ? ', git ' + M.git : ''}`;
   }
 
@@ -2969,6 +667,23 @@ const TramPlant = (() => {
   }
   function niceCeil(x) { if (!(x > 0)) return 0; const e = Math.pow(10, Math.floor(Math.log10(x))), m = x / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e; }
   function fmtNum(v) { const a = Math.abs(v); return a >= 10 ? v.toFixed(0) : a >= 1 ? v.toFixed(1).replace(/\.0$/, '') : v.toFixed(2); }
+  // pathgraph организаторов (js/track.js) в плоскости экрана: метры UTM зоны 37 от первой
+  // точки GNSS master (прогон: meta.frame.origin; живой режим: первая точка, которую
+  // увидела страница). Координаты pathgraph — MGRS 37UCB без переноса = UTM37 − (300 км; 6100 км).
+  const PG = { key: null, dirs: null };
+  function pathgraphLocal() {
+    const TR = window.TV_TRACK; if (!TR || !D) return null;
+    let E0, N0, key;
+    if (D.meta && D.meta.frame && D.meta.frame.origin && (D.meta.frame.zone || 37) === 37 && /utm|mgrs/.test(D.meta.frame.model + D.meta.frame.label)) {
+      const o = D.meta.frame.origin; [E0, N0] = utmEN(o[0], o[1], 37); key = 'r' + o.join(',');
+    } else if (D.live && GEO.U0 && GEO.zone === 37) { [E0, N0] = GEO.U0; key = 'l' + GEO.U0.join(','); }
+    else return null;
+    if (PG.key !== key) {
+      const ex = TR.origin.utm_e - E0, ny = TR.origin.utm_n - N0;
+      PG.dirs = TR.dirs.map(d => ({ x: d.x.map(v => v + ex), y: d.y.map(v => v + ny) })); PG.key = key;
+    }
+    return PG.dirs;
+  }
   function drawMap() {
     const [c, w, h] = fit($('rvMap')), { fg, line } = css();
     c.clearRect(0, 0, w, h);
@@ -3001,6 +716,13 @@ const TramPlant = (() => {
     };
     trail(D.nx, D.ny, C_NAIVE, 1.6);
     trail(D.x, D.y, C_OK, 2.2);
+    // pathgraph организаторов — тонкий пунктир поверх следов (ось пути, оба направления)
+    const pg = pathgraphLocal();
+    if (pg) {
+      c.strokeStyle = '#7a5cd6'; c.globalAlpha = .9; c.lineWidth = 1.3; c.setLineDash([5, 4]);
+      for (const d of pg) { c.beginPath(); for (let k = 0; k < d.x.length; k++) { const [px, py] = P(d.x[k], d.y[k]); if (k) c.lineTo(px, py); else c.moveTo(px, py); } c.stroke(); }
+      c.setLineDash([]); c.globalAlpha = 1;
+    }
     // текущие точки: эталон, модель, база; ошибка модели — отрезок до эталона
     let gi = i; while (gi > 0 && !isFinite(D.gx[gi]) && i - gi < 30) gi--;
     const gOk = isFinite(D.gx[gi]), mOk = isFinite(D.x[i]), nOk = isFinite(D.nx[i]);
@@ -3079,7 +801,7 @@ const TramPlant = (() => {
     const row = (name, a, b, title) => `<tr title="${title || ''}"><td>${name}</td><td style="color:${C_OK}">${a}</td><td style="color:${C_NAIVE}">${b}</td></tr>`;
     let rows = row('Скорость: MAE, м/с', f(r.mae, 4), f(r.maeN, 4), 'Средняя абсолютная ошибка против |v| GNSS master, пары по ближайшей метке ≤ 0,05 с')
       + (live ? '' : row('Дрейф пути, % дистанции', f(r.drift, 3), f(r.driftN, 3), 'Ошибка вдоль трассы на момент курсора / путь по эталону; в конце прогона — «накопленный дрейф» по ТЗ'))
-      + row('Ошибка в плане, средняя, м', f(r.h, 2), f(r.hn, 2), 'Средняя ошибка x, y против GNSS master')
+      + row('Ошибка в плане, средняя, м', f(r.h, 2), f(r.hn, 2), live ? `Средняя ошибка x, y против эталона: ${REF.point === 'base_link' ? 'base_link по паре антенн' : REF.point === 'master' ? 'антенна master' : 'точка эталона ещё не выбрана'}` : `Средняя ошибка x, y против эталона: ${(D.meta && D.meta.frame && D.meta.frame.ref_label) || 'антенна GNSS master'}`)
       + row('Истина в ±2σ скорости', isFinite(r.cov) ? (100 * r.cov).toFixed(1) + ' %' : '—', '—', 'Доля пар, где |ошибка| ≤ 2σ_v. У честной σ около 95 %');
     if (r.w0 !== undefined) rows += row(tc < r.w0 ? 'В окне аномалии: MAE, м/с (окно впереди)' : 'В окне аномалии: MAE, м/с', f(r.wMae, 3), f(r.wMaeN, 3), 'Ошибка скорости только в окне аномалии');
     let foot = '';
@@ -3118,7 +840,27 @@ const TramPlant = (() => {
     ['/vehicle/driver_position_cmd', 'tram_vehicle_msgs/msg/DriverControllerCommand', 100],
     ['/sensing/gnss/master/vel', 'geometry_msgs/msg/TwistStamped', 100],
     ['/sensing/gnss/master/fix', 'sensor_msgs/msg/NavSatFix', 200],
+    ['/sensing/gnss/rover/fix', 'sensor_msgs/msg/NavSatFix', 200],
   ];
+  // Точка эталона положения. Судья и pathgraph — base_link: ось поворота передней тележки на
+  // уровне рельса; антенны в base_link (tf организаторов): master x −9,873 м, rover x +2,563 м.
+  // base_link = master + 9,873 м вперёд по оси вагона (курс — по паре антенн одной эпохи).
+  // Нода до 26.09 выдавала точку антенны master. Какую точку выдаёт нода, странице не видно,
+  // поэтому точка выбирается сама по первым 10 парам «выход — GNSS»: какая ближе (они в 9,9 м
+  // друг от друга, ошибка модели ~1 м). ?ref=base_link | ?ref=master — задать явно.
+  const REF = { point: /^(base_link|master)$/.test(qs.get('ref') || '') ? qs.get('ref') : null, fixed: /^(base_link|master)$/.test(qs.get('ref') || ''), cand: [], course: null, mx: 9.873 };
+  function liveCourse() {
+    const m = LV.last.gm, r = LV.last.rf;
+    if (!m || !r || Math.abs(m.t - r.t) > 0.05) return;
+    const dE = r.U[0] - m.U[0], dN = r.U[1] - m.U[1], b = Math.hypot(dE, dN);
+    if (b >= 5 && b <= 25) REF.course = { t: m.t, u: [dE / b, dN / b] };
+  }
+  function refNote() {
+    const el = $('rvRefNote'); if (!el) return;
+    el.textContent = REF.point === 'base_link' ? `Эталон положения — base_link (ось передней тележки на уровне рельса, как у судьи): антенна master + 9,873 м вперёд по курсу пары антенн${REF.fixed ? ' (задан ?ref=)' : '; выбран сам — выход ноды ближе к нему'}.`
+      : REF.point === 'master' ? `Эталон положения — антенна GNSS master${REF.fixed ? ' (задан ?ref=)' : REF.noRover ? ' (rover нет: base_link не посчитать)' : '; выбран сам — выход ноды ближе к нему, чем к base_link (нода выдаёт точку антенны)'}.`
+      : 'Эталон положения выбирается по первым парам с выходом ноды (base_link или антенна master).';
+  }
   const LV = { ws: null, want: false, retry: 0, timer: 0, state: 'idle', last: {}, cnt: {}, rateT: 0, rates: {}, lastMsg: 0, data: null, T0: null, fc: null, nodeHz: null, rowT: -1, frame: null, gnssPath: 0, gPrev: null, err: '' };
   function defaultUrl() {
     const q = qs.get('ros'); if (q) return q;
@@ -3142,8 +884,9 @@ const TramPlant = (() => {
   }
   function enterLive() {
     if (!LV.data) { LV.data = emptyData(); LV.data.live = true; D = LV.data; }
-    $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master (только эталон для показа: нода берёт GNSS лишь в окне выставки) через rosbridge, 10 Гц на топик. Адрес — поле выше или <b>?ros=wss://хост/ros</b>.';
+    $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master и rover (только эталон для показа: нода берёт GNSS лишь в окне выставки; пара антенн даёт точку base_link) через rosbridge, 10 Гц на топик. Адрес — поле выше или <b>?ros=wss://хост/ros</b>.';
     $('rvMapNote').textContent = 'Плоскость: выход ноды (MGRS/UTM переводится в метры от первой точки GNSS; разрыв квадрата 100 км снимается).';
+    refNote();
     $('rvSub').textContent = '';
     // автоподключение: явный ?ros=, прошлый выбор, или страница с сервера (мост того же хоста, /ros)
     const served = /^https?:$/.test(location.protocol) && !/^(localhost|127\.|\[::1\])/.test(location.hostname);
@@ -3209,14 +952,37 @@ const TramPlant = (() => {
         if (L.vel && Math.abs(L.vel.t - t) <= 0.05 && LV.T0 !== null) livePairV(t - LV.T0, L.vel.v - v, naiveNow() - v, L.st ? Math.abs(L.vel.v - v) <= 2 * L.st.sigma_v : 0);
         break;
       }
+      case '/sensing/gnss/rover/fix': {
+        if (!isFinite(x.latitude) || !isFinite(x.longitude)) break;
+        L.rf = { t: stampOf(x.header), U: utmEN(x.latitude, x.longitude, GEO.zone ?? Math.floor((x.longitude + 180) / 6) + 1) };
+        liveCourse();
+        break;
+      }
       case '/sensing/gnss/master/fix': {
         if (!isFinite(x.latitude) || !isFinite(x.longitude)) break;
         const t = stampOf(x.header), g = geoLocal(x.latitude, x.longitude);
-        L.gf = { t, x: g[0], y: g[1], U: g[2] };
+        L.gm = { t, U: g[2] };
+        liveCourse();
+        // base_link: master + 9,873 м по курсу пары антенн (курс не старше 2 с)
+        const cu = REF.course && Math.abs(t - REF.course.t) <= 2 ? REF.course.u : null;
+        const gb = cu ? [g[0] + REF.mx * cu[0], g[1] + REF.mx * cu[1], [g[2][0] + REF.mx * cu[0], g[2][1] + REF.mx * cu[1]]] : null;
         if (LV.gPrev) { const d = Math.hypot(g[0] - LV.gPrev[0], g[1] - LV.gPrev[1]); if (d > 0.3 && d < 50) { LV.gnssPath += d; LV.gPrev = g; } } else LV.gPrev = g;
         // ошибка в плане — только когда выход ноды в абсолютной системе (MGRS/UTM): у локальной
         // системы ноды начало (первая точка master в записи) странице неизвестно
-        if (L.pos && Math.abs(L.pos.t - t) <= 0.1 && LV.T0 !== null) { const q = posLocal(L.pos.x, L.pos.y, g); if (q && !GEO.local) livePairP(t - LV.T0, Math.hypot(q[0] - g[0], q[1] - g[1])); }
+        const q = L.pos && Math.abs(L.pos.t - t) <= 0.1 && LV.T0 !== null ? posLocal(L.pos.x, L.pos.y, g) : null;
+        if (!REF.point && q && !GEO.local) {
+          REF.cand.push([Math.hypot(q[0] - g[0], q[1] - g[1]), gb ? Math.hypot(q[0] - gb[0], q[1] - gb[1]) : NaN]);
+          if (REF.cand.length >= 10) {
+            const med = k => { const v = REF.cand.map(c => c[k]).filter(Number.isFinite).sort((a, b) => a - b); return v.length >= 5 ? v[v.length >> 1] : NaN; };
+            const hm = med(0), hb = med(1);
+            REF.noRover = !isFinite(hb);
+            REF.point = isFinite(hb) && hb < hm ? 'base_link' : 'master';
+            refNote();
+          }
+        }
+        const ref = REF.point === 'base_link' ? gb : g;          // пока точка не выбрана — трасса по master
+        if (ref) L.gf = { t, x: ref[0], y: ref[1], U: ref[2] };
+        if (REF.point && ref && q && !GEO.local) livePairP(t - LV.T0, Math.hypot(q[0] - ref[0], q[1] - ref[1]));
         break;
       }
     }
@@ -3349,7 +1115,27 @@ const TramPlant = (() => {
     setMode, select: k => selectReplay(k), state: () => ({ mode, key: RP.key, t: RP.t, play: RP.play, n: D ? D.n : 0, live: LV.state, rates: LV.rates, nodeHz: LV.nodeHz, rows: LV.data ? LV.data.n : 0, pairsV: D ? D.pv.t.length : 0, fc: LV.last && LV.last.st ? LV.last.st.frame_count : null }),
     metrics: () => D ? metricsAt(nowT()) : null, summary: () => D ? D.summary : null, seek: t => { RP.t = t; renderPanels(true); }, play: (on, sp) => { if (sp) RP.speed = sp; RP.play = on; syncPlay(); },
     // для проверок живого режима: последние строки плоскости и ошибки в плане по парам с GNSS
-    liveTail: (n = 2000) => LV.data ? { x: LV.data.x.slice(-n), y: LV.data.y.slice(-n), h: LV.data.pp.h.slice(-n), host: LV.host || null, pill: $('rvLiveSt').textContent } : null,
+    // сверка перевода pathgraph в плоскость прогона: медиана расстояния от точек трассы GNSS
+    // master до ближайшей точки pathgraph (антенна над осью пути: ожидается < 1–2 м)
+    pathgraph: () => {
+      const pg = pathgraphLocal(); if (!pg || !D || !D.track) return null;
+      const ds = []; let n = 0;
+      for (const d of pg) n += d.x.length;
+      for (let k = 0; k < D.track.x.length; k += 7) {
+        const x = D.track.x[k], y = D.track.y[k]; if (!isFinite(x)) continue;
+        let m = Infinity;
+        for (const d of pg) for (let j = 1; j < d.x.length; j++) {        // расстояние до отрезка ломаной
+          const ax = d.x[j - 1], ay = d.y[j - 1], bx = d.x[j] - ax, by = d.y[j] - ay, L2 = bx * bx + by * by;
+          const u = L2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * bx + (y - ay) * by) / L2)) : 0;
+          const dd = (ax + u * bx - x) ** 2 + (ay + u * by - y) ** 2; if (dd < m) m = dd;
+        }
+        ds.push(Math.sqrt(m));
+      }
+      ds.sort((a, b) => a - b);
+      const near = ds.filter(d => d < 50);
+      return { points: n, gnss: ds.length, on_line: near.length, median_m: near.length ? near[Math.floor(near.length / 2)] : null };
+    },
+    liveTail: (n = 2000) => LV.data ? { x: LV.data.x.slice(-n), y: LV.data.y.slice(-n), h: LV.data.pp.h.slice(-n), host: LV.host || null, pill: $('rvLiveSt').textContent, ref: REF.point, refNote: $('rvRefNote').textContent } : null,
   };
   const m0 = qs.get('mode') || store.get('tv.mode');
   requestAnimationFrame(frame);

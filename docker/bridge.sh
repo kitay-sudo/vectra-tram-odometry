@@ -21,7 +21,7 @@ if [ "${ROSBRIDGE_OPEN:-0}" = 1 ]; then
   echo "[bridge] rosbridge без ограничений (ROSBRIDGE_OPEN=1), порт $PORT"
   exec ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:="$PORT" address:="$ADDRESS"
 fi
-SUB_GLOB="${BRIDGE_SUB_GLOB:-['/result/*', '/tram/*', '/vehicle/*', '/sensing/gnss/master/*']}"
+SUB_GLOB="${BRIDGE_SUB_GLOB:-['/result/*', '/tram/*', '/vehicle/*', '/sensing/gnss/master/*', '/sensing/gnss/rover/fix']}"
 CFG=/tmp/rosbridge_ro.yaml
 cat >"$CFG" <<YAML
 rosbridge_websocket:

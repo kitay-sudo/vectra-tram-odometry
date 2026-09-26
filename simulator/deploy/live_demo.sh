@@ -19,7 +19,7 @@
 #   THROTTLE не используется нодой: троттлинг задаёт страница в подписке (10 Гц)
 #   ROSBRIDGE_OPEN  1 — мост без ограничений (отладка). По умолчанию мост ТОЛЬКО ДЛЯ
 #            ЧТЕНИЯ: подписка лишь на топики страницы (/result/*, /tram/*, /vehicle/*,
-#            /sensing/gnss/master/*), публикация запрещена (иначе любой с домена мог бы
+#            /sensing/gnss/master/*, /sensing/gnss/rover/fix — эталон base_link), публикация запрещена (иначе любой с домена мог бы
 #            подать ноде ложные /vehicle/* или GNSS), вызовы сервисов — только /rosapi/*
 #            (без параметров: params_glob "[]"), set_parameters ноды недоступен.
 #            Параметры — файлом (в launch-аргументах строка "['...']" становится списком,
@@ -57,7 +57,7 @@ if [ "${ROSBRIDGE_OPEN:-0}" = 1 ]; then
   pids+=($!)
   MODE="без ограничений (ROSBRIDGE_OPEN=1)"
 else
-  SUB_GLOB="${SUB_GLOB:-['/result/*', '/tram/*', '/vehicle/*', '/sensing/gnss/master/*']}"
+  SUB_GLOB="${SUB_GLOB:-['/result/*', '/tram/*', '/vehicle/*', '/sensing/gnss/master/*', '/sensing/gnss/rover/fix']}"
   cat >/tmp/rosbridge_ro.yaml <<YAML
 rosbridge_websocket:
   ros__parameters:

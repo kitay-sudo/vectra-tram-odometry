@@ -110,7 +110,7 @@ HTTP при этом тоже остаётся. Если нужен редире
   `allow`/`deny` по IP или `auth_basic`. У rosbridge своей авторизации нет.
 - **Мост только для чтения (по умолчанию, интеграция 26.09).** Сервис `bridge`
   запускается `docker/bridge.sh`: подписка только на топики страницы
-  (`/result/*`, `/tram/*`, `/vehicle/*`, `/sensing/gnss/master/*`), публикация,
+  (`/result/*`, `/tram/*`, `/vehicle/*`, `/sensing/gnss/master/*`, `/sensing/gnss/rover/fix` — для эталона base_link на странице), публикация,
   сервисы и параметры закрыты — посетитель домена не может подать ноде ложные
   `/vehicle/*` или GNSS и вызвать `set_parameters`. Проверено: `docker compose up`,
   20 попыток опубликовать `/vehicle/front_bogie_velocity` через мост — у топика

@@ -6,8 +6,10 @@
 // Образ vectra/tram:sim — node:22-alpine + chromium + puppeteer-core (Dockerfile
 // рядом: simulator/test/Dockerfile). Страница открывается с file://, сеть
 // контейнера выключена: любая внешняя загрузка (CDN, шрифты) — ошибка теста.
-// Проверяется: 0 JS-исключений и ошибок консоли во всех режимах; песочница
-// крутится; каждый экспортированный прогон грузится, проигрывается, и метрики
+// Проверяется: 0 JS-исключений и ошибок консоли во всех режимах; песочница:
+// лист жюри и линия загружены, метрики каждого сценария = отчёт sandbox_report.js,
+// панель «Что сейчас думает модель» объясняет событие сценария, ручное управление,
+// справка, телефон без горизонтальной прокрутки; каждый экспортированный прогон грузится, проигрывается, и метрики
 // страницы в конце прогона совпадают с итогом экспортёра; подпись JS-порта
 // следует отпечатку ядра прогонов; живой режим с имитатором rosbridge (ws в этом
 // же контейнере): правка поля адреса при подключении не останавливает страницу,
@@ -42,20 +44,97 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
   const shot = async (page, name) => { const f = path.join(OUT, name); await page.screenshot({ path: f }); report.shots.push(name); };
 
-  // ---------------- песочница
+  // ---------------- песочница: имитатор + ядро пакета (JS-порт), сценарии, объяснение
   {
-    const page = await open('?mode=sandbox');
-    await sleep(12000);
-    const st = await page.evaluate(() => ({ mode: window.__tvMode, speed: document.getElementById('bV').textContent, s: document.getElementById('bS').textContent, font: getComputedStyle(document.body).fontFamily, grid: getComputedStyle(document.querySelector('#dash .grid')).display }));
-    check('песочница: режим и табло', st.mode === 'sandbox' && st.grid === 'grid', st);
-    await shot(page, 'sandbox_desktop.png');
-    // модальные окна песочницы
-    for (const k of ['model', 'ros', 'metrics']) { await page.click(`[data-open="${k}"]`); await sleep(1500); if (k === 'metrics') await shot(page, 'sandbox_metrics.png'); await page.keyboard.press('Escape'); }
+    const page = await open('?mode=sandbox&preset=dry');
+    await sleep(3000);
+    const st0 = await page.evaluate(() => ({ mode: window.__tvMode, t: window.__tvSandbox.state().t, presets: document.querySelectorAll('[data-preset]').length, sheet: window.TV_SHEET && window.TV_SHEET.core.n_axles, units: window.TV_SHEET && window.TV_SHEET.core.meas_units, track: window.TV_TRACK && window.TV_TRACK.dirs.length }));
+    check('песочница: открылась, время идёт, 15 сценариев, лист жюри (2 тележки, км/ч), линия', st0.mode === 'sandbox' && st0.t > 0 && st0.presets >= 15 && st0.sheet === 2 && st0.units === 'km_h' && st0.track === 2, st0);
+    // метрики страницы = отчёт simulator/test/sandbox_report.js (тот же код в Node, docs/SANDBOX.md)
+    const refPath = path.join(path.dirname(PAGE), 'test', 'sandbox_report.json');
+    const ref = fs.existsSync(refPath) ? JSON.parse(fs.readFileSync(refPath, 'utf8')) : { presets: [] };
+    check('песочница: отчёт sandbox_report.json есть', ref.presets.length >= 14, { presets: ref.presets.length });
+    const keys = ['v_mae', 'naive_v_mae', 's_err', 'naive_s_err', 'cov2s', 'v_max'];
+    report.sandbox = {};
+    for (const p of ref.presets) {
+      const r = await page.evaluate(k => { window.__tvSandbox.load(k); window.__tvSandbox.play(false); return window.__tvSandbox.run(1e5, true); }, p.key);
+      const same = keys.every(k => Math.abs(r[k] - p.summary[k]) <= 1e-9);
+      report.sandbox[p.key] = Object.fromEntries(keys.map(k => [k, [+r[k].toFixed(6), +p.summary[k].toFixed(6)]]));
+      check(`песочница ${p.key}: метрики страницы = отчёт (docs/SANDBOX.md)`, same, report.sandbox[p.key]);
+    }
+    // объяснение: сценарий идёт до нужного события, панель «Что сейчас думает модель» говорит о нём
+    const cases = [
+      ['rain_spin', 'x.bogies.some(b => ["spin", "forced", "gate", "jump"].includes(b.code))', /отброшен/],
+      ['ice_skid', 'x.amb', /Стоим или скользим/],
+      ['leaves', 'x.bogies.some(b => ["spin", "skid", "forced", "gate", "jump"].includes(b.code))', /отброшен/],
+      ['front_fail', 'x.bogies[0].code === "dead"', /Передняя тележка исключена/],
+      ['both_fail', 't > 30 && (x.amb || x.bogies.every(b => ["spin", "skid", "forced", "gate", "jump", "held"].includes(b.code)))', /Стоим или скользим|Обе тележки отброшены/],
+      // слабые места: при трогании нули приняты за стоянку; при торможении к остановке — за юз
+      ['both_fail_start', 't > 10 && x.mode === "STANDSTILL"', /Вагон стоит/],
+      ['both_fail_stop', 't > 152 && x.amb', /Стоим или скользим/],
+      ['stuck', 'x.bogies[0].code === "frozen"', /залипли разом/],
+      ['dropout', 't > 20 && x.bogies[0].code === "stale"', /нет дольше 1 с/],
+      ['noise', 't > 30 && x.bogies.some(b => b.code === "gate")', /отброшен/],
+      ['urban', 't > 25 && /сигнала нет/.test(x.lines.join(" "))', /сигнала нет/],
+    ];
+    for (const [k, cond, re] of cases) {
+      const x = await page.evaluate((k, cond) => {
+        const S = window.__tvSandbox; S.load(k); S.play(false);
+        const test = new Function('x', 't', 'return ' + cond);
+        for (let i = 0; i < 1000; i++) { S.run(0.2, true); const x = S.explain(), st = S.state(); if (st.done) break; if (x.bogies.length && test(x, st.t)) { S.render(); return { t: st.t, head: x.head, bog: x.bogies.map(b => b.code), found: true }; } }
+        return { t: S.state().t, head: S.explain().head, found: false };
+      }, k, cond);
+      await sleep(300);
+      await shot(page, `sandbox_${k}.png`);
+      const panel = await page.evaluate(() => document.getElementById('sbThink').innerText);
+      check(`песочница ${k}: событие наступило, панель объясняет`, x.found && re.test(panel), { t: +x.t.toFixed(1), bogies: x.bog, head: x.head.slice(0, 140) });
+    }
+    // линия, панель объяснения, метрики и условия — отдельными снимками (ниже первого экрана)
+    await page.evaluate(() => { const S = window.__tvSandbox; S.load('ice_skid'); S.play(false); S.run(58, true); S.render(); });
+    for (const id of ['sbThink', 'sbMetrics', 'sbTrack', 'sbCtrl']) { const el = await page.$('#' + id); await el.scrollIntoView(); await sleep(250); await el.screenshot({ path: path.join(OUT, `sandbox_ice_${id}.png`) }); report.shots.push(`sandbox_ice_${id}.png`); }
+    // ручное управление: тяга с кнопки, вагон едет, клавиши работают
+    {
+      const r = await page.evaluate(() => { const S = window.__tvSandbox; S.load('manual'); S.play(false); document.querySelector('[data-sbh="15"]').click(); S.run(12); return S.state(); });
+      await page.keyboard.press('s'); await page.keyboard.press('s');
+      const h = await page.evaluate(() => document.getElementById('sbHandleV').textContent);
+      await shot(page, 'sandbox_manual.png');
+      check('песочница: ручное управление (кнопка тяги и клавиши)', r.summary.path > 20 && h === '+13', { path_m: +r.summary.path.toFixed(1), handle: h });
+    }
+    // справка «Как читать экран»
+    await page.click('#sbHelpBtn'); await sleep(400);
+    const help = await page.evaluate(() => ({ open: !document.getElementById('sbHelpModal').hidden, text: document.getElementById('sbHelpModal').innerText.length }));
+    await shot(page, 'sandbox_help.png');
+    await page.keyboard.press('Escape'); await sleep(200);
+    const helpClosed = await page.evaluate(() => document.getElementById('sbHelpModal').hidden);
+    check('песочница: справка открывается и закрывается', help.open && help.text > 500 && helpClosed, help);
+    // тёмная тема и телефон
+    await page.evaluate(() => { const S = window.__tvSandbox; S.load('rain_spin'); S.play(false); S.run(15); });
+    await page.click('#themeBtn'); await sleep(500);
+    await shot(page, 'sandbox_dark.png');
+    await page.click('#themeBtn');
     await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
-    await sleep(2500);
-    const ov = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    await sleep(1500);
+    const ov = await page.evaluate(() => { const v = document.getElementById('sbView'); return Math.max(document.documentElement.scrollWidth - innerWidth, v.scrollWidth - v.clientWidth); });
     check('песочница, телефон: нет горизонтальной прокрутки', ov <= 1, { overflow_px: ov });
     await shot(page, 'sandbox_mobile.png');
+    await page.evaluate(() => { document.getElementById('sbView').scrollTop = 1200; });
+    await sleep(400);
+    await shot(page, 'sandbox_mobile_panels.png');
+    await page.close();
+  }
+
+  // ---------------- песочница без js/track.js (pathgraph не в git): линия-заглушка, без ошибок
+  {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    page.on('pageerror', e => report.errors.push({ query: 'no-track', kind: 'pageerror', msg: String(e.message || e) }));
+    page.on('console', m => { if (m.type() === 'error') report.errors.push({ query: 'no-track', kind: 'console', msg: m.text() }); });
+    await page.evaluateOnNewDocument(() => { Object.defineProperty(window, 'TV_TRACK', { configurable: true, get: () => undefined, set: () => {} }); });
+    await page.goto(URL0 + '?mode=sandbox&preset=ice_skid', { waitUntil: 'load' });
+    await sleep(2500);
+    const r = await page.evaluate(() => { const S = window.__tvSandbox; S.play(false); const sm = S.run(60, true); S.render(); return { t: S.state().t, path: sm.path, head: document.getElementById('sbTrackH').textContent }; });
+    await shot(page, 'sandbox_no_track.png');
+    check('песочница без js/track.js: линия-заглушка, вагон едет, подпись', r.t >= 59 && r.path > 50 && /заглушка/.test(r.head), { t: +r.t.toFixed(1), path_m: +r.path.toFixed(1), head: r.head });
     await page.close();
   }
 
@@ -99,6 +178,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     cmp.shown_equal = [shown, true];
     report.replays[e.key] = { played_s_in_3s_x60: +(t1 - t0).toFixed(1), cmp };
     check(`прогон ${e.key}: проигрывается (×60)`, t1 - t0 > 60, { dt: +(t1 - t0).toFixed(1) });
+    if (/clean/.test(e.key)) {
+      const pg = await page.evaluate(() => window.__tvRun.pathgraph());
+      check(`прогон ${e.key}: pathgraph организаторов на плане ложится на трассу GNSS`, pg && pg.on_line > 100 && pg.median_m < 1.0, pg && { ...pg, median_m: +(+pg.median_m).toFixed(3) });
+      const el = await page.$('#rvMap'); if (el) { await el.scrollIntoView(); await sleep(500); await el.screenshot({ path: path.join(OUT, 'replay_map_pathgraph.png') }); report.shots.push('replay_map_pathgraph.png'); }
+    }
     check(`прогон ${e.key}: метрики страницы = итог экспортёра`, ok, Object.fromEntries(Object.entries(cmp).map(([k, [a, b]]) => [k, [typeof a === 'number' ? +a.toFixed(6) : a, typeof b === 'number' ? +b.toFixed(6) : b]])));
     await page.close();
   }
@@ -125,14 +209,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // ---------------- подпись JS-порта: прогоны посчитаны другим ядром -> «упрощённое ядро»
   {
-    const badge = p => p.evaluate(() => ({ badge: document.querySelector('header .badge-sub').textContent, note: document.getElementById('portNote').textContent }));
+    const badge = p => p.evaluate(() => ({ badge: document.querySelector('header .badge-sub').textContent, note: document.getElementById('sbPort').textContent }));
     let page = await open('?mode=sandbox');
     await sleep(2500);
     const a = await badge(page);
     const idxSha = await page.evaluate(() => (window.TV_REPLAY_INDEX || []).map(e => e.core_sha1));
     const portSha = await page.evaluate(() => window.TV_EST_PORT.core_sha1);
-    const same = idxSha.every(s => !s || s === portSha);      // нет отпечатка (старый экспорт) — подпись не меняется
-    check('подпись порта по отпечатку ядра прогонов', same ? /сверен/.test(a.badge) && !/упрощ/.test(a.badge) : /упрощённое ядро/.test(a.badge), { port: portSha, replays: [...new Set(idxSha)], ...a });
+    const sheetSha = await page.evaluate(() => window.TV_SHEET.core_sha1);
+    const same = idxSha.every(s => !s || s === portSha) && sheetSha === portSha;
+    check('подпись порта по отпечатку ядра прогонов и листа', same ? /сверен/.test(a.badge) && !/упрощ/.test(a.badge) && /ядро пакета/.test(a.note) : /упрощённое ядро/.test(a.badge), { port: portSha, sheet: sheetSha, replays: [...new Set(idxSha)], ...a });
     await page.close();
     // подмена отпечатка в списке прогонов (как после правки ядра без переноса порта)
     page = await browser.newPage();
@@ -143,10 +228,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await page.goto(URL0 + '?mode=sandbox', { waitUntil: 'load' });
     await sleep(2500);
     const b = await badge(page);
-    await page.click('[data-open="model"]'); await sleep(300);
-    const mtxt = await page.evaluate(() => document.getElementById('ghost').textContent);
-    await page.keyboard.press('Escape');
-    check('ядро изменилось после сверки -> «упрощённое ядро»', /упрощённое ядро/.test(b.badge) && /упрощённое ядро/.test(b.note) && /упрощённом ядре/.test(mtxt) && !/10⁻¹²/.test(mtxt), { ...b, model: mtxt.slice(0, 90) });
+    check('ядро изменилось после сверки -> «упрощённое ядро»', /упрощённое ядро/.test(b.badge) && /упрощённое ядро/.test(b.note), b);
     await page.close();
   }
 
@@ -179,12 +261,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         pub('/result/velocity', { header: hdr, velocity: 10 });
         pub('/tram/estimator_status', { header: hdr, mode: 0, v: 10, s: k, d: 0, k_traction: 1, k_brake: 1, mu: 0.2, sigma_v: 0.1, sigma_s: 1, wheel_healthy: [true, true], slip: false, ambiguous: false, n_accepted: 2, n_rejected: 0, valid: true, frame_count: 2 * k, step_time_us: 500 });
         if (scenario !== 'basic') {
-          const lat = LAT, lon = LON0 + DLON * k, [E, N] = utmEN(lat, lon, 37);
-          // (а) перенос по точке (Autoware): координаты внутри квадрата 100 км; (б) непрерывно от 37UDB
-          const x = scenario === 'wrap' ? ((E % 1e5) + 1e5) % 1e5 : E - 400000, y = scenario === 'wrap' ? N % 1e5 : N - 6100000;
+          // вагон едет на восток: master, rover на 12,436 м впереди (tf организаторов), base_link —
+          // на 9,873 м впереди master (ось передней тележки)
+          const lat = LAT, lon = LON0 + DLON * k, [Em, Nm] = utmEN(lat, lon, 37), lonR = lon + 1.2436 * DLON, [Er, Nr] = utmEN(lat, lonR, 37);
+          const fb = 9.873 / 12.436, [E, N] = scenario === 'ucb' ? [Em + fb * (Er - Em), Nm + fb * (Nr - Nm)] : [Em, Nm];
+          // (а) перенос по точке (Autoware): координаты внутри квадрата 100 км; (б) непрерывно от 37UDB;
+          // (в) судья и pathgraph: непрерывно от 37UCB, точка base_link (нода после потока «кадр»)
+          const x = scenario === 'wrap' ? ((E % 1e5) + 1e5) % 1e5 : scenario === 'ucb' ? E - 300000 : E - 400000, y = scenario === 'wrap' ? N % 1e5 : N - 6100000;
           sent.xmin = Math.min(sent.xmin, x); sent.xmax = Math.max(sent.xmax, x);
           pub('/result/position', { header: hdr, pose: { pose: { position: { x, y, z: 150 }, orientation: { x: 0, y: 0, z: 0, w: 1 } }, covariance: [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } });
-          pub('/sensing/gnss/master/fix', { header: hdr, latitude: lat, longitude: lon, altitude: 150, status: { status: 2, service: 1 } });
+          pub('/sensing/gnss/master/fix', { header: hdr, latitude: lat, longitude: lon, altitude: 153, status: { status: 2, service: 1 } });
+          pub('/sensing/gnss/rover/fix', { header: hdr, latitude: lat, longitude: lonR, altitude: 153, status: { status: 2, service: 1 } });
         }
         k++;
       }, 100);
@@ -213,8 +300,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         { rows: [r0, r1, r2], pill: tail.pill, host: tail.host, replay_dt_x60: +(t1 - t0).toFixed(1) });
       await page.close();
     }
-    // переход границы квадратов 37U CB | DB (E = 400 км) в обоих соглашениях MGRS
-    for (const sc of ['wrap', 'grid']) {
+    // переход границы квадратов 37U CB | DB (E = 400 км) в трёх соглашениях MGRS; точка эталона
+    // выбирается по выходу ноды: антенна master (wrap, grid) или base_link (ucb — как у судьи)
+    for (const sc of ['wrap', 'grid', 'ucb']) {
       scenario = sc; sent.xmin = Infinity; sent.xmax = -Infinity;
       const page = await open('?mode=live&ros=ws://127.0.0.1:9090');
       await sleep(6000);
@@ -222,10 +310,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const xs = tl.x.filter(Number.isFinite), hs = tl.h.filter(Number.isFinite);
       let jump = 0; for (let i = 1; i < xs.length; i++) jump = Math.max(jump, Math.abs(xs[i] - xs[i - 1]));
       const hmax = hs.length ? Math.max(...hs) : NaN, span = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
-      const crossed = sc === 'wrap' ? sent.xmax > 99000 && sent.xmin < 1000 : sent.xmin < 0 && sent.xmax > 0;
-      check(`живой режим: MGRS ${sc === 'wrap' ? 'с переносом по точке' : 'от квадрата 37UDB'} — переход E = 400 км без скачка`, crossed && xs.length > 20 && span > 200 && jump < 50 && hs.length > 20 && hmax < 0.5,
-        { sent_x: [+sent.xmin.toFixed(1), +sent.xmax.toFixed(1)], rows: xs.length, span_m: +span.toFixed(1), max_step_m: +jump.toFixed(2), pairs: hs.length, max_plan_err_m: +hmax.toFixed(3) });
-      if (sc === 'wrap') await shot(page, 'live_mgrs_crossing.png');
+      const crossed = sc === 'wrap' ? sent.xmax > 99000 && sent.xmin < 1000 : sc === 'ucb' ? sent.xmin < 1e5 && sent.xmax > 1e5 : sent.xmin < 0 && sent.xmax > 0;
+      const wantRef = sc === 'ucb' ? 'base_link' : 'master';
+      check(`живой режим: MGRS ${sc === 'wrap' ? 'с переносом по точке' : sc === 'ucb' ? 'от квадрата 37UCB (судья), выход base_link' : 'от квадрата 37UDB'} — переход E = 400 км без скачка, эталон ${wantRef}`, crossed && xs.length > 20 && span > 200 && jump < 50 && hs.length > 20 && hmax < 0.5 && tl.ref === wantRef,
+        { sent_x: [+sent.xmin.toFixed(1), +sent.xmax.toFixed(1)], rows: xs.length, span_m: +span.toFixed(1), max_step_m: +jump.toFixed(2), pairs: hs.length, max_plan_err_m: +hmax.toFixed(3), ref: tl.ref, ref_note: tl.refNote });
+      if (sc === 'wrap' || sc === 'ucb') await shot(page, `live_mgrs_${sc}.png`);
       await page.close();
     }
     await new Promise(r => wss.close(r));
