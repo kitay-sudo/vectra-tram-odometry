@@ -40,6 +40,7 @@
     gnss_prior_rel: 0.003    # — · априори поправки: рост σ положения на метр пути (типичный дрейф, не запас ss_rel)
     gnss_scale_adapt: false    # — · подстройка масштаба пути по отрезкам между поправками RTK
     gnss_stop_skip_m: 0.0    # м · после поправки GNSS столько м пути без привязки к остановке
+    gnss_persist_s: 10.0    # с · невязка RTK вне ворот (или поперёк пути, пара против курса) держится столько — оценка сбилась, ставим по GNSS; короче — скачок GNSS, не верим
     origin_lat: .nan    # ° · начало для projection enu; NaN — первая точка GNSS master
     origin_lon: .nan    # ° · начало для projection enu; NaN — первая точка GNSS master
     origin_alt: .nan    # м · начало для projection enu; NaN — первая точка GNSS master

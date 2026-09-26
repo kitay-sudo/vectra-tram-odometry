@@ -198,19 +198,35 @@ def test_gnss_never_moves_the_grid():
 # ------------------------------------------------------------ поправка и отбраковка
 
 def test_drift_is_corrected_by_mid_route_burst():
-    """Колёса врут на +2 % (путь убегает на 2 м за 100 м); пачка GNSS через
-    60 с возвращает положение к истине, σ после поправки меньше."""
+    """Колёса врут на +1 % (путь убегает на 1 м за 100 м); пачка GNSS на 6 с
+    через минуту: невязка ~5 м в воротах — после 3 согласных эпох положение
+    возвращается к истине, σ после поправки меньше."""
     r = runner()
-    outs = feed(r, 0.0, 75.0, wheel_gain=1.02, gnss=lambda t: t <= 2.0 or 62.0 <= t <= 68.0)
+    outs = feed(r, 0.0, 75.0, wheel_gain=1.01, gnss=lambda t: t <= 2.0 or 62.0 <= t <= 68.0)
     before = [o for o in outs if 61.0 <= o["stamp"] <= 61.9]
-    assert abs(along_err(before[-1], r)) > 8.0             # ~2 % от 530 м
+    assert abs(along_err(before[-1], r)) > 4.0             # ~1 % от 530 м
     right_after = [o for o in outs if 68.2 <= o["stamp"] <= 68.3]
     assert abs(along_err(right_after[0], r)) < 1.0
-    assert abs(final_err(outs, r)) < 2.5                   # и дальше — те же 2 % от 70 м
+    assert abs(final_err(outs, r)) < 1.5                   # и дальше — тот же 1 % от 70 м
     assert r.pos.n_corr > 0
     s_before = before[-1]["sigma_s"]
     after = [o for o in outs if 68.5 <= o["stamp"] <= 69.0]
     assert after[0]["sigma_s"] < 0.5 * s_before
+
+
+def test_large_drift_needs_lasting_rtk():
+    """Колёса врут на +2 %: через минуту невязка ~11 м — вне ворот (для
+    колёс это невероятно). Пачка на 6 с — короче gnss_persist_s: не верим
+    (так же выглядит сбой GNSS). Пачка на 15 с — несогласие держится,
+    оценка ставится по GNSS."""
+    short = runner()
+    outs = feed(short, 0.0, 75.0, wheel_gain=1.02, gnss=lambda t: t <= 2.0 or 62.0 <= t <= 68.0)
+    assert abs(final_err(outs, short)) > 10.0
+    r = runner()
+    outs = feed(r, 0.0, 85.0, wheel_gain=1.02, gnss=lambda t: t <= 2.0 or 62.0 <= t <= 77.0)
+    right_after = [o for o in outs if 77.2 <= o["stamp"] <= 77.3]
+    assert abs(along_err(right_after[0], r)) < 1.0
+    assert r.pos.n_corr_big >= 1
 
 
 def test_off_flag_ignores_mid_route_burst():
@@ -275,7 +291,7 @@ def test_single_antenna_fix():
     """После окна идёт только master: base_link — перенос вдоль курса карты
     на 9,87 м; дрейф исправляется."""
     r = runner()
-    outs = feed(r, 0.0, 75.0, wheel_gain=1.02, rover=False,
+    outs = feed(r, 0.0, 75.0, wheel_gain=1.01, rover=False,
                 gnss=lambda t: t <= 2.0 or 62.0 <= t <= 68.0)
     right_after = [o for o in outs if 68.2 <= o["stamp"] <= 68.3]
     assert abs(along_err(right_after[0], r)) < 1.5
@@ -350,3 +366,74 @@ def test_declared_covariance_is_used():
     outs = feed(r, 0.0, 45.0, gnss=lambda t: t <= 2.0 or 40.0 <= t <= 40.35,
                 fix=lambda t: (3.0, 0.0, 2, 0.0) if t > 3.0 else (0.0, 0.0, 2, 0.0))
     assert abs(along_err(outs[-1], r)) < 1.0
+
+
+# ------------------------------------------------------------ ветка, встречный путь, вне карты
+
+def _map_two_ways(L=3000.0, gap=4.0):
+    """Путь на восток и встречный (на запад) в gap м севернее."""
+    x = np.arange(-50.0, L, 1.0)
+    east = np.c_[E0 + x, np.full(len(x), N0), np.full(len(x), ALT_RAIL)]
+    west = np.c_[E0 + x[::-1], np.full(len(x), N0 + gap), np.full(len(x), ALT_RAIL)]
+    return TrackMap.from_polylines([east, west], crs="utm", zone=37, bidirectional=False)
+
+
+def _map_turn(x_turn=400.0, R_c=50.0, L_north=600.0):
+    """Путь на восток до x_turn, затем поворот налево по дуге R_c и на север:
+    трамвай на самом деле едет прямо (тупик/ветка, которой нет в карте)."""
+    x = np.arange(-50.0, x_turn, 1.0)
+    pts = [np.c_[E0 + x, np.full(len(x), N0)]]
+    a = np.arange(0.0, math.pi / 2, 1.0 / R_c)
+    pts.append(np.c_[E0 + x_turn + R_c * np.sin(a), N0 + R_c * (1 - np.cos(a))])
+    y = np.arange(0.0, L_north, 1.0)
+    pts.append(np.c_[np.full(len(y), E0 + x_turn + R_c), N0 + R_c + y])
+    P = np.vstack(pts)
+    return TrackMap.from_polylines([np.c_[P, np.full(len(P), ALT_RAIL)]], crs="utm", zone=37,
+                                   bidirectional=False)
+
+
+def test_cursor_on_opposite_track_is_relocated_by_rtk_pair():
+    """Курсор оказался на встречном пути (курс против движения): чистая пара
+    RTK смотрит против курса пути — вдоль не поправляем, а после
+    gnss_persist_s согласных эпох курсор переставляется в точку GNSS на путь
+    с курсом пары."""
+    def run(correction):
+        r = Runner(_tram(), track_map=_map_two_ways(), gnss_correction=correction)
+        feed(r, 0.0, 20.0)
+        c = r.pos._cursor
+        r.pos._cursor = r.pos.map.locate((c["x"], c["y"] + 4.0, c["z"]), c["h"] + math.pi)
+        assert abs(math.remainder(r.pos._cursor["h"] - c["h"], 2 * math.pi)) > 3.0
+        return r, feed(r, 20.0, 50.0, gnss=lambda t: t >= 5.0)
+    r, outs = run(True)
+    assert r.pos.n_corr_reloc >= 1
+    assert abs(along_err(outs[-1], r)) < 1.5 and abs(outs[-1]["y"] + 6100000.0 - N0) < 1.0
+    r0, outs0 = run(False)
+    assert abs(along_err(outs0[-1], r0)) > 100.0
+
+
+def test_off_map_branch_is_followed_by_rtk_pair():
+    """Карта сворачивает налево, а трамвай едет прямо (пути нет в карте):
+    без GNSS курсор уходит по карте на север; с GNSS весь прогон пара RTK
+    держится против курса курсора gnss_persist_s — курсор ставится в точку
+    GNSS вне карты с курсом пары и едет прямо."""
+    def run(correction):
+        r = Runner(_tram(), track_map=_map_turn(), gnss_correction=correction)
+        return r, feed(r, 0.0, 90.0, gnss=lambda t: True)
+    r, outs = run(True)
+    e = outs[-1]
+    assert r.pos.n_corr_reloc >= 1
+    assert math.hypot(along_err(e, r), e["y"] + 6100000.0 - N0) < 2.0
+    r0, outs0 = run(False)
+    e0 = outs0[-1]
+    assert math.hypot(along_err(e0, r0), e0["y"] + 6100000.0 - N0) > 100.0
+
+
+def test_short_rtk_offset_in_a_burst_is_not_followed():
+    """Пачка RTK на 5 с со сдвигом 15 м вдоль пути (сбой GNSS, как
+    30618_49fe4c54 на 320 с), а колёса точны: невязка вне ворот держится
+    меньше gnss_persist_s — не верим; положение не уходит."""
+    r = runner()
+    outs = feed(r, 0.0, 75.0, gnss=lambda t: t <= 2.0 or 60.0 <= t <= 65.0,
+                fix=lambda t: (15.0, 0.0, 2, 0.0) if t > 3.0 else (0.0, 0.0, 2, 0.0))
+    err = [abs(along_err(o, r)) for o in outs if o["stamp"] >= 10.0]
+    assert max(err) < 1.5, max(err)

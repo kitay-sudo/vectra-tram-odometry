@@ -83,23 +83,28 @@ class Position:
         берутся; точка ждёт шага сетки, ушедшего на CORR_DELAY за её метку
         (успевает прийти пара), и сравнивается с положением курсора на СВОЮ
         метку (путь ядра по истории сетки: v·Δt учтено, будущего нет);
-      * эпоха: master + rover одной метки (база 12,44 ± CORR_BASE_TOL м) —
-        base_link по tf на отрезке антенн, курс пары должен совпасть с курсом
-        пути (±CORR_HEAD_TOL); одна антенна — перенос вдоль курса карты;
+      * эпоха: master + rover одной метки с базой BASE_MIN…BASE_MAX (как
+        эталон оценки: кузов сочленённый, на тесных кривых база до ~10 м) —
+        base_link по tf на отрезке антенн; курс пары — только у «чистой» пары
+        (база 12,44 ± CORR_BASE_TOL); одна антенна — перенос вдоль курса карты;
       * σ точки по NavSatFix.status (2 — RTK: gnss_sigma_rtk_m, 1 — SBAS,
         0 — без поправок: gnss_sigma_fix_m), по заявленной ковариации, если
         она есть (в данных пустая);
       * обновление Калмана вдоль пути: невязка ν вдоль касательной курсора,
-        априорная σ — публикуемая σ_s связки (Runner передаёт её в step),
-        K = P/(P + R); курсор сдвигается по карте на K·ν, σ_s после — √((1−K)P);
-        не чаще gnss_min_interval_s (ошибки соседних точек связаны);
-      * отбраковка: |ν| > gnss_gate·√(P+R), сдвиг K·ν > gnss_jump_m или
-        поперёк дальше max(2,5 м, 3σ) — в очередь подтверждения; большая
-        поправка — только если gnss_confirm_n таких эпох подряд согласны
-        между собой (разброс ν ≤ 1 м + 2σ); иначе одиночный скачок GNSS
-        отбрасывается. Поправка больше CORR_ALONG_MAX или поперечная (другая
-        ветка, курсор вне карты) — перестановка курсора в точку GNSS, только
-        для RTK и только если там есть путь карты с тем же курсом;
+        априорная σ — σ_s связки с ростом gnss_prior_rel на метр пути (Runner
+        передаёт её в step), K = P/(P + R); курсор сдвигается по карте на K·ν,
+        σ_s после — √((1−K)P); не чаще gnss_min_interval_s (ошибки соседних
+        точек связаны);
+      * отбраковка: правдоподобная большая поправка (|ν| ≤ gnss_gate·√(P+R),
+        но K·ν > gnss_jump_m) — после gnss_confirm_n согласных эпох подряд;
+        неправдоподобная (вне ворот, поперёк пути дальше max(2,5 м, 3σ),
+        чистая пара против курса пути больше CORR_HEAD_TOL) — только RTK и
+        только если держится gnss_persist_s с той же невязкой (скачок сразу
+        после согласной эпохи — не меньше CORR_PERSIST_JUMP_S): короче —
+        это сбой GNSS, он отбрасывается. Поправка больше CORR_ALONG_MAX,
+        поперечная или против курса (другая ветка, встречный путь, курсор вне
+        карты) — перестановка курсора в точку GNSS на путь карты с курсом
+        пары, а если карты там нет — в саму точку с курсом чистой пары;
       * без выставки или без курса (старт с середины, GNSS в начале не было)
         первая годная точка после окна открывает окно выставки заново;
       * gnss_scale_adapt: отрезки между RTK-поправками (≥ CORR_SCALE_L м пути)
@@ -128,13 +133,14 @@ class Position:
     CORR_HEAD_TOL = math.radians(30.0)   # курс пары против курса пути
     CORR_CROSS_MIN = 2.5         # м: поперёк дальше max(этого, 3σ) — другая ветка или сбой
     CORR_CONFIRM_S = 3.0         # с: подтверждающие эпохи — не дальше друг от друга
-    CORR_PERSIST_S = 2.0         # с: невязка RTK вне ворот должна держаться столько
     CORR_PERSIST_JUMP_S = 30.0   # с: а если несогласие началось скачком GNSS — столько
     CORR_JUMP_DT = 1.0           # с: скачок — сразу после согласной эпохи
     CORR_JUMP_M = 2.0            # м: и невязка изменилась больше этого + 3σ точки
     CORR_NONRTK_INTERVAL_S = 20.0    # с: поправки без RTK не чаще (ошибка держится
                                      # десятки секунд — повтор ничего не добавляет)
     CORR_PEND_MAX = 300          # эпох в очереди подтверждения
+    CORR_DRIFT_TOL = 0.02        # доля пути: рост невязки вдоль за время подтверждения
+                                 # (колёса врут до ~2 % при срыве) — ещё согласие
     CORR_SINGLE_SD = 0.5         # м: добавка к σ одной антенны (курс карты × плечо антенны)
     CORR_VAR_FLOOR = 0.2 ** 2    # м²: σ² после поправки не меньше этого
     CORR_VAR_FRAC = 0.25         # и не меньше этой доли σ² точки: ошибки соседних
@@ -154,7 +160,7 @@ class Position:
                  gnss_sigma_sbas_m=1.5, gnss_sigma_fix_m=5.0, gnss_gate=3.0,
                  gnss_jump_m=3.0, gnss_confirm_n=3, gnss_min_interval_s=1.0,
                  gnss_max_skew_s=0.3, gnss_prior_rel=0.003, gnss_scale_adapt=False,
-                 gnss_stop_skip_m=0.0):
+                 gnss_stop_skip_m=0.0, gnss_persist_s=10.0):
         self.map = track_map
         if track_map is not None:
             track_map.terminal_hold = hold_mode(terminal_hold)
@@ -233,6 +239,7 @@ class Position:
         self.gnss_prior_rel = float(gnss_prior_rel)
         self.gnss_scale_adapt = bool(gnss_scale_adapt)
         self.gnss_stop_skip_m = float(gnss_stop_skip_m)
+        self.gnss_persist_s = float(gnss_persist_s)
         self._cq = []                   # точки после окна: ждут шага сетки
         self._hist = deque(maxlen=int(self.CORR_HIST_S / 0.01) + 2)   # (t, путь ядра)
         self._pend = []                 # эпохи вне ворот: ждут подтверждения
@@ -546,26 +553,35 @@ class Position:
             z = q[4] if q[4] is not None else self._alt_fallback(q[2], q[3])
             return np.array(fr.fwd(q[2], q[3], z))
 
-        h_g = None
+        # base_link по GNSS: пара одной эпохи с базой BASE_MIN…BASE_MAX — как
+        # эталон оценки (кузов сочленённый: на тесных кривых база до ~10 м);
+        # курс пары h_g — только у «чистой» пары (база 12,44 ± CORR_BASE_TOL)
+        gp, h_g = None, None
         if m is not None and r is not None:
             M, R = xyz(m), xyz(r)
             d = R - M
-            if abs(math.hypot(d[0], d[1]) - self.body.baseline) <= self.CORR_BASE_TOL:
+            b = math.hypot(d[0], d[1])
+            if self.BASE_MIN <= b <= self.BASE_MAX:
                 gp = np.array(self.body.from_pair(M, R, self.track_point))
-                h_g = math.atan2(d[0], d[1])
+                if abs(b - self.body.baseline) <= self.CORR_BASE_TOL:
+                    h_g = math.atan2(d[0], d[1])
             else:
                 self.n_corr_geom += 1       # база не та: пара негодна, берём master
                 r = None
-        if h_g is None:
+        if gp is None:
             q = m if m is not None else r
             gp = np.array(self.body.shift(xyz(q), h_ref, q[1] if q[1] == "master" else "rover",
                                           self.track_point))
         rows = [q for q in (m, r) if q is not None]
         status = min(q[5] for q in rows)
-        sd = self._sd_fix(rows, h_g is None)
-        if h_g is not None and abs(math.remainder(h_g - h_ref, 2 * math.pi)) > self.CORR_HEAD_TOL:
-            self.n_corr_geom += 1           # пара смотрит не вдоль пути: сбой или не та ветка
-            return False
+        sd = self._sd_fix(rows, len(rows) < 2)
+        # пара смотрит не вдоль пути курсора (разворот на петле, курсор на
+        # встречном пути или не на той ветке): поправка вдоль пути не имеет
+        # смысла — только перестановка курсора по подтверждённой паре RTK
+        flip = (h_g is not None
+                and abs(math.remainder(h_g - h_ref, 2 * math.pi)) > self.CORR_HEAD_TOL)
+        if flip:
+            self.n_corr_geom += 1
         # невязка на метку эпохи: курсор сейчас на пути s, на метку — на s_fix
         # (без карты в режиме hold выход от пути не зависит: сдвига нет)
         hold = c is None and self.nomap_mode == "hold"
@@ -588,8 +604,8 @@ class Position:
         # без карты поперёк держать нечему: невязка — по модулю на плоскости
         nu = nu_a if c is not None else math.hypot(nu_a, nu_c)
         cross_lim = max(self.CORR_CROSS_MIN, 3.0 * sd) if c is not None else math.inf
-        in_gate = abs(nu) <= self.gnss_gate * math.sqrt(P + Rv)
-        cross_out = abs(nu_c) > cross_lim
+        in_gate = abs(nu) <= self.gnss_gate * math.sqrt(P + Rv) and not flip
+        cross_out = abs(nu_c) > cross_lim or flip
         if in_gate and abs(K * nu) <= self.gnss_jump_m and not cross_out:
             self._pend = []                 # эпоха согласна с оценкой: прежние — выбросы
             self._ok = (ts, nu_a)
@@ -599,53 +615,56 @@ class Position:
                 return False
             return self._shift(ts, s, ds, K, nu_a, nu_c, (1.0 - K) * P, sd, status, "small")
         # Большая поправка — только после подтверждения:
-        #   * в воротах (оценка и так неуверенна: долгий путь без GNSS, срыв
-        #     колёс) — gnss_confirm_n эпох подряд с согласной невязкой, затем
-        #     обычное обновление K·ν;
-        #   * вне ворот (оценка уверена, GNSS с ней не согласен) — только RTK
-        #     и только если несогласие держится CORR_PERSIST_S с одной и той
-        #     же невязкой: тогда оценка считается сбившейся и ставится по GNSS
-        #     (априори ≥ ν²). У GNSS без RTK бывают скачки на 20–50 м по
-        #     нескольку секунд (30639) — по ним не переставляем никогда;
-        #   * другая ветка по RTK — невязка поперёк за пределом у
-        #     gnss_confirm_n эпох подряд с одним знаком;
+        #   * правдоподобная (в воротах: оценка и так неуверенна — долгий путь
+        #     без GNSS, срыв колёс) — gnss_confirm_n эпох подряд с согласной
+        #     невязкой, затем обычное обновление K·ν;
+        #   * неправдоподобная (вне ворот, поперёк пути, пара против курса
+        #     пути) — только RTK и только если несогласие держится
+        #     gnss_persist_s с одной и той же невязкой (у пары против курса —
+        #     весь срок против курса): тогда оценка считается сбившейся и
+        #     ставится по GNSS (априори ≥ ν²), а другая ветка, встречный путь
+        #     или место вне карты — перестановкой курсора в точку GNSS. Без
+        #     RTK бывают скачки на 20–50 м по нескольку секунд (30639) — по ним
+        #     не переставляем никогда; у RTK — скачки на 10–30 м от секунд до
+        #     минут (30618_49fe4c54, 30618_28538acf), поэтому срок не короткий;
         #   * скачок: несогласие появилось сразу (≤ CORR_JUMP_DT) после эпохи,
         #     согласной с оценкой, и невязка изменилась больше чем на
         #     CORR_JUMP_M + 3σ. Оценка по колёсам непрерывна — телепортом
-        #     прыгнул GNSS (так бывает и при статусе 2: 30618_b95ca60a,
-        #     скачки по 5–15 м на секунды). Тогда держаться должно
-        #     CORR_PERSIST_JUMP_S.
+        #     прыгнул GNSS (так бывает и при статусе 2: 30618_b95ca60a).
+        #     Тогда держаться должно не меньше CORR_PERSIST_JUMP_S.
         self.n_corr_gated += 1
         if not self._pend:
             ok = self._ok
             self._pend_jump = (ok is not None and ts - ok[0] <= self.CORR_JUMP_DT
                                and abs(nu_a - ok[1]) > self.CORR_JUMP_M + 3.0 * sd)
-        persist = self.CORR_PERSIST_JUMP_S if self._pend_jump else self.CORR_PERSIST_S
+        persist = (max(self.gnss_persist_s, self.CORR_PERSIST_JUMP_S) if self._pend_jump
+                   else self.gnss_persist_s)
         keep_s = max(self.CORR_CONFIRM_S, persist)
-        self._pend = [p for p in self._pend if ts - p[0] <= keep_s]
-        self._pend.append((ts, nu_a, nu_c, sd, in_gate, cross_out, status))
+        self._pend = [q for q in self._pend if ts - q[0] <= keep_s]
+        self._pend.append((ts, nu_a, nu_c, sd, in_gate, cross_out, status, flip, s_fix))
         self._pend = self._pend[-self.CORR_PEND_MAX:]
         last = self._pend[-self.gnss_confirm_n:]
         if len(last) < self.gnss_confirm_n or ts - last[0][0] > self.CORR_CONFIRM_S:
             return False
-        tol = 1.0 + 2.0 * max(p[3] for p in last)
-        rtk = all(p[6] >= 2 for p in last)
-        branch = (c is not None and rtk and not self._pend_jump and all(p[5] for p in last)
-                  and len({p[2] > 0 for p in last}) == 1)
-        inflate = branch
-        if not branch:
-            if all(p[4] for p in last) and not self._pend_jump:
-                use = last                  # в воротах: короткое подтверждение
-            else:
-                span = [p for p in self._pend if ts - p[0] <= persist]
-                if not (rtk and all(p[6] >= 2 for p in span)):
-                    return False            # без RTK вне ворот — не верим
-                if ts - span[0][0] < persist - self.CORR_DELAY:
-                    return False            # ждём, держится ли
-                use, inflate = span, True
-            A = [p[1] for p in use]
-            C = [p[2] for p in use]
-            if max(A) - min(A) > tol or max(C) - min(C) > tol:
+        tol = 1.0 + 2.0 * max(q[3] for q in last)
+        if all(q[4] for q in last) and not self._pend_jump:
+            use, inflate = last, False      # правдоподобная: короткое подтверждение
+        else:
+            span = [q for q in self._pend if ts - q[0] <= persist + 1e-9]
+            if not all(q[6] >= 2 for q in span):
+                return False                # без RTK вне ворот — не верим
+            if ts - span[0][0] < persist - self.CORR_DELAY:
+                return False                # ждём, держится ли
+            if any(q[7] for q in span) and not all(q[7] for q in span):
+                return False                # то по курсу, то против — не ясно
+            use, inflate = span, True
+        if not all(q[7] for q in use):
+            # согласие между эпохами: разброс невязки не больше 1 м + 2σ и
+            # роста от масштаба колёс на пройденном за эти эпохи пути
+            A = [q[1] for q in use]
+            C = [q[2] for q in use]
+            tol_a = tol + self.CORR_DRIFT_TOL * (max(q[8] for q in use) - min(q[8] for q in use))
+            if max(A) - min(A) > tol_a or max(C) - min(C) > tol:
                 return False
         self._pend = []
         Pb = max(P, nu_a * nu_a + nu_c * nu_c) if inflate else P   # сбилась: априори ≥ ν²
@@ -656,13 +675,15 @@ class Position:
                 return False
             return self._shift(ts, s, ds, Kb, nu_a, nu_c, var, sd, status, "big")
         if cross_out or not c.get("on_map", False) or abs(nu_a) > self.CORR_ALONG_MAX:
-            # другая ветка, курсор вне карты или далеко: курсор — в точку GNSS
-            # на путь карты с курсом пары (только RTK)
+            # другая ветка, встречный путь, курсор вне карты или далеко:
+            # курсор — в точку GNSS (только RTK, подтверждено выше) на путь
+            # карты с курсом пары; нет там карты — в саму точку с курсом
+            # чистой пары (тупик вне карты), дальше курсор ищет карту сам
             if status >= 2 and math.hypot(nu_a, nu_c) <= self.CORR_RELOC_MAX:
                 hh = h_g if h_g is not None else h
                 gx, gy = gp[0] + lag * math.sin(hh), gp[1] + lag * math.cos(hh)
                 cn = self.map.locate((gx, gy, c["z"]), hh)
-                if cn.get("on_map"):
+                if cn.get("on_map") or h_g is not None:
                     self._cursor = cn
                     self.n_corr_reloc += 1
                     return self._shift(ts, s, ds, 0.0, nu_a, nu_c, var, sd, status, "reloc")

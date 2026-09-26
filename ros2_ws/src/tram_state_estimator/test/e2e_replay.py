@@ -85,7 +85,8 @@ POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("gnss_max_skew_s", "gnss_max_skew_s"),
                  ("gnss_prior_rel", "gnss_prior_rel"),
                  ("gnss_scale_adapt", "gnss_scale_adapt"),
-                 ("gnss_stop_skip_m", "gnss_stop_skip_m"))
+                 ("gnss_stop_skip_m", "gnss_stop_skip_m"),
+                 ("gnss_persist_s", "gnss_persist_s"))
 # tf антенн в base_link (организаторы 25.09); независимо от body.py пакета
 MASTER_X, ROVER_X, ANTENNA_Z = -9.873, 2.563, 3.0
 

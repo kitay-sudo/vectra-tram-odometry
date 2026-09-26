@@ -82,7 +82,7 @@ FALLBACK_SD = 10.0      # м: запасная выставка после сб�
 GNSS_PARAMS = ("gnss_correction", "gnss_sigma_rtk_m", "gnss_sigma_sbas_m",
                "gnss_sigma_fix_m", "gnss_gate", "gnss_jump_m", "gnss_confirm_n",
                "gnss_min_interval_s", "gnss_max_skew_s", "gnss_prior_rel", "gnss_scale_adapt",
-               "gnss_stop_skip_m")
+               "gnss_stop_skip_m", "gnss_persist_s")
 
 
 def fix_var(m):
@@ -222,6 +222,7 @@ class TramEstimatorNode(Node):
         P("gnss_prior_rel", 0.003)         # априори поправки: рост σ на метр пути
         P("gnss_scale_adapt", False)       # масштаб пути по отрезкам между поправками
         P("gnss_stop_skip_m", 0.0)         # после поправки столько м без привязки к остановке
+        P("gnss_persist_s", 10.0)          # неправдоподобная невязка RTK держится столько — верим
         g = lambda n: self.get_parameter(n).value
 
         params = declare_core_params(self, include_dt=True)

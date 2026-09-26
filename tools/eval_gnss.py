@@ -47,6 +47,11 @@ import eval_replay as R         # noqa: E402
 import inject as I              # noqa: E402
 
 SCENARIOS = ("first3", "sparse", "bursts", "nostart", "midstart", "full", "glitchy")
+# Сценарии с теми же первыми 3 с GNSS, что first3: при gnss_correction false
+# точки после окна отбрасываются, поэтому выход плеч «до» у них тот же, что в
+# first3 (C2; проверено: tools/eval_gnss.py --no-share-before). Плечи «до»
+# считаются один раз — в first3 — и копируются.
+SAME_BEFORE = ("sparse", "bursts", "full", "glitchy")
 KEYS = ("v_mae", "v_bias", "p3d_mean", "p3d_end_mean", "p3d_end_median", "p3d_end_max",
         "drift_pct_3d_median", "drift_pct_3d_mean", "drift_pct_3d_max",
         "along_mean", "along_max", "along_rmse", "cross_mean", "cov2s_along", "pz_mean",
@@ -77,7 +82,68 @@ def _arms(args):
     return arms
 
 
+def _cp(v):
+    return v if np.isscalar(v) else np.copy(v)
+
+
+class _Tape:
+    """Лента шагов ядра ведущей связки прогона. GNSS ядро не трогает (сетку
+    двигают только тележки и ручка), поэтому у всех плеч модели одного
+    прогона ядро шагает одинаково: остальные плечи берут выходы ядра с ленты
+    вместо пересчёта UKF (в 3–5 раз быстрее при нескольких плечах). После
+    прогона сверяется, что ведомые прочли ленту до конца и сбросов не было;
+    иначе задача считается заново без ленты (--no-share-core — всегда так)."""
+
+    def __init__(self, core):
+        self.rec = []
+        self.core = core
+        for name in ("step", "step_open_loop"):
+            orig = getattr(core, name)
+            setattr(core, name, self._wrap(orig))
+
+    def _wrap(self, orig):
+        def call(*a, **k):
+            o = orig(*a, **k)
+            c = self.core
+            self.rec.append((dict(o), c.x.copy(), bool(np.isfinite(c.P).all()),
+                             _cp(c.u_filt), c.mu))
+            return o
+        return call
+
+
+class _Follower:
+    """Ядро ведомого плеча: выходы с ленты ведущего (см. _Tape)."""
+
+    def __init__(self, tape, real):
+        self.tape, self.i = tape, 0
+        self.p, self.nw = real.p, real.nw
+        self.x, self.P = real.x.copy(), np.zeros(1)
+        self.u_filt, self.mu = _cp(real.u_filt), real.mu
+
+    def _next(self):
+        o, x, ok, u, mu = self.tape.rec[self.i]
+        self.i += 1
+        self.x, self.P = x.copy(), np.zeros(1) if ok else np.full(1, np.nan)
+        self.u_filt, self.mu = _cp(u), mu
+        return dict(o)
+
+    def step(self, *a, **k):
+        return self._next()
+
+    def step_open_loop(self, *a, **k):
+        return self._next()
+
+
 def run_one(task):
+    """Один прогон одного сценария: все плечи в одном проходе событий."""
+    res = _run_one(task, share=task.get("share_core", True))
+    if res is None:                         # лента не сошлась (сброс связки): без неё
+        res = _run_one(task, share=False)
+        res["info"]["share_core"] = "fallback"
+    return res
+
+
+def _run_one(task, share):
     """Один прогон одного сценария: все плечи в одном проходе событий."""
     t_wall = time.perf_counter()
     cfg, bag, sc = task["cfg"], task["bag"], task["scenario"]
@@ -96,7 +162,20 @@ def run_one(task):
         names.append(name)
     evs = R.events(a, sc, seed=I.seed_for(bag, "gnss|" + sc))
     info["n_fix"] = sum(1 for e in evs if e[1] == 2)
+    model = [r for r, (_, _, naive) in zip(runners, task["arms"]) if not naive]
+    tape, followers = None, []
+    if share and len(model) > 1:
+        tape = _Tape(model[0].core)
+        for r in model[1:]:
+            r.core = _Follower(tape, r.core)
+            followers.append(r)
     outs = R.replay(evs, runners, cfg["sheet"]["node"])
+    if tape is not None:
+        if any(r.resets or r.core_resets for r in model) or any(
+                not isinstance(r.core, _Follower) or r.core.i != len(tape.rec)
+                for r in followers) or model[0].core is not tape.core:
+            return None
+        info["share_core"] = True
     res = dict(bag=bag, scenario=sc, vehicle=bag.split("_")[0], info=info, est={})
     t_first = E._t_first(a)
     for name, r, out, (_, ov, naive) in zip(names, runners, outs, task["arms"]):
@@ -191,6 +270,10 @@ def main():
     ap.add_argument("--no-naive", action="store_true")
     ap.add_argument("--pathgraph", default="auto")
     ap.add_argument("--workers", type=int, default=0)
+    ap.add_argument("--no-share-core", action="store_true",
+                    help="каждое плечо модели со своим ядром (проверка ленты _Tape)")
+    ap.add_argument("--no-share-before", action="store_true",
+                    help="считать плечи «до» в каждом сценарии (проверка, что они равны first3)")
     ap.add_argument("--out", default="out/eval_gnss")
     args = ap.parse_args()
     t_start = time.perf_counter()
@@ -218,13 +301,27 @@ def main():
                pathgraph=pg_spec if PGM.load(pg_spec) is not None else "none", drop_antenna="")
     arms = _arms(args)
     scen = [s for s in args.scenarios.split(",") if s]
-    tasks = [dict(cfg=cfg, bag=b, scenario=s, arms=arms) for s in scen for b in ids]
+    share = not args.no_share_before and "first3" in scen
+    before = [a for a in arms if not a[1].get("gnss_correction", True)]
+
+    def arms_for(s):
+        if share and s in SAME_BEFORE:
+            return [a for a in arms if a not in before]
+        return arms
+    tasks = [dict(cfg=cfg, bag=b, scenario=s, arms=arms_for(s), share_core=not args.no_share_core)
+             for s in scen for b in ids]
     log(f"прогонов {len(ids)}, сценариев {len(scen)}, плеч {len(arms)}; задач {len(tasks)}, "
         f"процессов {workers}")
     res = {}
     with ProcessPoolExecutor(workers) as ex:
         for t, r in zip(tasks, ex.map(run_one, tasks)):
             res.setdefault(t["scenario"], {})[t["bag"]] = r
+    if share:
+        for s in scen:
+            if s in SAME_BEFORE:
+                for b in ids:
+                    for a in before:
+                        res[s][b]["est"][a[0]] = res["first3"][b]["est"][a[0]]
     log("прогоны готовы")
     groups = {"all": ids, "30618": [b for b in ids if b.startswith("30618")],
               "30639": [b for b in ids if b.startswith("30639")]}
@@ -232,6 +329,7 @@ def main():
     summary = dict(meta=dict(split=args.runs and "runs" or args.split, runs=ids, scenarios=scen,
                              arms=names, arm_params={a[0]: a[1] for a in arms},
                              sheet=sheet["path"], map=map_label, set=ov,
+                             before_shared_from_first3=list(SAME_BEFORE) if share else [],
                              pkg_src_sha=E.src_digest(), git=E.git_head(),
                              scenario_ru={s: I.GNSS_SCENARIOS.get(s, s) for s in scen}),
                    totals={s: {g: {a: totals(res[s], bs, a) for a in names}
