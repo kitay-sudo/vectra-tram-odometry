@@ -1,15 +1,28 @@
-// ---- Tram state estimator: JavaScript port of estimator_core.py (UKF over the motion model), port of 25.09 ----
-// Перенос текущего ядра: лист параметров (позиции ручки, единицы и раскладка датчиков,
-// табличный привод), маска свежих показаний, восстанавливаемые отказы датчиков, согласие
-// осей, защёлка «стоим или скользим». Сверка с Python: js-port/record.py + compare.js.
-// PORT — ядро пакета, с которым порт сверен: sha1 estimator_core.py (переводы строк LF,
-// 12 знаков; так же его пишут tools/export_replay.py и js-port/record*.py). Страница
-// сравнивает его с ядром, которым посчитаны прогоны комиссии, и при расхождении
-// подписывает песочницу «упрощённое ядро». Перенёс правку ядра и сверил — обнови PORT
-// здесь и во вшитой копии в simulator/index.html (js-port/check.sh это проверяет).
+// ---- Tram state estimator: JavaScript port of estimator_core.py (UKF over the motion model) ----
+// Порт ядра пакета строка в строку (сверка: bash js-port/check.sh, допуск 1e-6 по v, s, σ,
+// μ, k, d; режимы и неоднозначность — совпадение на каждом шаге).
+//
+// ЗЕРКАЛО (что перенесено из ros2_ws/src/tram_state_estimator/tram_state_estimator/
+// estimator_core.py; при правке ядра перенести те же места):
+//   Params (DEFAULT ниже: поля и значения по умолчанию), notch_to_u, sensor_to_speed,
+//   sensor_layout, _cell, table_acc, _drive_nominal, drive_force, rated_force, resistance,
+//   axle_load, body_force, axle_shares, creep, f_process, h_axles, h_axles_batch,
+//   position_sigma; Estimator: __init__, _drive_model, _mode, _diagnose, _axle_speeds,
+//   _calibrate, _chol (+ eigh), _sigma, _predict, _a_limit, _meas_var, _correct, step
+//   (маска fresh, axle_jump, первая инициализация), _frozen_all, _adapt_scale (окно по
+//   реальному времени, adapt_on), step_open_loop, _sigma_v_out, _finish.
+//   Не перенесено (на выход не влияет): проверка листа Params.__post_init__, adapt_stats.
+//   Добавлено (не из ядра, на числа не влияет): diag() — запись решений фильтра по осям для
+//   панели «Что сейчас думает модель» в песочнице.
+//
+// PORT — ядро, с которым порт сверен: sha1 estimator_core.py (переводы строк LF, 12 знаков;
+// так же его пишут tools/export_replay.py и js-port/record*.py). Страница сравнивает его с
+// ядром, которым посчитаны прогоны комиссии, и при расхождении подписывает песочницу
+// «упрощённое ядро». Копия для страницы — simulator/js/est.js (байт в байт; её пишет
+// node js-port/sync.js, проверяют js-port/check.sh и simulator/test/page_test.js).
 const TramEst = (() => {
   const G = 9.81;
-  const PORT = { core_git: '56933cc', core_sha1: '674bab988601', checked: '25.09', dv: '6·10⁻¹³ м/с' };
+  const PORT = { core_git: '5852b8e', core_sha1: 'ed61cb444c94', checked: '26.09', dv: '≤ 1e-6 м/с' };
   const DEFAULT = {
     M_nom: 28000.0, r_nom: 0.35, n_axles: 4, driven: [true, true, false, false], braked: [true, true, true, true], v_max_line: 20.0,
     F_notch: 36000.0, F_brake: 30000.0, v_base: 8.0, v_ed_fade: 1.5, brake_hold_frac: 1.0,
@@ -22,8 +35,10 @@ const TramEst = (() => {
     curve_ratio_max: 0.038, sigma_meas: 0.15, stuck_n: 60, stuck_dv: 0.5, recover_tol: 0.5, recover_rel: 0.1, t_recover: 2.0,
     v_dead_ref: 2.0, axle_dot_alpha: 0.2, calib_gain: 0.01, calib_v_min: 2.0, scale_range: 0.10,
     gate_nis: 9.0, sigma_rej_frac: 0.5, q_v: 0.05, q_d: 0.02, q_k: 0.003, p0_s: 1.0, p0_v: 1.0, p0_d: 0.30, p0_k: 0.10,
-    k_min: 0.4, k_max: 1.6, t_adapt: 3.0, sigma_k_meas: 0.05, adapt_f_min: 0.3, t_sat_hold: 3.0, v_adapt_min: 2.0, t_valid: 1.0,
-    agree_tol: 0.3, agree_age: 0.3, v_standstill: 0.30, t_standstill: 0.30, dt: 0.01
+    k_min: 0.4, k_max: 1.6, adapt_on: true, t_adapt: 3.0, sigma_k_meas: 0.05, adapt_f_min: 0.3, t_sat_hold: 3.0, v_adapt_min: 2.0, t_valid: 1.0,
+    agree_tol: 0.3, agree_age: 0.3, v_standstill: 0.30, t_standstill: 0.30,
+    sv_gain: 1.0, sv_floor: 0.0, sv_floor_stand: 0.0, sv_age: 0.0, sv_rel: 0.0, ss_map: 0.0, ss_rel: 0.0,
+    dt: 0.01
   };
   const ANGULAR_UNITS = { rad_s: 1.0, rpm: 2.0 * Math.PI / 60.0, hz: 2.0 * Math.PI };
   const LINEAR_UNITS = { m_s: 1.0, km_h: 1.0 / 3.6 };
@@ -122,6 +137,8 @@ const TramEst = (() => {
     const v = x[IV], F = body_force(u, v, 1.0, 1.0, mu, p);
     return creep(F, p).map(xi => v * (1.0 + xi));
   }
+  // публикуемая σ положения вдоль пути (связка: путь ds после выставки или привязки)
+  const position_sigma = (sigma_s, ds, p) => Math.sqrt(sigma_s * sigma_s + p.ss_map * p.ss_map + (p.ss_rel * ds) ** 2);
   function h_axles_batch(pts, u, mu, p) {
     const N = axle_load(p), sh = axle_shares(Math.sign(u), p);
     return pts.map(pt => {
@@ -199,13 +216,14 @@ const TramEst = (() => {
       this.axle_prev = new Array(p.n_axles).fill(0);
       this.axle_dot = new Array(p.n_axles).fill(0);
       this.axle_seen = new Array(p.n_axles).fill(false);
+      this.axle_jump = new Array(p.n_axles).fill(false);   // скачок оси за интервал больше физически возможного
       this.axle_scale = new Array(p.n_axles).fill(1);
       this.initialised = false; this.have_meas = false;
       this.t_meas_i = new Array(this.nw).fill(-Infinity);
       this.t_axle = new Array(p.n_axles).fill(-Infinity);
       this.amb = false; this.amb_v = 0; this.s_extra = 0; this.last_acc_n = 0;
-      this.zero_t = 0; this.t_zero_start = null; this.adapting = false; this.mode_pre = DEGRADED; this.win_mode = null; this.t_last_sat = -1e9;
-      this.win_t = 0; this.win_v0 = 0; this.win_F = 0; this.win_W = 0; this.t_since_acc = 0; this.t = 0; this.sat = false;
+      this.zero_t = 0; this.frozen = false; this.t_zero_start = null; this.adapting = false; this.mode_pre = DEGRADED; this.win_mode = null; this.t_last_sat = -1e9;
+      this.win_t = 0; this.win_t_last = 0; this.win_v0 = 0; this.win_F = 0; this.win_W = 0; this.t_since_acc = 0; this.t = 0; this.sat = false;
       this.n_acc = 0; this.n_rej = 0; this.n_override = 0;
       const n = NX, alpha = 1.0, beta = 2.0, kappa = 1.0;
       this.lam = alpha * alpha * (n + kappa) - n;
@@ -213,6 +231,14 @@ const TramEst = (() => {
       this.wc = this.wm.slice();
       this.wm[0] = this.lam / (n + this.lam);
       this.wc[0] = this.wm[0] + (1.0 - alpha * alpha + beta);
+    }
+    // Диагностика для песочницы (не из ядра): решение фильтра по каждой оси на последней
+    // коррекции (why: ok | agree | spin | skid | jump | forced | held | gate), невязка и причина
+    // исключения датчика (bad: stuck | dead). Только запись, на числа не влияет (check.sh).
+    diag() {
+      const na = this.p.n_axles;
+      this.dg = { t: new Array(na).fill(-Infinity), nu: new Array(na).fill(NaN), nis: new Array(na).fill(NaN), why: new Array(na).fill(null), bad: new Array(this.nw).fill(null) };
+      return this.dg;
     }
     _drive_model(notch) {
       const p = this.p;
@@ -244,13 +270,13 @@ const TramEst = (() => {
         if (this.healthy[i]) {
           const stuck = this.stuck_cnt[i] > p.stuck_n && ref !== null && isFinite(this.stuck_ref[i]) && Math.abs(ref - this.stuck_ref[i]) > p.stuck_dv;
           const dead = ref !== null && Math.abs(meas[i]) < 1e-6 && ref > p.v_dead_ref && v_body > p.v_dead_ref;
-          if (stuck || dead) { this.healthy[i] = false; this.agree_t[i] = 0.0; }
+          if (stuck || dead) { this.healthy[i] = false; this.agree_t[i] = 0.0; if (this.dg) this.dg.bad[i] = stuck ? 'stuck' : 'dead'; }
         } else {
           const w = Math.abs(meas[i]);
           const tol = p.recover_tol + p.recover_rel * Math.max(ref || 0.0, v_body);
           const agree = this.stuck_cnt[i] <= p.stuck_n && ((ref !== null && Math.abs(w - ref) <= tol) || (body_ok && Math.abs(w - v_body) <= tol));
           this.agree_t[i] = agree ? this.agree_t[i] + dt : 0.0;
-          if (this.agree_t[i] >= p.t_recover) { this.healthy[i] = true; this.stuck_cnt[i] = 0; }
+          if (this.agree_t[i] >= p.t_recover) { this.healthy[i] = true; this.stuck_cnt[i] = 0; if (this.dg) this.dg.bad[i] = null; }
         }
       }
       for (let i = 0; i < this.nw; i++) if (fm[i]) this.prev_meas[i] = meas[i];
@@ -320,7 +346,7 @@ const TramEst = (() => {
       const moving = this.x[IV] > p.v_adapt_min;
       mask[ID] = (mode === COAST && moving && handle_ok) ? 1 : 0;
       mask[IKT] = 0; mask[IKB] = 0;
-      const spin_all = this.axle_dot.map(d => Math.abs(d) > (d > 0 ? p.a_max_acc : p.a_max_brake) + p.a_slip_margin);
+      const spin_all = this.axle_dot.map((d, b) => Math.abs(d) > (d > 0 ? p.a_max_acc : p.a_max_brake) + p.a_slip_margin || this.axle_jump[b]);
       const recent = this.t_axle.map(ta => (this.t - ta) <= p.agree_age);
       const agreed = a => {
         const others = [];
@@ -331,7 +357,7 @@ const TramEst = (() => {
       let pts = this._sigma(), Zall = h_axles_batch(pts, u, this.mu, p);
       for (const a of order) {
         const dot = this.axle_dot[a], lim = dot > 0 ? p.a_max_acc : p.a_max_brake;
-        const spinning = Math.abs(dot) > lim + p.a_slip_margin;
+        const spinning = Math.abs(dot) > lim + p.a_slip_margin || this.axle_jump[a];
         let Z = Zall.map(r => r[a]);
         let zh = 0; for (let j = 0; j < Z.length; j++) zh += this.wm[j] * Z[j];
         let dz = Z.map(q => q - zh);
@@ -343,6 +369,7 @@ const TramEst = (() => {
         const in_sat_dir = ((F0 > 0 && nu > 0) || lock) && shares0[a] > 0 && fast;
         const forced = recent_sat && in_sat_dir && nis > 0.25 * p.gate_nis;
         const held = this.amb && z[a] < p.v_standstill;
+        let over = false;
         if (nis > p.gate_nis && !(spinning || forced || held) && agreed(a)) {
           this.P[IV][IV] = Math.max(this.P[IV][IV], nu * nu);
           this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * Math.max(this._a_limit(u, true), this._a_limit(u, false))) ** 2);
@@ -353,6 +380,13 @@ const TramEst = (() => {
           S = 0; for (let j = 0; j < dz.length; j++) S += this.wc[j] * (dz[j] * dz[j]); S += R;
           nu = z[a] - zh; nis = 0.0;
           this.n_override += 1;
+          over = true;
+        }
+        if (this.dg) {       // диагностика песочницы: только запись, на числа не влияет
+          const dot_up = this.axle_dot[a] > 0;
+          this.dg.t[a] = this.t; this.dg.nu[a] = nu; this.dg.nis[a] = nis;
+          this.dg.why[a] = spinning ? (this.axle_jump[a] ? 'jump' : dot_up ? 'spin' : 'skid') : forced ? 'forced' : held ? 'held'
+            : nis > p.gate_nis ? 'gate' : over ? 'agree' : 'ok';
         }
         if (spinning || forced || held || nis > p.gate_nis) { rej.push([a, nu]); continue; }
         const C = new Array(NX).fill(0);
@@ -404,11 +438,17 @@ const TramEst = (() => {
         this.have_meas = true;
         const ms = sensor_to_speed(meas, p);
         this._diagnose(ms, dts, fm);
+        this._frozen_all(ms, u);
         [z, ok] = this._axle_speeds(ms, fm);
+        this.axle_jump.fill(false);
         for (let a = 0; a < p.n_axles; a++) {
           if (!ok[a]) continue;
           if (!this.axle_seen[a]) { this.axle_prev[a] = z[a]; this.axle_seen[a] = true; this.t_axle[a] = this.t - p.dt; }
-          const raw = (z[a] - this.axle_prev[a]) / (this.t - this.t_axle[a]);
+          const gap = this.t - this.t_axle[a];
+          const raw = (z[a] - this.axle_prev[a]) / gap;
+          // скачок за один интервал больше физически возможного — срыв или отказ сразу (правка №1 интеграции)
+          const dz = z[a] - this.axle_prev[a], lim_j = dz > 0 ? p.a_max_acc : p.a_max_brake;
+          this.axle_jump[a] = Math.abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol;
           this.axle_dot[a] += p.axle_dot_alpha * (raw - this.axle_dot[a]);
           this.axle_prev[a] = z[a];
           this.t_axle[a] = this.t;
@@ -425,6 +465,13 @@ const TramEst = (() => {
       this._predict(u);
       const mode = this._mode(u);
       this.mode_pre = mode;
+      if (this.frozen) {
+        // залипли все датчики разом: только прогноз по ручке, неопределённость по ускорению — до предела
+        const lim = Math.max(this._a_limit(u, true), this._a_limit(u, false));
+        this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * lim) ** 2);
+        this.adapting = false; this.n_acc = this.n_rej = 0; this.sat = false; this.last_acc_n = 0;
+        return this._finish(u, z, new Array(p.n_axles).fill(false), [], false);
+      }
       let acc = [];
       if (anyFresh) {
         acc = this._correct(z, ok, u, mode, handle_ok);
@@ -433,22 +480,30 @@ const TramEst = (() => {
       }
       return this._finish(u, z, ok, acc, anyFresh);
     }
+    _frozen_all(meas, u) {
+      // залипание ВСЕХ датчиков разом: у каждого больше stuck_n одинаковых показаний, на ходу, при команде
+      const p = this.p;
+      if (!this.stuck_cnt.every(c => c > p.stuck_n)) this.frozen = false;
+      else if (!this.frozen && Math.abs(u) > p.T_dead && Math.min(...meas.map(Math.abs)) > p.v_dead_ref) this.frozen = true;
+    }
     _adapt_scale(u, mode, acc) {
       const p = this.p;
-      const active = (mode === TRACTION || mode === BRAKE) && acc.length >= 2 && this.x[IV] > p.v_adapt_min && !this.sat;
+      const active = p.adapt_on && (mode === TRACTION || mode === BRAKE) && acc.length >= 2 && this.x[IV] > p.v_adapt_min && !this.sat;
       this.adapting = active;
       if (!active || mode !== this.win_mode) {
         this.win_mode = active ? mode : null;
-        this.win_t = 0; this.win_v0 = this.x[IV]; this.win_F = 0; this.win_W = 0;
+        this.win_t = 0; this.win_t_last = this.t; this.win_v0 = this.x[IV]; this.win_F = 0; this.win_W = 0;
         return;
       }
       const v = this.x[IV];
-      this.win_F += drive_force(u, v, 1.0, 1.0, p) * p.dt;
-      this.win_W += resistance(v, p) * p.dt;
-      this.win_t += p.dt;
+      const h = this.t - this.win_t_last;           // окно копит реальное прошедшее время
+      this.win_t_last = this.t;
+      this.win_F += drive_force(u, v, 1.0, 1.0, p) * h;
+      this.win_W += resistance(v, p) * h;
+      this.win_t += h;
       if (this.win_t < p.t_adapt) return;
       const rated = rated_force(mode === TRACTION, p);
-      if (Math.abs(this.win_F) >= p.adapt_f_min * rated * p.t_adapt) {
+      if (Math.abs(this.win_F) >= p.adapt_f_min * rated * this.win_t) {
         const dv = v - this.win_v0;
         const k_meas = (p.M_nom * (dv - this.x[ID] * this.win_t) + this.win_W) / this.win_F;
         const idx = mode === TRACTION ? IKT : IKB;
@@ -477,6 +532,17 @@ const TramEst = (() => {
       this.last_acc_n = 0;
       return this._finish(u, new Array(p.n_axles).fill(0), new Array(p.n_axles).fill(false), [], false);
     }
+    _sigma_v_out(sv, u) {
+      // публикуемая σ скорости: σ фильтра с множителем, пол, возраст показаний·|a|, масштаб колёс·v
+      const p = this.p, v = this.x[IV];
+      let a = 0.0;
+      if (p.sv_age) {
+        a = (body_force(u, v, this.x[IKT], this.x[IKB], this.mu, p) - resistance(v, p)) / p.M_nom + this.x[ID];
+        if (v <= 0.0 && a < 0.0) a = 0.0;
+      }
+      const floor = this.mode === STANDSTILL ? p.sv_floor_stand : p.sv_floor;
+      return Math.sqrt((p.sv_gain * sv) ** 2 + floor * floor + (p.sv_age * a) ** 2 + (p.sv_rel * v) ** 2);
+    }
     _finish(u, z, ok, acc, fresh) {
       const p = this.p;
       if (this.sat) this.mu += (p.mu_min - this.mu) * p.dt / p.tau_sat;
@@ -500,18 +566,20 @@ const TramEst = (() => {
       this.mode = this.mode_pre;
       if (this.sat || this.amb) this.mode = SLIP;
       if (standstill) this.mode = STANDSTILL;
-      const valid = this.have_meas && this.t_since_acc <= p.t_valid && !this.amb;
+      const valid = this.have_meas && this.t_since_acc <= p.t_valid && !this.amb && !this.frozen;
       if (!this.have_meas || (!valid && !this.amb)) this.mode = DEGRADED;
-      let sv = Math.sqrt(Math.max(this.P[IV][IV], 0.0));
+      const sv_filt = Math.sqrt(Math.max(this.P[IV][IV], 0.0));
+      let sv = this._sigma_v_out(sv_filt, u);
       if (this.amb) { sv = Math.max(sv, 0.5 * this.amb_v); this.s_extra += 0.5 * this.amb_v * p.dt; }
       const ss = Math.sqrt(Math.max(this.P[IS][IS], 0.0) + this.s_extra ** 2);
       return {
         v: this.x[IV], s: this.x[IS], d: this.x[ID], k_t: this.x[IKT], k_b: this.x[IKB], mu: this.mu,
-        sigma_v: sv, sigma_s: ss, mode: this.mode, healthy: this.healthy.slice(), slip: this.sat, ambiguous: this.amb,
+        sigma_v: sv, sigma_s: ss, sigma_v_filt: sv_filt, mode: this.mode, healthy: this.healthy.slice(), slip: this.sat, ambiguous: this.amb, frozen: this.frozen,
         n_accepted: this.n_acc, n_rejected: this.n_rej, odometry_used: acc.length > 0, valid, u
       };
     }
   }
-  return { Estimator, DEFAULT, MODE_NAMES, COAST, TRACTION, BRAKE, TRANSITION, SLIP, STANDSTILL, DEGRADED, G, notch_to_u, sensor_to_speed, PORT };
+  return { Estimator, DEFAULT, MODE_NAMES, COAST, TRACTION, BRAKE, TRANSITION, SLIP, STANDSTILL, DEGRADED, G, IS, IV, ID, IKT, IKB,
+    notch_to_u, sensor_to_speed, sensor_layout, body_force, resistance, drive_force, table_acc, position_sigma, PORT };
 })();
 if (typeof module !== 'undefined') module.exports = TramEst;

@@ -188,7 +188,8 @@ def make_variant(a, bag, kind):
             if t0 is None:
                 return None, None
             b, _ = shared.apply(a, kind, t0, dur, seed=shared.seed_for(bag, kind))
-            return b, dict(kind=kind, ru=KINDS[kind]["ru"], t0=t0, dur=dur,
+            ru = (KINDS.get(kind) or shared.KINDS[kind])["ru"]
+            return b, dict(kind=kind, ru=ru[:1].upper() + ru[1:], t0=t0, dur=dur,
                            eval=float(shared.eval_window(kind)), src="tools/inject.py")
     except ImportError:
         pass
