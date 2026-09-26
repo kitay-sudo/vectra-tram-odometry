@@ -34,9 +34,10 @@ node simulator/test/sandbox_report.js --write                                   
 ## Прогон данных комиссии
 
 ```bash
-# из корня репозитория; кэш прогонов analysis/cache (в .gitignore) монтируется только на чтение
+# из корня репозитория; кэш прогонов analysis/cache (в .gitignore) монтируется только на чтение;
+# образ vectra/tram:compose собирает `docker compose build`
 docker run --rm --cpus 2 -v <repo>:/repo -v <repo>/data:/repo/data:ro -v <repo>/analysis/cache:/repo/analysis/cache:ro \
-  -w /repo vectra/tram:dev python3 tools/export_replay.py            # 30618_e9a34502, 5 вариантов, ~5 мин
+  -w /repo vectra/tram:compose python3 tools/export_replay.py            # 30618_e9a34502, 5 вариантов, ~5 мин
 #   --run <bag>              другой прогон из holdout_scored (tools/split.json); обучающий — только с --allow-train
 #   --variants clean,front_zero,both_zero,dropout,skid_brake
 #   --sheet eval|jury|<путь> по умолчанию eval — правила tools/eval.py: config/eval/{tram_eval.yaml,tram.yaml,
@@ -59,7 +60,7 @@ docker run --rm --cpus 2 -v <repo>:/repo -v <repo>/data:/repo/data:ro -v <repo>/
 
 | Где | Команда |
 |---|---|
-| ноутбук | `docker run --rm -p 127.0.0.1:9090:9090 -v <repo>:/repo:ro -v <data>:/data:ro -e BAG=30618_e9a34502 vectra/tram:dev bash /repo/simulator/deploy/live_demo.sh`, затем `index.html?mode=live` |
+| ноутбук | `docker run --rm -p 127.0.0.1:9090:9090 -v <repo>:/repo:ro -v <data>:/data:ro -e BAG=30618_e9a34502 vectra/tram:compose bash /repo/simulator/deploy/live_demo.sh` (образ — `docker compose build`; проще — `docker compose up --build`, `docs/JURY.md` §8), затем `index.html?mode=live` |
 | сервер с доменом | `DOMAIN=demo.example.ru DATA_DIR=/srv/data docker compose -f simulator/deploy/compose.demo.yml up -d` → `https://demo.example.ru/?mode=live` (Caddy: TLS, `/ros` → rosbridge) |
 
 Мост **только для чтения** (`deploy/live_demo.sh`, по умолчанию): подписка лишь на топики страницы, публикация запрещена (иначе любой посетитель домена мог бы подать ноде ложные `/vehicle/*` или GNSS), сервисы — только `/rosapi/*` без параметров, `set_parameters` ноды закрыт. Проверяет `test/live_test.sh` (контроль с `ROSBRIDGE_OPEN=1` — проверка падает). Отладка без ограничений: `ROSBRIDGE_OPEN=1`. Доступ к странице по паролю — при желании `basic_auth` в `deploy/Caddyfile`.

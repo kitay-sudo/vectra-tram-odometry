@@ -64,11 +64,17 @@ GNSS весь прогон (первые 5 мин): выход совпал с �
 
 ## 1. Как запустить
 
-Одна команда в Docker (PowerShell, из корня репозитория; кэш строится из `data/` сам):
+Одна команда (Docker Compose, из корня репозитория; `DATA_DIR` в `.env` — каталог с bag; кэш строится из `data/` сам; ключи после `eval` уходят в `tools/eval.py`):
+
+```bash
+docker compose run --rm eval --label "<подпись версии>"
+```
+
+То же без Compose (PowerShell; образ из этого дерева — `docker compose build` или `docker build -f docker/Dockerfile -t vectra/tram:compose .`):
 
 ```powershell
 docker run --rm --cpus 2 -v ${PWD}:/repo -v <каталог с bag>:/repo/data:ro -w /repo `
-    vectra/tram:dev python3 tools/eval.py --label "<подпись версии>"
+    vectra/tram:compose python3 tools/eval.py --label "<подпись версии>"
 ```
 
 Основные ключи (полный список — `python3 tools/eval.py --help`):

@@ -302,8 +302,10 @@ docker compose run --rm eval # офлайн-оценка tools/eval.py (разд
 | `bridge` | rosbridge `ws://localhost:9090`, только для чтения |
 | `web` | страница симулятора `http://localhost:8080` |
 
-Скрипты проверки (Git Bash или Linux, из корня репозитория; образ по умолчанию —
-`vectra/tram:compose`, `ros_smoke.sh` соберёт его сам, если его нет):
+Скрипты проверки (Git Bash или Linux, из корня репозитория; образ по умолчанию у
+всех трёх — `vectra/tram:compose`, если его нет, скрипт соберёт его сам; `--build`
+у `ros_smoke.sh` и `ros_e2e.sh` пересобирает пакеты из рабочего дерева внутри
+контейнера, у `measure_realtime.sh` — образ):
 
 ```bash
 tools/ros_smoke.sh                                  # ROS-смоук на фикстуре из git, данные не нужны

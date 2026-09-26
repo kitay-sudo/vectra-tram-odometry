@@ -149,9 +149,10 @@ ros2 bag play <путь к прогону> -d 3
    считается ядром пакета, перенесённым в JavaScript. «Прогон данных комиссии» —
    реальная отложенная запись, которую считает сам пакет. «Живой ROS 2» показывает
    ноду через rosbridge.
-   `IMAGE=vectra/tram:compose bash js-port/check.sh` (нужны Node.js и запись
-   `30618_e9a34502`, см. [js-port/README.md](js-port/README.md)) → JS-порт совпадает
-   с Python-пакетом до 1,5·10⁻¹² м/с на каждом шаге.
+   `IMAGE=vectra/tram:compose bash js-port/check.sh` (нужны Node.js и кэш записи
+   `30618_e9a34502` в `analysis/cache` — его строит `docker compose run --rm eval --quick`;
+   см. [js-port/README.md](js-port/README.md)) → JS-порт совпадает с Python-пакетом
+   до 1,5·10⁻¹² м/с на каждом шаге.
 
 ## Документы
 
