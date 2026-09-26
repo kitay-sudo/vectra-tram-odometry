@@ -34,6 +34,9 @@ from dataclasses import dataclass, field, fields, replace
 import numpy as np
 
 G = 9.81
+# Медиана модуля нормальной величины = 0,6745 σ: σ = 1,4826 · медиана. Свойство
+# распределения, а не константа модели (оценка шума показаний, см. step).
+MAD_TO_SIGMA = 1.4826
 
 
 # Единицы показаний датчиков. Это определения единиц, а не константы модели.
@@ -155,14 +158,65 @@ class Params:
     a_free_decel: float = _f(0.75, "м/с²", "паспорт",
                              "предельное замедление БЕЗ команды тормоза: "
                              "уклон и сопротивление", "Пределы корпуса")
-    lock_ratio: float = _f(0.7, "—", "настройка",
+    lock_ratio: float = _f(0.5, "—", "настройка",
                            "показание оси ниже этой доли прогноза при "
                            "торможении = блокировка (плавное торможение, в том "
-                           "числе рельсовым, отстаёт на проценты)",
+                           "числе рельсовым, отстаёт на проценты); выше — "
+                           "частичный юз: при срыве всех осей скорость ведёт "
+                           "модель с тормозной силой по ручке, ниже — колесо "
+                           "скользит за пиком сцепления, модель с μ → mu_min",
                            "Пределы корпуса")
     a_slip_margin: float = _f(1.0, "м/с²", "настройка",
                               "запас над пределом ускорения до признания срыва",
                               "Пределы корпуса")
+
+    # ------------------------------------- срыв всех осей и шум показаний
+    slip_all_on: bool = _f(True, "—", "настройка",
+                           "распознавать срыв ВСЕХ осей разом (юз или "
+                           "буксование обеих тележек) по одновременному "
+                           "скачку показаний; false — только прежние признаки",
+                           "Срыв всех осей и шум")
+    slip_jump: float = _f(0.3, "м/с", "настройка",
+                          "скачок показания оси против её собственного тренда "
+                          "за один интервал (сверх a_slip_margin·интервал и "
+                          "шума) — признак срыва оси", "Срыв всех осей и шум")
+    slip_rel: float = _f(0.2, "—", "настройка",
+                         "срыв всех осей — только если скачок каждой оси не "
+                         "меньше этой доли скорости: срыв — относительное "
+                         "проскальзывание, а скачки сбоя меток времени в "
+                         "данных (запаздывание показаний ~1 с, исчезающее "
+                         "разом у обеих тележек) — |a|·запаздывание, на "
+                         "обучающих прогонах 7–13 % скорости",
+                         "Срыв всех осей и шум")
+    slip_pair_s: float = _f(0.5, "с", "настройка",
+                            "скачки всех осей одного знака в этом окне — один "
+                            "срыв всех осей", "Срыв всех осей и шум")
+    slip_cont_k: float = _f(2.0, "σ", "настройка",
+                            "во время срыва всех осей показание дальше этого "
+                            "числа σ шума показания в сторону срыва не "
+                            "принимается (колесо ещё скользит, это лишь "
+                            "граница скорости корпуса); ближе или по другую "
+                            "сторону — принимается", "Срыв всех осей и шум")
+    slip_t_max: float = _f(12.0, "с", "настройка",
+                           "наибольшая длительность срыва всех осей: дальше "
+                           "колёсам снова верят (защита от защёлки при "
+                           "ложном срабатывании или смене масштаба датчиков)",
+                           "Срыв всех осей и шум")
+    slip_sigma_a: float = _f(0.15, "м/с²", "измерение",
+                             "СКО ускорения модели при разомкнутом прогнозе "
+                             "(ошибка таблицы привода и уклоны; tools/"
+                             "slip_study.py --openloop): на время срыва всех "
+                             "осей σ возмущения равна этому, чтобы σ скорости "
+                             "росла честно", "Срыв всех осей и шум")
+    noise_n: int = _f(12, "отсчётов", "настройка",
+                      "окно оценки шума показаний оси по вторым разностям "
+                      "(медиана, выбросы и сам скачок срыва её не сдвигают)",
+                      "Срыв всех осей и шум")
+    noise_k: float = _f(3.0, "σ", "настройка",
+                        "шум сверх sigma_meas расширяет пороги скачка и "
+                        "производной оси на столько своих σ, а дисперсия "
+                        "измерения растёт до оценки шума: высокий шум — это "
+                        "шум, а не срыв", "Срыв всех осей и шум")
 
     # ------------------------------------------------------------ датчики
     meas_units: str = _f("rad_s", "—", "паспорт",
@@ -363,7 +417,8 @@ class Params:
                     "v_base", "v_ed_fade", "tau_drive", "a_max_acc",
                     "a_max_brake", "sigma_meas", "t_adapt", "dt",
                     "sensor_ratio", "stuck_dv", "recover_tol", "t_recover",
-                    "meas_scale")
+                    "meas_scale", "slip_jump", "slip_rel", "slip_pair_s",
+                    "slip_cont_k", "slip_t_max", "noise_k")
 
         def grid_ok(g):
             return len(g) >= 2 and all(b > a for a, b in zip(g, g[1:]))
@@ -377,6 +432,8 @@ class Params:
                    for n in ("sv_floor", "sv_floor_stand", "sv_age", "sv_rel",
                              "ss_map", "ss_rel")]
         checks += [
+            (self.slip_sigma_a >= 0, "slip_sigma_a должен быть >= 0"),
+            (self.noise_n >= 2, "noise_n должен быть >= 2"),
             (self.sv_gain > 0, "sv_gain должен быть > 0"),
             (self.n_axles >= 1, "n_axles должен быть >= 1"),
             (len(self.driven) == self.n_axles,
@@ -738,6 +795,26 @@ class Estimator:
         # (см. step): ловится сразу, без сглаживания axle_dot
         self.axle_jump = np.zeros(p.n_axles, dtype=bool)
         self.axle_scale = np.ones(p.n_axles)
+        # Шум показаний оси: остатки линейной экстраполяции по двум прошлым
+        # показаниям (вторые разности), окно noise_n, оценка — медиана.
+        self.nz_buf = [deque(maxlen=p.noise_n) for _ in range(p.n_axles)]
+        self.nz_cnt = np.zeros(p.n_axles, dtype=int)   # показаний подряд
+        self.axle_prev2 = np.zeros(p.n_axles)
+        self.gap_prev = np.full(p.n_axles, p.dt)
+        self.axle_gap = np.full(p.n_axles, p.dt)       # последний интервал оси
+        self.nz_sigma = np.zeros(p.n_axles)            # оценка σ шума, м/с
+        self.nz_excess = np.zeros(p.n_axles)           # сверх sigma_meas, м/с
+        # Срыв всех осей разом (юз или буксование обеих тележек): скачок
+        # каждой оси против её тренда, момент и знак последнего скачка.
+        self.jump_t = np.full(p.n_axles, -np.inf)
+        self.jump_s = np.zeros(p.n_axles)
+        self.jump_m = np.zeros(p.n_axles)     # величина скачка, м/с
+        self.slip_all = 0           # +1 — буксование всех осей, −1 — юз, 0 — нет
+        self.slip_t0 = -np.inf      # начало текущего срыва всех осей
+        self.slip_j = 0.0           # наименьший скачок осей в начале срыва, м/с
+        self.slip_back = set()      # оси, скачком вернувшиеся к корпусу
+        self.slip_timeout = (0, -np.inf)   # знак и конец срыва, снятого по времени
+        self.n_slip_all = 0         # число таких срывов (диагностика)
 
         self.initialised = False    # скорость взята из первых показаний
         self.have_meas = False      # показания колёс уже приходили
@@ -882,6 +959,43 @@ class Estimator:
                 ok[a] = True
         return out, ok
 
+    def _noise(self, a, za, gap):
+        """Оценка шума показаний оси a — признак «аномально высокой
+        дисперсии измерений» из ТЗ.
+
+        Остаток линейной экстраполяции по двум прошлым показаниям (вторая
+        разность с учётом неравных интервалов) нормируется к σ одного
+        показания; оценка — медиана модуля по окну noise_n. Ускорение и
+        плавный рывок корпуса в остаток почти не входят (на обучающих
+        прогонах оценка 0,011–0,014 м/с при паспортной 0,05), одиночные
+        выбросы и скачок срыва медиану не сдвигают. Невязка фильтра (NIS)
+        для этого не годится: в неё входит ошибка модели (ручка, уклон), и
+        она раздувала бы R как раз тогда, когда ошибается модель."""
+        p = self.p
+        if gap > p.t_valid:
+            self.nz_cnt[a] = 0          # после разрыва экстраполяция не годится
+        if self.nz_cnt[a] >= 2:
+            r = gap / self.gap_prev[a]
+            e = (za - self.axle_prev[a]) - (self.axle_prev[a]
+                                            - self.axle_prev2[a]) * r
+            self.nz_buf[a].append(abs(e) / sqrt(1.0 + (1.0 + r) ** 2 + r * r))
+        buf = self.nz_buf[a]
+        if len(buf) * 2 >= p.noise_n:
+            s = MAD_TO_SIGMA * _median(buf)
+            self.nz_sigma[a] = s
+            self.nz_excess[a] = sqrt(max(0.0, s * s - p.sigma_meas ** 2))
+        self.axle_prev2[a] = self.axle_prev[a]
+        self.gap_prev[a] = gap
+        self.nz_cnt[a] += 1
+
+    def _dot_tol(self):
+        """Запас порога производной оси на шум сверх паспортного: σ
+        сглаженной производной белого шума ≈ √2·σ/интервал·√(α/(2−α))."""
+        p = self.p
+        al = p.axle_dot_alpha
+        return (p.noise_k * sqrt(2.0) * self.nz_excess / self.axle_gap
+                * sqrt(al / (2.0 - al)))
+
     def _calibrate(self, z, acc):
         """Масштаб осей выравнивается на выбеге по принятым измерениям: там
         срыв исключён, и расхождение осей относится к датчику."""
@@ -958,7 +1072,131 @@ class Estimator:
         if p.sensors_per_axle == 1:
             # датчик на одном борту: на кривой он читает путь своего рельса
             var = var + (v * p.curve_ratio_max) ** 2
-        return var
+        # Шум показаний выше паспортного (оценка по вторым разностям, см.
+        # step): дисперсия растёт до оценки. Иначе фильтр принимал шум за срыв
+        # и отвергал показания (инъекция «шум ×5»: модель хуже колёс).
+        return var + self.nz_excess ** 2
+
+    def _a_model(self, u):
+        """Ускорение корпуса по модели в текущем состоянии (как в выходе
+        связки): привод с оценкой сцепления, сопротивление, возмущение."""
+        p = self.p
+        v = float(self.x[IV])
+        a = ((body_force(u, v, self.x[IKT], self.x[IKB], self.mu, p)
+              - resistance(v, p)) / p.M_nom + float(self.x[ID]))
+        return 0.0 if v <= 0.0 and a < 0.0 else a
+
+    def _live(self):
+        """Оси с датчиками, показания которых свежи (не старше slip_pair_s)."""
+        p = self.p
+        return [a for a in range(p.n_axles)
+                if self.slots[a] and self.t - self.t_axle[a] <= p.slip_pair_s]
+
+    def _slip_all_update(self, z, ok, u, hbar, v0):
+        """СРЫВ ВСЕХ ОСЕЙ (юз или буксование обеих тележек): начало и конец.
+
+        Прежние признаки срыва ловят ось, которая расходится с остальными
+        или ускоряется быстрее предела корпуса. Когда срываются все оси
+        разом, остальные с ней согласны, и правило «согласие осей сильнее
+        модели» принимало срыв за движение (юз −30 % обеих тележек: ошибка
+        как у голых колёс). Признак — одновременный скачок показаний всех
+        осей одного знака (в окне slip_pair_s) против их собственного тренда,
+        не объяснённый ускорением модели: после скачка показания лежат по ту
+        же сторону от прогноза. Разом в ноль — не срыв, а блокировка или
+        отказ (неоднозначность «стоим или скользим», см. _correct).
+
+        Конец срыва:
+          * все оси скачком вернулись (скачок обратного знака) — колёса снова
+            катятся с корпусом;
+          * срыв длится дольше slip_t_max — дальше колёсам снова верят (иначе
+            ложное срабатывание или смена масштаба датчиков держали бы
+            защёлку); скачок обратного знака в следующие slip_t_max —
+            возвращение колёс, а не новый срыв;
+          * все показания ушли в ноль — блокировка или отказ датчиков,
+            дальше прежняя логика неоднозначности (нули не принимаются);
+          * оценка шума выросла так, что начальный скачок в неё укладывается,
+            — это был шум, а не срыв."""
+        p = self.p
+        live = self._live()
+        if self.slip_all:
+            s = self.slip_all
+            for a in live:
+                if self.jump_t[a] > self.slip_t0 and self.jump_s[a] == -s:
+                    self.slip_back.add(a)
+            fresh = [a for a in range(p.n_axles) if ok[a]]
+            zeros = (v0 > p.v_dead_ref and bool(fresh)
+                     and all(z[a] < p.v_standstill for a in fresh))
+            noisy = bool(live) and (p.slip_jump + p.noise_k * sqrt(2.0)
+                                    * float(np.max(self.nz_excess[live]))
+                                    >= self.slip_j)
+            back = bool(live) and all(a in self.slip_back for a in live)
+            timeout = self.t - self.slip_t0 > p.slip_t_max
+            if timeout or zeros or noisy or back:
+                self._slip_all_end(u)
+                if timeout:
+                    self.slip_timeout = (s, self.t)
+            return
+        # только на ходу, как и прочие признаки срыва: трогание (скачок с
+        # нуля) и квантование энкодера у нуля срывом не считаются
+        if not p.slip_all_on or self.amb or v0 <= p.v_adapt_min:
+            return
+        if len(live) < 2 or any(self.t - self.jump_t[a] > p.slip_pair_s
+                                for a in live):
+            return
+        s = self.jump_s[live[0]]
+        zl = [z[a] if ok[a] else self.axle_prev[a] for a in live]
+        # скачок обратного знака вскоре после срыва, снятого по времени, —
+        # колёса вернулись к корпусу (срыв был длиннее slip_t_max), а не
+        # новый срыв: иначе модель держала бы скорость скользивших колёс
+        s_to, t_to = self.slip_timeout
+        if s_to == -s and self.t - t_to <= p.slip_t_max:
+            return
+        if (any(self.jump_s[a] != s for a in live)
+                or float(np.min(self.jump_m[live])) < p.slip_rel * v0
+                or any(s * (zb - hbar[a]) <= 0 for zb, a in zip(zl, live))
+                or all(zb < p.v_standstill for zb in zl)):
+            return
+        self.slip_all = int(s)
+        self.slip_t0 = self.t
+        self.slip_j = float(np.min(self.jump_m[live]))
+        self.slip_back = set()
+        self.n_slip_all += 1
+        # Дальше скорость ведёт модель: σ возмущения — ошибка разомкнутого
+        # прогноза (измерена на обучающих прогонах), чтобы σ скорости росла
+        # честно. Прежняя σ возмущения тут не годится: правило согласия осей
+        # раздувает её до 1,5 м/с², и σ скорости за 4 с срыва выросла бы до
+        # 2,6 м/с при ошибке 0,5. Масштабируется вся строка ковариации —
+        # ковариация остаётся положительно определённой. Сглаженная
+        # производная осей со скачком внутри смысла не имеет: она начинается
+        # заново с ускорения модели, и скачок возвращения виден против неё.
+        sd = sqrt(max(float(self.P[ID, ID]), 0.0))
+        if sd > 0.0:
+            f = p.slip_sigma_a / sd
+            self.P[ID, :] *= f
+            self.P[:, ID] *= f
+        else:
+            self.P[ID, ID] = p.slip_sigma_a ** 2
+        self.axle_dot[live] = self._a_model(u)
+
+    def _slip_all_end(self, u):
+        """Конец срыва всех осей: производная осей — заново от модели."""
+        self.slip_all = 0
+        self.slip_back = set()
+        self.axle_dot[:] = self._a_model(u)
+        self.axle_jump[:] = False
+        self.jump_t[:] = -np.inf
+
+    def _level_agree(self, a, z, ok, recent):
+        """Показание оси a согласно с последними показаниями всех остальных
+        (без проверки производных: во время срыва всех осей скачок
+        возвращения колеса — ожидаемое событие)."""
+        p = self.p
+        others = [b for b in range(p.n_axles)
+                  if b != a and (recent[b] or ok[b])]
+        tol = p.agree_tol + p.noise_k * sqrt(2.0) * float(np.max(self.nz_excess))
+        return bool(others) and all(
+            abs(z[a] - (z[b] if ok[b] else self.axle_prev[b])) <= tol
+            for b in others)
 
     def _correct(self, z, ok, u, mode, handle_ok=True):
         """Последовательная коррекция с проверкой правдоподобия.
@@ -978,6 +1216,9 @@ class Estimator:
         v0 = self.x[IV]
         F0 = body_force(u, v0, 1.0, 1.0, self.mu, p)
         hbar = h_axles(self.x, u, self.mu, p)
+        # срыв всех осей: начало и конец (может раздуть σ возмущения — до
+        # расчёта сигма-точек)
+        self._slip_all_update(z, ok, u, hbar, v0)
         var0 = self._meas_var(F0, v0)
         order = sorted(axles, key=lambda a: abs(z[a] - hbar[a])
                        / np.sqrt(var0[a] + self.P[IV, IV]))
@@ -1015,10 +1256,12 @@ class Estimator:
         # физически невозможно, а срыв этим не объясняется, — ошибается модель:
         # неопределённость скорости расширяется до расхождения, и показание
         # принимается. Буксование части осей согласия не даёт (холостые
-        # расходятся с моторными), резкий срыв ловит предел ускорения.
+        # расходятся с моторными), резкий срыв ловит предел ускорения, срыв
+        # всех осей разом — _slip_all_update.
+        dot_tol = self._dot_tol()
         spin_all = (np.abs(self.axle_dot) > np.where(
             self.axle_dot > 0, p.a_max_acc, p.a_max_brake) + p.a_slip_margin
-                    ) | self.axle_jump
+            + dot_tol) | self.axle_jump
         recent = (self.t - self.t_axle) <= p.agree_age
 
         def agreed(a):
@@ -1029,6 +1272,9 @@ class Estimator:
             zb = [z[b] if ok[b] else self.axle_prev[b] for b in others]
             return all(abs(z[a] - x) <= p.agree_tol for x in zb)
 
+        ep = self.slip_all
+        ep_rej = set()              # отвергнуты срывом всех осей
+
         # Сигма-точки и их образы пересчитываются только после принятого
         # измерения — отвергнутое состояние не меняет.
         pts = self._sigma()
@@ -1038,7 +1284,8 @@ class Estimator:
             # физический предел: колесо не может ускоряться быстрее корпуса
             dot = self.axle_dot[a]
             lim = p.a_max_acc if dot > 0 else p.a_max_brake
-            spinning = abs(dot) > lim + p.a_slip_margin or bool(self.axle_jump[a])
+            spinning = (abs(dot) > lim + p.a_slip_margin + dot_tol[a]
+                        or bool(self.axle_jump[a]))
 
             Z = Zall[:, a]
             zh = float(self.wm @ Z)
@@ -1049,23 +1296,57 @@ class Estimator:
             nu = float(z[a]) - zh
 
             nis = nu * nu / S
-            # Срыв в самом разгаре: показания нагруженной оси, отклонённые в
-            # сторону срыва, не принимаются, даже если рост неопределённости
-            # уже расширил допуск. Иначе нули заблокированных колёс «дозревали»
-            # до принятия за остановку, пока вагон ещё скользит. Как только
-            # колёса схватят, показания уйдут из этой стороны и пройдут.
-            lock = F0 < 0 and nu < 0 and z[a] < p.lock_ratio * hbar[a]
-            in_sat_dir = ((F0 > 0 and nu > 0) or lock) \
-                and shares0[a] > 0 and fast
-            forced = recent_sat and in_sat_dir and nis > 0.25 * p.gate_nis
-            # Пока неоднозначность не снята, нули колёс не принимаются: они
-            # одинаково объясняются и остановкой, и скольжением заблокированных
-            # колёс. Скорость ведёт модель с пониженным сцеплением — оценка
-            # остаётся сверху, а не падает в ноль при скользящем вагоне.
-            held = self.amb and z[a] < p.v_standstill
+            if ep:
+                # Срыв всех осей. Показание в сторону срыва (дальше
+                # slip_cont_k σ шума показания) говорит только о границе: при
+                # юзе корпус не медленнее колеса, при буксовании не быстрее.
+                # Оценка по модели эту границу соблюдает — показание не
+                # принимается, скорость ведёт модель. Сцепление по нему не
+                # оценивается: снижение μ урезало бы силу модели как раз
+                # тогда, когда она одна держит скорость. Показание по другую
+                # сторону — граница нарушена (модель ушла за колесо) или колесо
+                # скачком вернулось к корпусу: принимается; за пределом
+                # допуска — если это вернувшееся колесо или его подтверждают
+                # остальные оси.
+                returned = a in self.slip_back
+                if not returned and ep * nu > p.slip_cont_k * sqrt(R):
+                    rej.append((a, nu, nis, False))
+                    ep_rej.add(a)
+                    continue
+                spinning = forced = held = False
+                override = nis > p.gate_nis and (
+                    returned or self._level_agree(a, z, ok, recent))
+                if nis > p.gate_nis and not override:
+                    rej.append((a, nu, nis, False))
+                    ep_rej.add(a)
+                    continue
+            else:
+                # Срыв в самом разгаре: показания нагруженной оси, отклонённые
+                # в сторону срыва, не принимаются, даже если рост
+                # неопределённости уже расширил допуск. Иначе нули
+                # заблокированных колёс «дозревали» до принятия за остановку,
+                # пока вагон ещё скользит. Как только колёса схватят, показания
+                # уйдут из этой стороны и пройдут.
+                # Под тягой — только пока скорость корпуса подтверждают
+                # колёса (какая-то ось принята не дольше t_valid назад): если
+                # отвергнуты все, «буксование» так же объясняет отставание
+                # самой модели с пониженным μ, и правило держало бы оценку
+                # ниже колёс, пока идёт тяга. Блокировка (показание ниже
+                # lock_ratio прогноза) — признак сам по себе.
+                lock = F0 < 0 and nu < 0 and z[a] < p.lock_ratio * hbar[a]
+                spin_dir = F0 > 0 and nu > 0 and self.t_since_acc <= p.t_valid
+                in_sat_dir = (spin_dir or lock) and shares0[a] > 0 and fast
+                forced = recent_sat and in_sat_dir and nis > 0.25 * p.gate_nis
+                # Пока неоднозначность не снята, нули колёс не принимаются:
+                # они одинаково объясняются и остановкой, и скольжением
+                # заблокированных колёс. Скорость ведёт модель с пониженным
+                # сцеплением — оценка остаётся сверху, а не падает в ноль при
+                # скользящем вагоне.
+                held = self.amb and z[a] < p.v_standstill
+                override = (nis > p.gate_nis
+                            and not (spinning or forced or held) and agreed(a))
 
-            if (nis > p.gate_nis and not (spinning or forced or held)
-                    and agreed(a)):
+            if override:
                 # модель противоречит согласным осям: расширить и принять
                 self.P[IV, IV] = max(self.P[IV, IV], nu * nu)
                 self.P[ID, ID] = max(self.P[ID, ID], (p.sigma_rej_frac * max(
@@ -1081,7 +1362,7 @@ class Estimator:
                 self.n_override += 1
 
             if spinning or forced or held or nis > p.gate_nis:
-                rej.append((a, nu))
+                rej.append((a, nu, nis, spinning))
                 continue
             C = ((pts - self.x).T * self.wc) @ dz
             K = (C / S) * mask
@@ -1098,33 +1379,51 @@ class Estimator:
 
         self.n_acc, self.n_rej = len(acc), len(rej)
 
-        # Все измерения отвергнуты: состояние не знает, что происходит.
-        # Неопределённость по ускорению раздувается до физического предела,
-        # иначе фильтр остался бы заблокирован навсегда, если ошибся сам он.
         # Признак насыщения сцепления: нагруженная ось отвергнута в сторону,
-        # соответствующую срыву (читает больше под тягой, меньше при торможении).
+        # соответствующую срыву (читает больше под тягой, меньше при
+        # торможении), отклонение значимо (> 1,5σ), и срыв подтверждён не
+        # одной моделью: блокировка (показание ниже lock_ratio прогноза),
+        # резкий рост колеса (скачок, производная за пределом) или другая ось
+        # читает меньше (несоответствие тележек, признак из ТЗ). Отклонение
+        # ОТ МОДЕЛИ само по себе срыва не доказывает: без ненагруженных осей
+        # его так же объясняет ошибка модели. Прежде каждое такое показание
+        # снижало μ, модель переставала разгонять вагон, показания уходили ещё
+        # выше, и признак поддерживал сам себя (шум ×5 и выброс ×3 на
+        # обучающих прогонах: оценка отставала на 3–5 м/с до 18 с).
         if rej and fast:
             sh = axle_shares(F0, p)
-            for a, nu in rej:
+            tol = p.agree_tol + p.noise_k * sqrt(2.0) * float(np.max(self.nz_excess))
+            for a, nu, nis, spun in rej:
+                if a in ep_rej:
+                    continue
                 lock = F0 < 0 and nu < 0 and z[a] < p.lock_ratio * hbar[a]
-                if sh[a] > 0 and ((F0 > 0 and nu > 0) or lock):
+                if not (sh[a] > 0 and ((F0 > 0 and nu > 0) or lock)
+                        and nis > 0.25 * p.gate_nis):
+                    continue
+                sgn = 1.0 if nu > 0 else -1.0
+                apart = any(sgn * (z[a] - (z[b] if ok[b] else self.axle_prev[b]))
+                            > tol for b in range(p.n_axles)
+                            if b != a and (recent[b] or ok[b]))
+                if lock or spun or apart:
                     self.sat = True
 
         # Все измерения отвергнуты и срывом это НЕ объясняется: ошибиться мог
         # сам фильтр (или отказали все датчики). Неопределённость по ускорению
         # раздувается до физического предела, чтобы блокировка закончилась за
         # ограниченное время. Если отвержение объясняется срывом (блокировка
-        # колёс при торможении), раздувать нечего: модель с пониженным
-        # сцеплением несёт состояние сама, а нулевые показания ожидаемы.
+        # колёс при торможении, срыв всех осей), раздувать нечего: модель
+        # несёт состояние сама, а показания в сторону срыва ожидаемы.
         if self.sat:
             self.t_last_sat = self.t
         recent_sat = (self.t - self.t_last_sat) <= p.t_sat_hold
         # Ненагруженная ось срываться не может. Если отвергнута она, ошибся
         # сам фильтр, и срывом это объяснить нельзя: без этого признак срыва на
         # моторных осях продлевал бы блокировку сам себя, пока вагон уезжает.
-        idle_rejected = any(shares0[a] == 0 for a, _ in rej)
-        if not acc and rej and (not recent_sat or idle_rejected):
-            up = float(np.median([nu for _, nu in rej])) > 0
+        idle_rejected = any(shares0[a] == 0 for a, _, _, _ in rej)
+        explained = len(ep_rej) == len(rej)
+        if (not acc and rej and not explained
+                and (not recent_sat or idle_rejected)):
+            up = float(np.median([nu for _, nu, _, _ in rej])) > 0
             self.P[ID, ID] = max(self.P[ID, ID],
                                  (p.sigma_rej_frac * self._a_limit(u, up)) ** 2)
 
@@ -1145,7 +1444,9 @@ class Estimator:
         # движении: блокировка или общий отказ датчиков, остановку это не
         # подтверждает ни в одном случае. Прежде нули после раздувания
         # неопределённости принимались, и оценка падала в ноль на ходу.
-        entry_ok = self.amb or self.t_since_acc <= p.t_valid
+        # (после срыва всех осей скорость вела модель — состояние тоже
+        # подтверждённое)
+        entry_ok = self.amb or self.t_since_acc <= p.t_valid or bool(ep)
         all_zero = all(z[a] < p.v_standstill for a in axles) \
             and v0 > p.v_dead_ref
         if not acc and rej and entry_ok and ((self.sat and F0 < 0) or all_zero):
@@ -1211,8 +1512,28 @@ class Estimator:
                     self.axle_prev[a] = z[a]
                     self.axle_seen[a] = True
                     self.t_axle[a] = self.t - p.dt
+                    self.nz_cnt[a] = 0
                 gap = self.t - self.t_axle[a]
                 raw = (z[a] - self.axle_prev[a]) / gap
+                self._noise(a, z[a], gap)
+                # шум сверх паспортного расширяет пороги скачка (σ разности
+                # двух показаний — √2 σ шума)
+                nz = p.noise_k * sqrt(2.0) * self.nz_excess[a]
+                # Скачок против СОБСТВЕННОГО тренда оси (не против модели:
+                # при ошибке ручки модель ошибается на 1–2 м/с², а колёса
+                # меняются плавно) — срыв этой оси. Одновременный скачок
+                # всех осей одного знака — срыв всех осей (см. _correct).
+                # Только из подтверждённого состояния: после залипания,
+                # неоднозначности или разрыва потока скачок к истинной
+                # скорости — возвращение колёс, а не срыв.
+                if (self.nz_cnt[a] > 2 and gap <= p.slip_pair_s
+                        and (self.t_since_acc <= p.slip_pair_s or self.slip_all)
+                        and not (self.amb or self.frozen)):
+                    jr = (z[a] - self.axle_prev[a]) - self.axle_dot[a] * gap
+                    if abs(jr) > p.slip_jump + p.a_slip_margin * gap + nz:
+                        self.jump_t[a] = self.t
+                        self.jump_s[a] = 1.0 if jr > 0 else -1.0
+                        self.jump_m[a] = abs(jr)
                 # Скачок за один интервал больше физически возможного (предел
                 # ускорения с запасом плюс допуск согласия осей) — срыв или
                 # отказ датчика СРАЗУ, а не только по сглаженной axle_dot:
@@ -1223,8 +1544,10 @@ class Estimator:
                 # осей» за остановку (инъекция both_zero, 30639_d3c43d69).
                 dz = z[a] - self.axle_prev[a]
                 lim_j = p.a_max_acc if dz > 0 else p.a_max_brake
-                self.axle_jump[a] = abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol
+                self.axle_jump[a] = (abs(dz) > (lim_j + p.a_slip_margin) * gap
+                                     + p.agree_tol + nz)
                 self.axle_dot[a] += p.axle_dot_alpha * (raw - self.axle_dot[a])
+                self.axle_gap[a] = gap
                 self.axle_prev[a] = z[a]
                 self.t_axle[a] = self.t
 
@@ -1263,6 +1586,7 @@ class Estimator:
             self.adapting = False
             self.n_acc = self.n_rej = 0
             self.sat = False
+            self.slip_all = 0
             self.last_acc_n = 0
             return self._finish(u, z, np.zeros(p.n_axles, dtype=bool), [],
                                 False)
@@ -1386,6 +1710,7 @@ class Estimator:
         # заново, иначе разность со старым показанием выглядела бы рывком.
         self.have_meas = False
         self.axle_seen[:] = False
+        self.slip_all = 0
         self.last_acc_n = 0
         return self._finish(u, np.zeros(p.n_axles),
                             np.zeros(p.n_axles, dtype=bool), [], False)
@@ -1399,12 +1724,8 @@ class Estimator:
         прогонов; внутренняя ковариация фильтра не меняется."""
         p = self.p
         v = float(self.x[IV])
-        a = 0.0
-        if p.sv_age:                # ускорение модели — как в выходе связки
-            a = ((body_force(u, v, self.x[IKT], self.x[IKB], self.mu, p)
-                  - resistance(v, p)) / p.M_nom + float(self.x[ID]))
-            if v <= 0.0 and a < 0.0:
-                a = 0.0
+        # ускорение модели — как в выходе связки
+        a = self._a_model(u) if p.sv_age else 0.0
         floor = p.sv_floor_stand if self.mode == STANDSTILL else p.sv_floor
         return sqrt((p.sv_gain * sv) ** 2 + floor * floor
                     + (p.sv_age * a) ** 2 + (p.sv_rel * v) ** 2)
@@ -1467,13 +1788,15 @@ class Estimator:
             self._calibrate(z, acc)
 
         self.mode = self.mode_pre
-        if self.sat or self.amb:
+        if self.sat or self.amb or self.slip_all:
             self.mode = SLIP
         if standstill:
             self.mode = STANDSTILL
         valid = (self.have_meas and self.t_since_acc <= p.t_valid
                  and not self.amb and not self.frozen)
-        if not self.have_meas or (not valid and not self.amb):
+        # при срыве всех осей скорость ведёт модель: режим — срыв, а не отказ
+        if not self.have_meas or (not valid and not self.amb
+                                  and not self.slip_all):
             self.mode = DEGRADED
 
         # Публикуемая σ не может быть меньше того, что известно о скорости:
@@ -1493,7 +1816,9 @@ class Estimator:
             mu=float(self.mu),
             sigma_v=sv, sigma_s=ss, sigma_v_filt=sv_filt,
             mode=self.mode, healthy=self.healthy.copy(),
-            slip=self.sat, ambiguous=self.amb, frozen=self.frozen,
+            slip=bool(self.sat or self.slip_all), slip_all=int(self.slip_all),
+            meas_noise=float(np.max(self.nz_sigma)),
+            ambiguous=self.amb, frozen=self.frozen,
             n_accepted=self.n_acc, n_rejected=self.n_rej,
             odometry_used=bool(acc), valid=valid,
         )

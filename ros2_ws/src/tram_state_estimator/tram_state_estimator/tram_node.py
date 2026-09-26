@@ -461,6 +461,8 @@ class TramEstimatorNode(Node):
         s.wheel_healthy = [bool(x) for x in o["healthy"]]
         s.axle_scale = [float(x) for x in self.runner.core.axle_scale]
         s.slip, s.ambiguous = bool(o["slip"]), bool(o["ambiguous"])
+        s.slip_all = int(o.get("slip_all", 0))
+        s.meas_noise = float(o.get("meas_noise", 0.0))
         s.n_accepted, s.n_rejected = int(o["n_accepted"]), int(o["n_rejected"])
         s.odometry_used = bool(o["odometry_used"])
         s.valid = bool(o["valid"]) and not o["wheels_stale"]
