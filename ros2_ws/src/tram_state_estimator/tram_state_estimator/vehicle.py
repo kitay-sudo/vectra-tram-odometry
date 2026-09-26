@@ -12,9 +12,11 @@
                         лист: ЖЮРИ — все записи вагона, ОЦЕНКА — только train).
 
 Известный вагон — масштаб показаний ядра (Params.meas_scale) берётся его.
-"auto" — общий лист как есть (калибровка по обоим вагонам) плюс онлайн-оценка
-масштаба пути по привязкам к остановкам (Position, scale_adapt; она работает
-при любом значении vehicle). Незнакомое значение — «auto» с предупреждением.
+"auto" — общий лист как есть (калибровка по обоим вагонам) плюс онлайн-оценки
+по привязкам к остановкам: масштаба пути (Position, scale_adapt) и масштаба
+колёс для скорости (OnlineWheelScale, параметр wheel_scale_online); обе
+работают при любом значении vehicle. Незнакомое значение — «auto» с
+предупреждением.
 
 Модуль без ROS: его используют нода (tram_node.py) и оценка (tools/eval_replay.py),
 поэтому числа оценки и работа ноды совпадают.
@@ -91,13 +93,108 @@ def apply(params, vehicle, ids, scales):
     return params, info
 
 
-def describe(info):
-    """Строка для лога ноды."""
+def describe(info, online=None):
+    """Строка для лога ноды (online — параметр wheel_scale_online)."""
     if info["used"] == AUTO:
-        return (f"вагон auto: общий лист, meas_scale {info['sheet_meas_scale']:.6f}, "
-                "масштаб пути — онлайн по остановкам")
-    return (f"вагон {info['used']}: meas_scale {info['meas_scale']:.6f} "
-            f"(общий лист {info['sheet_meas_scale']:.6f})")
+        out = (f"вагон auto: общий лист, meas_scale {info['sheet_meas_scale']:.6f}, "
+               "масштаб пути — онлайн по остановкам")
+    else:
+        out = (f"вагон {info['used']}: meas_scale {info['meas_scale']:.6f} "
+               f"(общий лист {info['sheet_meas_scale']:.6f})")
+    if online is not None:
+        out += f", онлайн-масштаб колёс {'вкл.' if online else 'выкл.'}"
+    return out
+
+
+class OnlineWheelScale:
+    """Онлайн-масштаб колёс по привязкам к остановкам -> множитель скорости.
+
+    Масштаб колёс меняется по датам у того же вагона до 1,2 % (docs/VEHICLES.md
+    §2), а дату нода не знает. Привязка к остановке (Position.on_stop) даёт на
+    каждом отрезке между остановками отношение пути по карте к пути колёс:
+    k = (L·s0·m + δ) / (L·s0), где L — путь ядра по отрезку, δ — сдвиг
+    привязки вдоль пути, m — множитель пути Position на этом отрезке, s0 —
+    множитель пути карты (при масштабе листа). Отрезки берутся не короче
+    min_l и с |k − 1| < max_dev (дальше — «не та остановка»). Оценка —
+    Σ L·k / Σ L, то есть весь путь по карте на весь путь колёс принятых
+    отрезков (weighted; медиана k — weighted=False), когда таких отрезков не
+    меньше min_n; не больше ±cap. Длинный отрезок весит больше: ошибка
+    привязки — метры, на длинном отрезке она меньше в долях. Поправка
+    скорости — эта оценка, если |оценка − 1| > deadband, иначе 1 (на
+    «обычных» датах шум оценки дороже поправки). Всё причинно: только
+    законченные отрезки. Выбор настроек — на train (docs/VEHICLES.md §6).
+
+    Журнал привязок — Position.scale_log: (путь, δ, L, m после привязки).
+    Новый журнал (сброс Runner — новый прогон) — оценка заново."""
+
+    MIN_L = 300.0       # м
+    MAX_DEV = 0.03
+    MIN_N = 2
+    CAP = 0.02
+    DEADBAND = 0.005
+
+    SKIP_FIRST = False  # не брать первый отрезок (от выставки по GNSS): на train хуже
+    WEIGHTED = True     # Σ L·k / Σ L; False — медиана k (на train хуже)
+
+    def __init__(self, min_l=MIN_L, max_dev=MAX_DEV, min_n=MIN_N, cap=CAP,
+                 deadband=DEADBAND, skip_first=SKIP_FIRST, weighted=WEIGHTED):
+        self.min_l, self.max_dev, self.min_n = float(min_l), float(max_dev), int(min_n)
+        self.cap, self.deadband = float(cap), float(deadband)
+        self.skip_first, self.weighted = bool(skip_first), bool(weighted)
+        self._restart(None)
+
+    def _restart(self, log):
+        self._log = log
+        self._n = 0             # записей журнала учтено
+        self._used = 1.0        # множитель пути Position на текущем отрезке
+        self.ks = []            # k принятых отрезков
+        self.ls = []            # и их длины L
+        self.estimate = 1.0     # оценка масштаба (без мёртвой зоны)
+        self.k = 1.0            # поправка скорости
+
+    def factor(self, log, s0):
+        """Журнал привязок Position и множитель пути карты -> поправка скорости."""
+        if log is not self._log:
+            self._restart(log)
+        if log is None or not isinstance(s0, (int, float)) or not math.isfinite(s0) \
+                or s0 <= 0.0:
+            return self.k
+        while self._n < len(log):
+            _ds, d, L, mult = log[self._n]
+            first = self._n == 0
+            self._n += 1
+            try:
+                k = (L * s0 * self._used + d) / (L * s0) if L >= self.min_l else math.nan
+            except (TypeError, ZeroDivisionError):
+                k = math.nan
+            if (math.isfinite(k) and abs(k - 1.0) < self.max_dev
+                    and not (first and self.skip_first)):
+                self.ks.append(k)
+                self.ls.append(float(L))
+            if isinstance(mult, (int, float)) and math.isfinite(mult) and mult > 0:
+                self._used = float(mult)
+            self._update()
+        return self.k
+
+    def _update(self):
+        if len(self.ks) < self.min_n:
+            return
+        if self.weighted:
+            est = sum(k * L for k, L in zip(self.ks, self.ls)) / sum(self.ls)
+        else:
+            x = sorted(self.ks)
+            n = len(x)
+            est = x[n // 2] if n % 2 else 0.5 * (x[n // 2 - 1] + x[n // 2])
+        self.estimate = min(max(est, 1.0 - self.cap), 1.0 + self.cap)
+        self.k = self.estimate if abs(self.estimate - 1.0) > self.deadband else 1.0
+
+
+def wheel_scale_hook(runner, enabled, **kw):
+    """Включить онлайн-масштаб колёс у Runner (нода и оценка — одинаково):
+    runner.wheel_scale переживает reset() (его __init__ атрибут не трогает),
+    журнал привязок у нового прогона новый — оценка начинается заново."""
+    runner.wheel_scale = OnlineWheelScale(**kw) if enabled else None
+    return runner
 
 
 def apply_node(params, node):

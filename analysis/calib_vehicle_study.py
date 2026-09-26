@@ -13,7 +13,10 @@
     python3 analysis/calib_vehicle_study.py online  # «что если»: онлайн-масштаб
         пути по привязкам к остановкам (Position.mult, лист ОЦЕНКИ, vehicle
         auto, карта ОЦЕНКИ) умножить и на скорость — MAE и смещение по
-        вагонам и датам; сама нода этого не делает
+        вагонам и датам (первый «что если», 26.09)
+    python3 analysis/calib_vehicle_study.py grid    # перебор онлайн-масштаба
+        колёс (vehicle.OnlineWheelScale, параметр ноды wheel_scale_online):
+        MAE и смещение скорости по вагонам и датам
 
 Результат: out/vehicle/study_<режим>.json и таблица в консоли.
 """
@@ -303,10 +306,121 @@ def study_online(workers):
     return out
 
 
+# перебор онлайн-масштаба колёс (vehicle.OnlineWheelScale): (имя, параметры)
+GRID = [("выкл.", None)]
+for _n in (1, 2, 3):
+    for _db in (0.0, 0.003, 0.005, 0.007, 0.01):
+        GRID.append((f"n{_n} мз{100 * _db:.1f}", dict(min_n=_n, deadband=_db)))
+for _l in (200.0, 500.0):
+    GRID.append((f"n2 мз0.5 L{_l:.0f}", dict(min_n=2, deadband=0.005, min_l=_l)))
+for _dev in (0.02, 0.05):
+    GRID.append((f"n2 мз0.5 dev{100 * _dev:.0f}", dict(min_n=2, deadband=0.005, max_dev=_dev)))
+GRID.append(("n2 мз0.5 cap1", dict(min_n=2, deadband=0.005, cap=0.01)))
+GRID.append(("n2 мз0.5 cap3", dict(min_n=2, deadband=0.005, cap=0.03)))
+# без первого отрезка (от выставки по GNSS, а не от остановки) и/или оценка
+# Σ L·k / Σ L вместо медианы (добавлено 27.09 после разбора отложенного
+# 30618_21dd3af3: медиана двух отрезков = среднее, первый отрезок 473 м с
+# k 0,9835 дал поправку −0,8 % на 1,7 км; выбор — только по train)
+for _sf in (False, True):
+    for _w in (False, True):
+        if not (_sf or _w):
+            continue
+        for _n in (1, 2, 3):
+            for _db in (0.003, 0.005, 0.007):
+                GRID.append((f"n{_n} мз{100 * _db:.1f}{' б1' if _sf else ''}{' взв' if _w else ''}",
+                             dict(min_n=_n, deadband=_db, skip_first=_sf, weighted=_w)))
+
+
+def k_series(log, s0, kw):
+    """Поправка скорости после каждой записи журнала привязок (0..N) — тем же
+    классом, что в ноде, на растущем журнале (причинно)."""
+    from tram_state_estimator import vehicle as V
+    ws = V.OnlineWheelScale(**kw)
+    cur = []
+    out = [ws.factor(cur, s0)]
+    for e in log:
+        cur.append(e)
+        out.append(ws.factor(cur, s0))
+    return np.asarray(out)
+
+
+def _grid_run(b):
+    """Связка как в eval.py (лист и карта ОЦЕНКИ, vehicle — вагон записи,
+    GNSS 3 с), без онлайн-масштаба; поправки перебора — после связки, по
+    журналу привязок на каждом выходе (как делает нода: скорость выхода ×
+    поправка на этом шаге)."""
+    import eval_metrics as EM
+    import eval_replay as ER
+    a = bagio.load(b)
+    if len(a["mvel"]) < 100:
+        return b, None
+    sheet = ER.resolve_sheet("eval")
+    node = dict(sheet["node"], vehicle="match", wheel_scale_online=False)
+    p = ER.make_params(dict(sheet, node=node), bag=b)
+    tmap = ER.load_map(CE.PKG / "config" / "eval" / "track_map.npz")
+    r, _ = ER.make_runner(p, node, tmap)
+    gl = ER.Glue(r, node)
+    T, Vv, Nl = [], [], []
+    for tb, kind, i, th, val in ER.events(a, "3"):
+        for o in gl.feed(tb, kind, i, th, val):
+            T.append(o["stamp"])
+            Vv.append(o["v"])
+            Nl.append(len(r.pos.scale_log))
+    T, Vv, Nl = map(np.asarray, (T, Vv, Nl))
+    log = list(r.pos.scale_log)
+    res = {}
+    for name, kw in GRID:
+        K = np.ones(len(log) + 1) if kw is None else k_series(log, tmap.scale, kw)
+        _, s = EM.score_speed(dict(T=T, V=Vv * K[Nl]), a)
+        if s is None:
+            return b, None
+        res[name] = dict(ae=float(np.sum(np.abs(s["ev"]))), e=float(np.sum(s["ev"])),
+                         n=int(len(s["ev"])), k_end=float(K[-1]))
+    return b, res
+
+
+def study_grid(workers):
+    """Перебор онлайн-масштаба колёс на train: MAE и смещение скорости по
+    вагонам и датам, по вагону 30618 и по всем."""
+    from concurrent.futures import ProcessPoolExecutor
+    md = CV.meta()
+    ids = CD.fit_ids("eval")
+    with ProcessPoolExecutor(workers) as ex:
+        res = {b: r for b, r in ex.map(_grid_run, ids) if r is not None}
+    groups = {}
+    for b in res:
+        v, d = md[b]["vehicle"], md[b]["date"]
+        for g in (f"{v} {d}", v, "все"):
+            groups.setdefault(g, []).append(b)
+    out = {"_grid": {name: kw for name, kw in GRID}, "_groups": {}}
+    order = sorted(k for k in groups if " " in k) + list(CV.VEHICLES) + ["все"]
+    for g in order:
+        bs = groups.get(g, [])
+        row = {}
+        for name, _ in GRID:
+            ae = sum(res[b][name]["ae"] for b in bs)
+            e = sum(res[b][name]["e"] for b in bs)
+            n = sum(res[b][name]["n"] for b in bs)
+            row[name] = dict(mae=ae / n, bias=e / n, runs=len(bs),
+                             k_end=float(np.mean([res[b][name]["k_end"] for b in bs])))
+        out["_groups"][g] = row
+    base = "выкл."
+    print(f"{'вариант':22s}" + "".join(f"{g:>18s}" for g in order))
+    for name, _ in GRID:
+        cells = []
+        for g in order:
+            m0 = out["_groups"][g][base]["mae"]
+            m = out["_groups"][g][name]["mae"]
+            cells.append(f"{m:.4f} ({100 * (m / m0 - 1):+5.1f}%)")
+        print(f"{name:22s}" + "".join(f"{c:>18s}" for c in cells))
+    out["_runs"] = {b: {name: r[name]["k_end"] for name, _ in GRID} for b, r in res.items()}
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=("drive", "speed", "online"))
+    ap.add_argument("mode", choices=("drive", "speed", "online", "grid"))
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     a = ap.parse_args()
     cal = json.loads(SHEET.read_text(encoding="utf-8"))["params"]
@@ -314,6 +428,8 @@ def main():
     print(f"задержка ручки {delay} с, tau {tau} с (лист ОЦЕНКИ); части: {K}")
     if a.mode == "online":
         res = study_online(a.workers)
+    elif a.mode == "grid":
+        res = study_grid(a.workers)
     elif a.mode == "drive":
         res = study_drive(delay, tau)
     else:

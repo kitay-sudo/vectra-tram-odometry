@@ -246,3 +246,138 @@ def test_eval_applies_vehicle_like_the_node():
     _, unused = R.make_runner(p, sheet["node"], None)
     assert not {"vehicle", "vehicle_ids", "vehicle_meas_scale"} & set(unused)
     assert math.isfinite(p.meas_scale)
+
+
+# ---------------------------------------------------------------- онлайн-масштаб колёс
+
+def _seg(L, k, s0=1.0, mult=1.0, used=1.0):
+    """Запись журнала привязок Position.scale_log для отрезка длиной L с
+    истинным отношением «путь карты / путь колёс» k·s0 (при множителе used)."""
+    d = L * s0 * (k - used)
+    return (0.0, d, L, mult)
+
+
+def test_online_scale_waits_for_segments_then_weights_by_length():
+    """Оценка по умолчанию — весь путь карты на весь путь колёс (Σ L·k / Σ L)."""
+    ws = V.OnlineWheelScale()
+    log = []
+    assert ws.factor(log, 1.0) == 1.0
+    log.append(_seg(1000.0, 1.010))
+    assert ws.factor(log, 1.0) == 1.0          # один отрезок — мало (min_n = 2)
+    log.append(_seg(800.0, 1.013))
+    assert ws.factor(log, 1.0) == pytest.approx((1010.0 + 810.4) / 1800.0, abs=1e-9)
+    log.append(_seg(3000.0, 1.006))
+    assert ws.factor(log, 1.0) == pytest.approx((1010.0 + 810.4 + 3018.0) / 4800.0, abs=1e-9)
+
+
+def test_online_scale_median_and_skip_first_options():
+    ws = V.OnlineWheelScale(weighted=False)
+    log = [_seg(1000.0, 1.010), _seg(800.0, 1.013), _seg(3000.0, 1.006)]
+    assert ws.factor(log, 1.0) == pytest.approx(1.010, abs=1e-9)
+    ws = V.OnlineWheelScale(skip_first=True)   # первый отрезок — от выставки
+    assert ws.factor(log, 1.0) == pytest.approx((810.4 + 3018.0) / 3800.0, abs=1e-9)
+    assert V.OnlineWheelScale.WEIGHTED and not V.OnlineWheelScale.SKIP_FIRST
+
+
+def test_online_scale_ignores_short_and_outlier_segments():
+    ws = V.OnlineWheelScale()
+    log = [_seg(100.0, 1.015), _seg(1000.0, 1.08), _seg(1000.0, 0.95),
+           _seg(1000.0, 1.009)]
+    assert ws.factor(log, 1.0) == 1.0          # принят один отрезок
+    assert ws.ks == [pytest.approx(1.009)]
+
+
+def test_online_scale_dead_zone_and_cap():
+    ws = V.OnlineWheelScale()
+    assert ws.factor([_seg(1000.0, 1.004), _seg(1000.0, 1.003)], 1.0) == 1.0
+    assert ws.estimate == pytest.approx(1.0035)
+    ws = V.OnlineWheelScale()                  # за пределом ±cap — cap
+    assert ws.factor([_seg(1000.0, 1.028), _seg(1000.0, 1.029)], 1.0) == \
+        pytest.approx(1.0 + V.OnlineWheelScale.CAP)
+
+
+def test_online_scale_uses_position_multiplier_of_the_segment():
+    """Множитель пути Position (scale_adapt) на отрезке учитывается: сдвиг
+    привязки меньше, если путь уже шёл с поправкой. s0 карты — любой."""
+    s0 = 0.9987
+    ws = V.OnlineWheelScale()
+    log = [_seg(1000.0, 1.010, s0=s0, mult=1.004),
+           _seg(1000.0, 1.010, s0=s0, mult=1.006, used=1.004)]
+    assert ws.factor(log, s0) == pytest.approx(1.010, abs=1e-9)
+
+
+def test_online_scale_restarts_on_new_log_and_ignores_bad_input():
+    ws = V.OnlineWheelScale()
+    assert ws.factor([_seg(1000.0, 1.01), _seg(1000.0, 1.01)], 1.0) == pytest.approx(1.01)
+    assert ws.factor([], 1.0) == 1.0           # новый журнал — новый прогон
+    for s0 in (None, 0.0, float("nan"), -1.0):
+        assert ws.factor([_seg(1000.0, 1.01)] * 3, s0) == 1.0
+    log = [(0.0, float("nan"), 1000.0, 1.0), (0.0, 5.0, 0.0, float("nan")),
+           _seg(1000.0, 1.01), _seg(1000.0, 1.01)]
+    assert ws.factor(log, 1.0) == pytest.approx(1.01)
+
+
+def _fixture_runs(prefill, hook=True):
+    """Runner на фикстуре реального прогона (без GNSS) — скорость выходов;
+    журнал привязок заполнен заранее, карта — заглушка с s0 = 1."""
+    import types
+    import e2e_replay as E
+    from tram_state_estimator.runner import Runner
+    fx = E.load_fixture()
+    p, _node = _params("jury")
+    r = Runner(p)
+    if hook:
+        V.wheel_scale_hook(r, True)
+    r.pos.map = types.SimpleNamespace(scale=1.0)
+    r.pos.scale_log.extend(prefill)
+    outs = []
+    for _tb, kind, i, th, val in E.events(fx, gnss="none"):
+        outs += r.on_wheel(i, th, val) if kind == 0 else r.on_handle(th, val)
+    return r, np.array([o["v"] for o in outs])
+
+
+def test_runner_hook_scales_output_speed_only():
+    _, v0 = _fixture_runs([], hook=False)
+    r, v1 = _fixture_runs([_seg(1000.0, 1.01), _seg(1000.0, 1.012)])
+    assert len(v0) == len(v1) > 3000
+    assert np.allclose(v1, v0 * 1.011, rtol=0, atol=1e-9)
+    assert r.wheel_scale.k == pytest.approx(1.011)
+    _, v2 = _fixture_runs([_seg(1000.0, 1.003), _seg(1000.0, 1.004)])
+    assert np.array_equal(v2, v0)              # в мёртвой зоне — без поправки
+    _, v3 = _fixture_runs([_seg(1000.0, 1.01), _seg(1000.0, 1.012)], hook=False)
+    assert np.array_equal(v3, v0)              # без крючка журнал не влияет
+
+
+def test_runner_hook_survives_reset_and_restarts_estimate():
+    r, _ = _fixture_runs([_seg(1000.0, 1.01), _seg(1000.0, 1.012)])
+    ws = r.wheel_scale
+    # копия для прогноза пульса (fork): журнал копии — тот же для её оценки,
+    # поправка не сбрасывается
+    f = r.fork()
+    assert f.wheel_scale is not ws and f.wheel_scale._log is f.pos.scale_log
+    assert f.wheel_scale.factor(f.pos.scale_log, 1.0) == pytest.approx(1.011)
+    r.reset("проверка")
+    assert r.wheel_scale is ws                 # крючок пережил сброс
+    assert r.wheel_scale.factor(r.pos.scale_log, 1.0) == 1.0   # новый прогон
+    f = r.fork()
+    assert f.wheel_scale is not ws and f.wheel_scale.k == ws.k
+
+
+def test_eval_attaches_wheel_scale_like_the_node():
+    R = _eval_replay()
+    sheet = R.resolve_sheet("jury")
+    p = R.make_params(sheet)
+    for on in (True, False):
+        node = dict(sheet["node"], wheel_scale_online=on)
+        r, unused = R.make_runner(p, node, None)
+        assert (r.wheel_scale is not None) is on
+        assert "wheel_scale_online" not in unused
+    assert "wheel_scale_online" in sheet["node"]
+
+
+def test_node_wires_wheel_scale_hook():
+    """tram_node.py объявляет wheel_scale_online и ставит крючок на Runner."""
+    src = open(os.path.join(PKG, "tram_state_estimator", "tram_node.py"),
+               encoding="utf-8").read()
+    assert 'P("wheel_scale_online",' in src
+    assert 'wheel_scale_hook(self.runner, g("wheel_scale_online"))' in src

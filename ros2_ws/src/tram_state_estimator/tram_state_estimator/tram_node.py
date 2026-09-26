@@ -192,6 +192,9 @@ class TramEstimatorNode(Node):
           descriptor=ParameterDescriptor(dynamic_typing=True))
         P("vehicle_meas_scale", [1.001362, 0.997575],
           descriptor=ParameterDescriptor(dynamic_typing=True))
+        # онлайн-масштаб колёс по привязкам к остановкам: поправка скорости
+        # при смене масштаба по датам (vehicle.OnlineWheelScale)
+        P("wheel_scale_online", True)
         P("nomap_mode", "hold")            # без карты: hold (стоять в якоре) | line
         P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе,
         P("keep_offset_z", True)           # если медиана статуса окна ≤
@@ -229,6 +232,7 @@ class TramEstimatorNode(Node):
                              antenna_master_x=g("antenna_master_x"),
                              antenna_rover_x=g("antenna_rover_x"),
                              antenna_z=g("antenna_z"))
+        vehicle_sheet.wheel_scale_hook(self.runner, g("wheel_scale_online"))
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
         self._robust_setup()
@@ -257,7 +261,8 @@ class TramEstimatorNode(Node):
             f"оценщик запущен: шаг {params.dt * 1000:.0f} мс, "
             f"карта {'есть' if tmap is not None else 'нет'}; "
             f"лист: {self.sheet_src}; карта: {path or 'нет (map_file пуст)'}; "
-            f"единицы {params.meas_units}; {vehicle_sheet.describe(self.vehicle_info)}; "
+            f"единицы {params.meas_units}; "
+            f"{vehicle_sheet.describe(self.vehicle_info, g('wheel_scale_online'))}; "
             f"пульс {self.pulse_h:.1f} с; выход "
             f"{g('projection')}"
             + (f" от квадрата {g('mgrs_grid')} непрерывно" if g("mgrs_grid") else
