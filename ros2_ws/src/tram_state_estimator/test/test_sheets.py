@@ -182,7 +182,9 @@ def test_sheet_carries_every_node_param_with_node_type(which):
     """Интеграция: в листе — все параметры, которые объявляет нода (поток
     «положение» и «устойчивость» добавили свои), того же типа, что умолчание
     в ноде: ROS 2 отвергает лист, если тип параметра не совпал (20 вместо
-    20.0). Значения — как в ноде, кроме карты (у листа оценки карта пустая)."""
+    20.0). Значения — как в ноде, кроме карты (у листа оценки карта пустая) и
+    масштаба колёс вагонов у листа оценки (подогнан только по train; у листа
+    жюри он равен умолчанию ноды — test_vehicle.py)."""
     import math
     decl = _node_declared()
     got = _yaml(which)
@@ -192,7 +194,7 @@ def test_sheet_carries_every_node_param_with_node_type(which):
     for k, d in decl.items():
         v = got[k]
         assert type(v) is type(d), f"{k}: в листе {type(v).__name__}, в ноде {type(d).__name__}"
-        if k == "map_file":
+        if k == "map_file" or (k == "vehicle_meas_scale" and which != "jury"):
             continue
         if isinstance(d, float) and math.isnan(d):
             assert math.isnan(v), k

@@ -285,7 +285,7 @@ def run_task(task):
     a = _load_run(bag, cfg["quick_s"])
     if task.get("limit_s"):
         a = R.truncate(a, task["limit_s"])
-    p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
+    p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]), bag=bag)
     runners, unused = _runners(cfg, p, task.get("naive", True))
     evs = R.events(a, task.get("gnss", cfg["gnss"]))
     if cfg.get("drop_antenna"):             # выставка без одной антенны (WP14)
@@ -318,7 +318,7 @@ def run_inject_bag(task):
     cfg = task["cfg"]
     bag = task["bag"]
     a = _load_run(bag, cfg["quick_s"])
-    p = R.make_params(cfg["sheet"], cfg["overrides"])
+    p = R.make_params(cfg["sheet"], cfg["overrides"], bag=bag)
     gnss = cfg["gnss"]
     plan = []
     out = []

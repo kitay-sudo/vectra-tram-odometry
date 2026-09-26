@@ -73,7 +73,11 @@ RUNNER_KW = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeo
 # сортировка всплеска (WP16/WP24), выбор листа (WP22)
 NODE_ONLY = {"map_file", "origin_lat", "origin_lon", "origin_alt", "frame_id", "child_frame_id",
              "sheet", "pulse_horizon_s", "pulse_margin_s", "pulse_margin_nohandle_s",
-             "pulse_period_s", "start_sort_s"}
+             "pulse_period_s", "start_sort_s",
+             # вагон: меняет Params (meas_scale) до Runner — make_params
+             "vehicle", "vehicle_ids", "vehicle_meas_scale"}
+# --set vehicle=match — только для оценки: вагон по имени прогона (30618_…)
+VEHICLE_MATCH = "match"
 START_SORT_DEFAULT = 0.1     # с: start_sort_s ноды после WP24, если его нет в листе
 NODE_PY = PKG / "tram_state_estimator" / "tram_node.py"
 
@@ -218,10 +222,25 @@ def parse_overrides(text):
     return out
 
 
-def make_params(sheet, overrides=None):
+def make_params(sheet, overrides=None, bag=None):
+    """Params листа (+ --set) с масштабом колёс вагона, как в tram_node.py
+    (tram_state_estimator/vehicle.py). vehicle=match — вагон прогона bag."""
     d = dict(sheet["core"])
     d.update({k: v for k, v in (overrides or {}).items() if k in PARAM_NAMES})
-    return core.Params.from_dict(d)
+    p = core.Params.from_dict(d)
+    return apply_vehicle(p, sheet["node"], bag)[0]
+
+
+def apply_vehicle(p, node, bag=None):
+    """-> (Params, сведения о вагоне). Код без vehicle.py (до 26.09) — как есть."""
+    try:
+        from tram_state_estimator import vehicle as V
+    except ImportError:
+        return p, None
+    node = dict(node or {})
+    if str(node.get("vehicle", "")).strip().lower() == VEHICLE_MATCH:
+        node["vehicle"] = str(bag).split("_")[0] if bag else "auto"
+    return V.apply_node(p, node)
 
 
 # ------------------------------------------------------------------ карты
