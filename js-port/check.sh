@@ -19,7 +19,7 @@ export MSYS_NO_PATHCONV=1
 ROOT="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
 DATA_DIR="${DATA_DIR:-$ROOT/data}"
 CACHE_DIR="${CACHE_DIR:-$ROOT/analysis/cache}"
-IMAGE="${IMAGE:-vectra/tram:integration}"
+IMAGE="${IMAGE:-vectra/tram:compose}"
 BAG="${BAG:-30618_e9a34502}"
 PY=(docker run --rm --cpus 2 -v "$ROOT:/repo" -v "$DATA_DIR:/repo/data:ro" -v "$CACHE_DIR:/repo/analysis/cache:ro"
     -w /repo/js-port "$IMAGE")
