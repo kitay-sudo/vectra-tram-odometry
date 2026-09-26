@@ -22,12 +22,22 @@
              отсюда slip_sigma_a (рост СКО ошибки скорости, м/с за секунду).
 Виды инъекций, кроме видов tools/inject.py, — варианты глубины и длительности
 (VARIANTS: юз −15 / −50 %, буксование +15 / +60 %, по 10 с, шум ×3 / ×10):
-пороги не должны быть подогнаны под ровно ±30 % и 4 с.
+пороги не должны быть подогнаны под ровно ±30 % и 4 с. EDGE — форма срыва
+(из ревью потока): плавное начало или конец, задняя тележка на 0,3 с позже,
+циклы противоюзной защиты, юз, переходящий в блокировку (нули), длинный юз с
+плавным отпусканием, блокировка с падением в ноль за 0,3 / 1 с (экстренное
+торможение), короткий юз 1 с, юз одной передней тележки. Эти виды считаются
+только по --kinds, например
+  python3 tools/slip_study.py --inject --runs train --n 27 --kinds edge
+(edge — все виды EDGE; std — виды по умолчанию). В сводке «slip после» — доля
+шагов с флагом срыва за 60 с после окна (признак не должен защёлкиваться),
+«valid и ошибка > 1 м/с» — доля точек окна, где оценка уверенно неверна.
 
 Запуск (из корня дерева; кэш — analysis/cache или TRAM_CACHE):
   python3 tools/slip_study.py --inject --clean --runs train --out out/slip/now.json
   python3 tools/slip_study.py --report out/slip/now.json
   python3 tools/slip_study.py --openloop --runs train
+  python3 tools/slip_study.py --compare out/slip2/head.json out/slip2/new.json
 `--set k=v,...` — поля листа поверх (как в tools/eval.py), для перебора.
 """
 
@@ -67,11 +77,82 @@ VARIANTS = {
 }
 for _name, (_base, _f, _dur) in VARIANTS.items():
     I.KINDS.setdefault(_name, dict(I.KINDS[_base], dur=_dur, ru=f"{_base} ×{_f}, {_dur:g} с"))
+
+
+# Форма срыва во времени: множитель показаний f(tr) для tr = t − t0 в окне.
+def _rampout(tr, dur, lo, ramp):
+    """lo сразу, в конце плавно назад к 1 за ramp с."""
+    return np.where(tr < dur - ramp, lo, lo + (1 - lo) * (tr - (dur - ramp)) / ramp)
+
+
+def _rampin(tr, dur, lo, ramp):
+    """плавно к lo за ramp с, отпускание скачком."""
+    return np.where(tr < ramp, 1 + (lo - 1) * tr / ramp, lo)
+
+
+def _ramp_both(tr, dur, lo, ramp):
+    a = np.clip(tr / ramp, 0, 1)
+    b = np.clip((dur - tr) / ramp, 0, 1)
+    return 1 + (lo - 1) * np.minimum(a, b)
+
+
+def _then_lock(tr, dur, lo, t_lock):
+    """частичный юз, затем блокировка (нули), отпускание скачком."""
+    return np.where(tr < t_lock, lo, 0.0)
+
+
+def _lock_ramp(tr, dur, lo, ramp):
+    """блокировка: плавно в ноль за ramp с (экстренное торможение), ноль до
+    конца окна, отпускание скачком."""
+    return np.clip(1.0 - tr / ramp, 0.0, 1.0)
+
+
+def _wsp(tr, dur, lo, per):
+    """противоюзная защита: глубокий юз 60 % периода, почти сцепление 40 %."""
+    ph = np.mod(tr, per) / per
+    return np.where(ph < 0.6, lo, 1 - 0.15 * (1 - lo))
+
+
+# имя: (окно вида tools/inject.py, длительность, форма, множитель, параметр
+# формы, запаздывание задней тележки, с[, тележки — по умолчанию обе])
+EDGE = {
+    "skid_rampout1": ("skid_brake", 4.0, _rampout, 0.7, 1.0, 0.0),
+    "skid_rampout2": ("skid_brake", 4.0, _rampout, 0.7, 2.0, 0.0),
+    "skid_rampin05": ("skid_brake", 4.0, _rampin, 0.7, 0.5, 0.0),
+    "skid_ramp_both05": ("skid_brake", 4.0, _ramp_both, 0.7, 0.5, 0.0),
+    "skid_stagger03": ("skid_brake", 4.0, None, 0.7, 0.0, 0.3),
+    "skid_wsp": ("skid_brake", 4.0, _wsp, 0.7, 1.0, 0.0),
+    "spin_rampout1": ("spin_traction", 4.0, _rampout, 1.3, 1.0, 0.0),
+    "spin_rampout2": ("spin_traction", 4.0, _rampout, 1.3, 2.0, 0.0),
+    "spin_stagger03": ("spin_traction", 4.0, None, 1.3, 0.0, 0.3),
+    "skid_then_lock": ("skid_brake", 5.0, _then_lock, 0.7, 2.0, 0.0),
+    "skid_long_rampout": ("skid_brake", 10.0, _rampout, 0.7, 1.0, 0.0),
+    "lock_ramp03": ("skid_brake", 5.0, _lock_ramp, 0.0, 0.3, 0.0),
+    "lock_ramp1": ("skid_brake", 5.0, _lock_ramp, 0.0, 1.0, 0.0),
+    "skid_short1": ("skid_brake", 1.0, None, 0.7, 0.0, 0.0),
+    "skid_front_only": ("skid_brake", 4.0, None, 0.7, 0.0, 0.0, ("front",)),
+}
+for _name, (_base, _dur, *_rest) in EDGE.items():
+    I.KINDS.setdefault(_name, dict(I.KINDS[_base], dur=_dur, ru=_name))
 PRE_S, POST_S = 40.0, 60.0
+
+
+def _apply_edge(seg, kind, t0):
+    base, dur, fn, lo, arg, lag, *keys = EDGE[kind]
+    b = {k: v.copy() for k, v in seg.items()}
+    for key in (keys[0] if keys else ("front", "rear")):
+        x = b[key]
+        s0 = t0 + (lag if key == "rear" else 0.0)
+        w = (x[:, 1] >= s0) & (x[:, 1] < t0 + dur)
+        tr = x[w, 1] - t0
+        x[w, 2] *= np.full(int(w.sum()), lo) if fn is None else fn(tr, dur, lo, arg)
+    return b, dict(kind=kind, t0=t0, dur=dur)
 
 
 def _apply(seg, kind, t0, dur, seed):
     """tools/inject.py для своих видов, вариантам — свой множитель."""
+    if kind in EDGE:
+        return _apply_edge(seg, kind, t0)
     if kind not in VARIANTS:
         return I.apply(seg, kind, t0, dur, seed=seed)
     base, f, dur = VARIANTS[kind]
@@ -189,6 +270,13 @@ def run_inject(task):
                 d["amb"] = float(O["AMB"][m].mean()) if m.any() else None
                 d["sv_max"] = float(np.nanmax(O["SV"][m])) if m.any() else None
                 d["rec"] = _recovery(Oi, Oc, t1)
+                # «уверенно неверно»: valid при ошибке больше 1 м/с против GNSS
+                # (юз, перешедший в блокировку, прежде давал v = 0, valid)
+                tg, _, e, _ = _pairs(O, seg, t0, te)
+                j, ok = M.nearest(O["T"], tg)
+                bad = ok & (np.abs(np.nan_to_num(e)) > 1.0)
+                bad[ok] &= O["VALID"][j[ok]]
+                d["valid_bad"] = float(bad.mean()) if len(tg) else None
                 ma = (O["T"] >= te) & (O["T"] < te + POST_S)
                 d["slip_after"] = float(O["SLIP"][ma].mean()) if ma.any() else None
                 mb = (O["T"] >= t0 - 30.0) & (O["T"] < t0)
@@ -303,7 +391,8 @@ def summarize(res):
     inj = res.get("inject", [])
     if inj:
         lines.append("вид | n | MAE мод. во время | MAE базы | MAE чист. | после мод/база | "
-                     "slip во время | slip чист. | valid | ±2σ | восст. медиана/макс, с")
+                     "slip во время | slip чист. | valid | ±2σ | восст. медиана/макс, с | "
+                     "slip после | наиб. ошибка | valid и ошибка > 1 м/с")
         for kind in dict.fromkeys(r["kind"] for r in inj):
             rs = [r for r in inj if r["kind"] == kind]
 
@@ -324,6 +413,9 @@ def summarize(res):
                 f"{mean(lambda r: r['model']['during'].get('cov2s')):.0%} | "
                 f"{(np.median(recf) if recf else float('nan')):.1f}/{(max(recf) if recf else float('nan')):.1f}"
                 f" (нет: {sum(x is None for x in rec)}) | "
+                f"{mean(lambda r: r['model'].get('slip_after')):.1%} | "
+                f"{max((r['model']['during'].get('max') or 0.0) for r in rs):.2f} | "
+                f"{mean(lambda r: r['model'].get('valid_bad')):.1%} | "
                 f"лучше базы {sum((r['model']['during'].get('mae') or 9) < (r['naive']['during'].get('mae') or 9) for r in rs)}/{len(rs)}")
     cl = res.get("clean", [])
     if cl:
@@ -345,6 +437,61 @@ def summarize(res):
     return "\n".join(lines)
 
 
+def compare(paths, names=None):
+    """Сводка нескольких прогонов стенда рядом (до → после): по видам,
+    только общие для всех файлов окна (bag, вид)."""
+    res = [json.loads(Path(p).read_text(encoding="utf-8")) for p in paths]
+    names = names or [Path(p).stem for p in paths]
+    keys = [{(r["bag"], r["kind"]): r for r in d.get("inject", [])} for d in res]
+    common = set(keys[0]).intersection(*keys[1:])
+    kinds = list(dict.fromkeys(k for b, k in (x for x in
+                                              ((r["bag"], r["kind"]) for r in res[0].get("inject", [])))
+                               if (b, k) in common))
+
+    def m(rows, get):
+        xs = [get(r) for r in rows]
+        xs = [x for x in xs if x is not None and np.isfinite(x)]
+        return float(np.mean(xs)) if xs else float("nan")
+
+    def cell(vals, fmt):
+        return " → ".join(fmt.format(v) for v in vals)
+    lines = ["сравнение: " + " → ".join(names),
+             "вид | окон | MAE модели во время | MAE базы | MAE после окна (база) | slip во время | "
+             "slip после окна | valid и ошибка > 1 м/с | ±2σ | наиб. ошибка | восст. макс, с | лучше базы"]
+    for kind in kinds:
+        bags = sorted(b for b, k in common if k == kind)
+        rs = [[kk[(b, kind)] for b in bags] for kk in keys]
+        mae = [m(r, lambda x: x["model"]["during"].get("mae")) for r in rs]
+        aft = [m(r, lambda x: x["model"]["after"].get("mae")) for r in rs]
+        rec = [max([x["model"]["rec"] for x in r if x["model"]["rec"] is not None] or [np.nan])
+               for r in rs]
+        better = [sum((x["model"]["during"].get("mae") or 9) < (x["naive"]["during"].get("mae") or 9)
+                      for x in r) for r in rs]
+        lines.append(" | ".join([
+            kind, str(len(bags)), cell(mae, "{:.3f}"),
+            f"{m(rs[0], lambda x: x['naive']['during'].get('mae')):.3f}",
+            cell(aft, "{:.3f}") + f" ({m(rs[0], lambda x: x['naive']['after'].get('mae')):.3f})",
+            cell([m(r, lambda x: x["model"]["slip"]) for r in rs], "{:.0%}"),
+            cell([m(r, lambda x: x["model"].get("slip_after")) for r in rs], "{:.1%}"),
+            cell([m(r, lambda x: x["model"].get("valid_bad")) for r in rs], "{:.1%}"),
+            cell([m(r, lambda x: x["model"]["during"].get("cov2s")) for r in rs], "{:.0%}"),
+            cell([max((x["model"]["during"].get("max") or 0.0) for x in r) for r in rs], "{:.2f}"),
+            cell(rec, "{:.1f}"),
+            cell(better, "{:d}") + f" из {len(bags)}"]))
+    cl = [d.get("clean") for d in res]
+    if all(cl):
+        lines.append("чистые (все фазы): MAE | RMSE | ±2σ | срывов всех осей (прогонов)")
+        for name, c in zip(names, cl):
+            n = sum(r["acc"]["all"]["n"] for r in c)
+            sabs = sum(r["acc"]["all"]["sabs"] for r in c)
+            s2 = sum(r["acc"]["all"]["s2"] for r in c)
+            in2 = sum(r["acc"]["all"]["in2"] for r in c)
+            lines.append(f"  {name}: {sabs / n:.4f} | {np.sqrt(s2 / n):.4f} | {in2 / n:.1%} | "
+                         f"{sum(r.get('n_slip_all', 0) for r in c)} "
+                         f"({sum(r.get('n_slip_all', 0) > 0 for r in c)})")
+    return "\n".join(lines)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--runs", default="train", help="train | holdout | список через запятую")
@@ -358,7 +505,12 @@ def main():
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     ap.add_argument("--out", default="")
     ap.add_argument("--report", default="")
+    ap.add_argument("--compare", nargs="+", default=None,
+                    help="сводки стенда рядом: до.json после.json [...]")
     args = ap.parse_args()
+    if args.compare:
+        print(compare(args.compare))
+        return
     if args.report:
         print(summarize(json.loads(Path(args.report).read_text(encoding="utf-8"))))
         return
@@ -379,7 +531,10 @@ def main():
     res = dict(meta=dict(runs=ids, set=args.set, sheet=sheet["label"]))
     t = time.time()
     if args.inject:
-        kinds = args.kinds.split(",")
+        kinds = []
+        for k in args.kinds.split(","):
+            kinds += (list(EDGE) if k == "edge" else list(KINDS) if k == "std"
+                      else list(VARIANTS) if k == "variants" else [k])
         rows = _pool(run_inject, [dict(bag=b, kinds=kinds, sheet=sheet, ov=core_ov) for b in ids],
                      args.workers)
         res["inject"] = [x for r in rows for x in r]

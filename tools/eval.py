@@ -784,6 +784,14 @@ def evaluate(args, log):
     return dict(summary=report, runs=runs, inject=inj, kinds=kinds), timing, base, res
 
 
+def _shown(path):
+    """Путь для журнала: от корня дерева, а вне дерева (--out снаружи) —
+    как есть. Прежде relative_to падал на последней строке журнала, уже
+    после записи JSON, и timing.json оставался без wall_with_doc_s."""
+    path = Path(path)
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -877,7 +885,7 @@ def main():
             pics = eval_report.existing_pics(ROOT, eval_report.img_dir(ROOT, args))
         (ROOT / args.doc).write_text(eval_report.render(result, timing, args, pics, ROOT),
                                      encoding="utf-8")
-        log(f"пересобран {args.doc} из {out.relative_to(ROOT)}")
+        log(f"пересобран {args.doc} из {_shown(out)}")
         return
     result, timing, base, res = evaluate(args, log)
     files = {"summary.json": dumps(result["summary"]), "runs.json": dumps(result["runs"]),
@@ -914,7 +922,7 @@ def main():
                      inject=json.loads(files["inject.json"]), kinds=result["kinds"])
         eval_report.write(shown, json.loads(dumps(timing)), base, res, args, ROOT, out)
         log(f"записано {args.doc} и {eval_report.img_dir(ROOT, args).relative_to(ROOT).as_posix()}/eval_*.png")
-    log(f"готово за {time.perf_counter() - t_start:.0f} с; JSON в {out.relative_to(ROOT)}")
+    log(f"готово за {time.perf_counter() - t_start:.0f} с; JSON в {_shown(out)}")
     timing["wall_with_doc_s"] = round(time.perf_counter() - t_start, 1)
     (out / "timing.json").write_text(dumps(timing), encoding="utf-8")
     if check is not None and not check["identical"]:
