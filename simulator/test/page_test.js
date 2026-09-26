@@ -10,7 +10,9 @@
 // страницы 110a5e0 на ядре пакета): лист жюри и линия загружены, метрики каждого сценария =
 // отчёт sandbox_report.js, панель «Что сейчас думает модель» объясняет событие сценария,
 // свободная поездка по умолчанию, сцена и карта, переключатели меняют имитатор, окна за
-// значками шапки (модель, пакет ROS 2, метрики, показ 60 с, запись), ручное управление,
+// значками шапки (модель, пакет ROS 2, метрики, показ 60 с, запись), ручное управление; свободная
+// поездка как в исходной («Стоп» тормозит вагон, время идёт; погода и застройка — в 100 м впереди;
+// в сценариях — «Пауза»), раскладка ноутбука 1366×768 и 1280×720 (карта открыта, график высокий),
 // справка, телефон без горизонтальной прокрутки; каждый экспортированный прогон грузится, проигрывается, и метрики
 // страницы в конце прогона совпадают с итогом экспортёра; подпись JS-порта
 // следует отпечатку ядра прогонов; живой режим с имитатором rosbridge (ws в этом
@@ -107,7 +109,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       check('песочница: ручное управление (кнопка тяги и клавиши)', r.summary.path > 20 && h === '+13', { path_m: +r.summary.path.toFixed(1), handle: h });
     }
     // справка «Как читать экран»
-    await page.click('#sbHelpBtn'); await sleep(400);
+    await page.evaluate(() => window.__tvSandbox.think(true)); await page.click('#sbHelpBtn'); await sleep(400);   // ссылка в «подробнее» панели модели
     const help = await page.evaluate(() => ({ open: !document.getElementById('sbHelpModal').hidden, text: document.getElementById('sbHelpModal').innerText.length }));
     await shot(page, 'sandbox_help.png');
     await page.keyboard.press('Escape'); await sleep(200);
@@ -186,6 +188,68 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await shot(page, 'sandbox_tour.png');
     await page.click('#presStop'); await sleep(200);
     check('песочница: показ 60 с идёт по сценариям (шаг 2 — дождь и полная тяга)', tour.shown && /Шаг 2/.test(tour.step) && tour.key === 'rain_spin' && tour.t > 3, tour);
+    await page.close();
+  }
+
+  // ---------------- свободная поездка ведёт себя как исходная (110a5e0): страница начинается с неё,
+  // «Стоп» тормозит вагон до остановки (время идёт), погода и застройка начинаются в 100 м впереди;
+  // в сценариях кнопка — «Пауза» (время стоит); на ноутбуке 1366×768 и 1280×720 карта открыта
+  {
+    const page = await open('?mode=sandbox');
+    await page.evaluate(() => { try { localStorage.setItem('tv.preset', 'ice_skid'); } catch (_) {} });
+    await page.goto(URL0 + '?mode=sandbox', { waitUntil: 'load' });
+    await sleep(1500);
+    const r = await page.evaluate(() => {
+      const S = window.__tvSandbox, E = S.engine(), q = x => document.querySelector(x), txt = id => document.getElementById(id).textContent;
+      const key = S.state().key;
+      S.play(false); S.run(40, true);
+      const t0 = E.t, v0 = E.plant.v;
+      q('#bRun').click();
+      const stop = { v0: +v0.toFixed(2), label: txt('bRunTxt') };
+      S.run(30, true); S.render();
+      Object.assign(stop, { v: +E.plant.v.toFixed(3), dt: +(E.t - t0).toFixed(1), mode: S.explain().mode, label2: txt('bRunTxt') });
+      q('#bRun').click(); S.run(15, true);
+      stop.resumed = +E.plant.v.toFixed(2);
+      const s0 = E.plant.s;
+      q('[data-sbwx="rain"]').click(); S.render();
+      const wx = { zone: E.zones.filter(z => z.user).map(z => [Math.round(z.a - s0), Math.round(z.b - z.a)]), ahead: txt('aheadTxt'), now: E.cond.weatherB[0], lit: q('[data-sbwx="rain"]').getAttribute('aria-checked') };
+      let k = 0; while (E.cond.weatherB[0] !== 'rain' && k++ < 400) S.run(0.25, true);
+      Object.assign(wx, { reached: E.cond.weatherB[0], after_m: Math.round(E.plant.s - s0) });
+      q('[data-sbwx="dry"]').click();
+      const s1 = E.plant.s;
+      q('#swUrban').click(); S.render();
+      const ur = { off0: E.gnssOff, ahead: txt('aheadTxt') };
+      k = 0; while (!E.gnssOff && k++ < 400) S.run(0.25, true);
+      Object.assign(ur, { off1: E.gnssOff, after_m: Math.round(E.plant.s - s1) });
+      q('#swUrban').click(); S.run(0.2, true); ur.off2 = E.gnssOff;
+      S.load('dry'); S.run(3, true);
+      const sc = { label: txt('bRunTxt') };
+      q('#bRun').click(); sc.paused = !S.state().play; sc.label2 = txt('bRunTxt');
+      q('#bRun').click(); sc.again = S.state().play;
+      S.load('free'); S.play(true);
+      return { key, stop, wx, ur, sc };
+    });
+    check('свободная поездка по умолчанию, даже если в памяти браузера другой сценарий', r.key === 'free', { key: r.key });
+    check('свободная поездка: «Стоп» тормозит вагон до остановки, время идёт; «Старт» — едет дальше',
+      r.stop.v0 > 8 && r.stop.label === 'Старт' && r.stop.v < 0.05 && r.stop.dt > 29 && r.stop.mode === 'STANDSTILL' && r.stop.label2 === 'Старт' && r.stop.resumed > 3, r.stop);
+    check('свободная поездка: «Дождь» — мокрый участок в 100 м впереди, «Впереди: … через N м», доехали — мокро',
+      r.wx.zone.length === 1 && Math.abs(r.wx.zone[0][0] - 100) <= 1 && r.wx.zone[0][1] === 160 && /мокрые рельсы через \d+ м/.test(r.wx.ahead) && r.wx.now === 'dry' && r.wx.lit === 'true' && r.wx.reached === 'rain' && Math.abs(r.wx.after_m - 100) <= 12, r.wx);
+    check('свободная поездка: «Застройка» — спутники пропадают через 100 м, выключили — вернулись',
+      !r.ur.off0 && /застройка через \d+ м/.test(r.ur.ahead) && r.ur.off1 && Math.abs(r.ur.after_m - 100) <= 12 && !r.ur.off2, r.ur);
+    check('сценарий: кнопка «Пауза» останавливает время, «Дальше» — продолжает', r.sc.label === 'Пауза' && r.sc.paused && r.sc.label2 === 'Дальше' && r.sc.again, r.sc);
+    const lay = {};
+    for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]]) {
+      await page.setViewport({ width: w, height: h }); await sleep(900);
+      lay[`${w}x${h}`] = await page.evaluate(() => {
+        const R = id => document.getElementById(id).getBoundingClientRect(), c = document.getElementById('ctrl');
+        return { map_open: !document.getElementById('map').classList.contains('collapsed') && getComputedStyle(document.getElementById('map')).display !== 'none',
+          ctrl_bottom: Math.round(R('ctrl').bottom), ctrl_scroll: c.scrollHeight > c.clientHeight + 1, chart: Math.round(R('bChart').height), think: Math.round(R('sbThink').height) };
+      });
+    }
+    await shot(page, 'sandbox_1440_after_resize.png');
+    // высота графика в исходной (110a5e0): 1366×768 — 249 px, 1280×720 — 217, 1440×900 — 338
+    check('раскладка ноутбука: карта открыта, «Управление» без прокрутки, график почти исходной высоты, строка модели в одну строку',
+      Object.entries(lay).every(([k, x]) => x.map_open && !x.ctrl_scroll && x.think <= 40 && x.chart >= { '1366x768': 225, '1280x720': 195, '1440x900': 310 }[k]), lay);
     await page.close();
   }
 

@@ -63,7 +63,8 @@
   // скорость показа из ссылки или памяти: только 1, 4 или 10 (иначе ?sbsp=abc давал NaN и песочница вставала)
   const sbsp0 = +(qs.get('sbsp') || store.get('tv.sbsp') || 4);
   const UI = { eng: null, key: null, play: true, speed: [1, 4, 10].includes(sbsp0) ? sbsp0 : 4, saved: null, exp: null, fade: 0,
-    wheelAng: [0, 0], uz: [], uzOn: false, pax: new Map(), board: null, arrivals: 0, stops: [], onboard: 24, boardN: 0, alightN: 0, rush: false };
+    wheelAng: [0, 0], uz: [], uzOn: false, pax: new Map(), board: null, arrivals: 0, stops: [], onboard: 24, boardN: 0, alightN: 0, rush: false,
+    fwx: 'dry', furban: false, moved: false };
   // свободная поездка, как в исходной песочнице: масса вагона в имитаторе — пустой вагон и пассажиры
   // (75 кг на человека); на остановках одни выходят, другие садятся, в час пик народу больше. Модель
   // массу не знает. В сценариях масса — как в сценарии (таблица docs/SANDBOX.md), «Час пик» — +30 %.
@@ -77,8 +78,10 @@
     if (key === 'free') E.driver = makeDriver(E);
     UI.key = key; UI.onboard = 24; UI.boardN = UI.alightN = 0; paxMass(E);
     instrument(E);
-    UI.eng = E; UI.key = key; UI.saved = null; UI.play = true; UI.exp = null;
-    if (!opts.quiet) store.set('tv.preset', key);
+    UI.eng = E; UI.key = key; UI.saved = null; UI.play = true; UI.exp = null; UI.moved = false;
+    // свободная поездка по кругу: выбранная погода и застройка остаются и на новой поездке (как в исходной)
+    if (!(key === 'free' && opts.lap)) { UI.fwx = 'dry'; UI.furban = false; }
+    else { if (UI.fwx !== 'dry') E.zones.push(freeZone(E, 100, 160)); if (UI.furban) E.gnssZones.push({ a: E.plant.s + 100, b: Infinity }); }
     sceneReset(opts.fade !== false);
     buildTrackBar();
     syncScenario(); syncControls(true); render(true);
@@ -108,17 +111,35 @@
 
   // ---------------------------------------------------------------- управление
   const setSeg = (attr, val) => document.querySelectorAll(`[${attr}]`).forEach(b => b.setAttribute('aria-checked', String(b.getAttribute(attr) === String(val))));
+  // «Стоп / Старт», как в исходной: в свободной поездке и ручном управлении (поездка без конца)
+  // вагон тормозит до остановки и стоит, время идёт. В сценариях время расписано (события на
+  // секундах сценария), поэтому там кнопка — «Пауза / Дальше»: время сценария стоит.
+  const openRide = () => !isFinite(UI.eng.preset.T);
   function setRunLabel() {
-    const E = UI.eng, done = E && E.done, run = UI.play && !done;
-    $('bRunTxt').textContent = done ? 'Заново' : run ? 'Стоп' : 'Старт';
-    $('bRun').setAttribute('aria-label', $('bRunTxt').textContent);
-    $('icoStop').style.display = run ? '' : 'none';
-    $('icoStart').style.display = !run && !done ? '' : 'none';
-    $('icoAgain').style.display = done ? '' : 'none';
+    const E = UI.eng, done = E && E.done, open = openRide();
+    const [txt, ico, title] = done ? ['Заново', 'Again', 'Сценарий закончен: начать заново']
+      : open ? (E.hold ? ['Старт', 'Start', 'Старт: поехали дальше (пробел)'] : ['Стоп', 'Stop', 'Стоп: вагон тормозит до остановки и стоит, время идёт (пробел)'])
+      : UI.play ? ['Пауза', 'Pause', 'Пауза: время сценария остановится (пробел)'] : ['Дальше', 'Start', 'Дальше: продолжить сценарий (пробел)'];
+    $('bRunTxt').textContent = txt; $('bRun').title = title;
+    $('bRun').setAttribute('aria-label', txt);
+    for (const k of ['Stop', 'Pause', 'Start', 'Again']) $('ico' + k).style.display = k === ico ? '' : 'none';
   }
-  $('bRun').addEventListener('click', () => { if (UI.eng.done) { load(UI.key); return; } UI.play = !UI.play; setRunLabel(); });
-  document.querySelectorAll('[data-sbsp]').forEach(b => b.addEventListener('click', () => { UI.speed = +b.dataset.sbsp; store.set('tv.sbsp', UI.speed); setSeg('data-sbsp', UI.speed); }));
-  setSeg('data-sbsp', UI.speed);
+  function setHold(on) {
+    const E = UI.eng; E.hold = on;
+    // после «Старт» водитель едет к своей остановке (если стоял, не доехав, — снова разгоняется)
+    if (!on && E.driver && E.driver.state === 'brake') { E.driver.state = 'go'; E.driver.t_state = 0; }
+    if (!on && !E.driver) E.setManual(0);
+    setRunLabel(); if (!E.driver) syncHandle();
+  }
+  $('bRun').addEventListener('click', () => {
+    const E = UI.eng;
+    if (E.done) { load(UI.key); return; }
+    if (openRide()) { setHold(!E.hold); return; }
+    UI.play = !UI.play; setRunLabel();
+  });
+  function showSpeed(x) { UI.speed = x; setSeg('data-sbsp', x); $('sbSpd').textContent = '×' + x; $('sbSpd').setAttribute('aria-label', `Скорость времени ×${x}`); }
+  function setSpeed(x) { showSpeed(x); store.set('tv.sbsp', x); }
+  $('sbSpd').addEventListener('click', () => setSpeed(UI.speed === 1 ? 4 : UI.speed === 4 ? 10 : 1));
   function setDrive(manual) {
     const E = UI.eng;
     if (manual && E.driver) { UI.saved = E.driver; E.driver = null; E.setManual(E.plant.notch); }
@@ -129,18 +150,41 @@
   function setHandle(n) {
     const E = UI.eng;
     if (E.driver) setDrive(true);
+    if (E.hold) { E.hold = false; setRunLabel(); }      // ручка отменяет «Стоп»
     E.setManual(n);
     syncHandle();
   }
   function syncHandle() {
-    const n = UI.eng.manualNotch;
+    const E = UI.eng, n = E.hold ? E.plant.notch : E.manualNotch;    // при «Стоп» — позиция, которой тормозит вагон
     $('sbHandleV').textContent = (n > 0 ? '+' : '') + n;
     setSeg('data-sbh', n > 0 ? 15 : n < 0 ? -15 : 0);
   }
   document.querySelectorAll('[data-sbh]').forEach(b => b.addEventListener('click', () => setHandle(+b.dataset.sbh)));
-  // погода: подсвечена та, что сейчас под передней тележкой; нажатие задаёт её поверх сценария, ↺ — вернуть
-  document.querySelectorAll('[data-sbwx]').forEach(b => b.addEventListener('click', () => { const E = UI.eng, w = b.dataset.sbwx; E.userWeather = E.userWeather === w ? null : w; syncControls(true); }));
-  $('wxLbl').addEventListener('click', () => { UI.eng.userWeather = null; syncControls(true); });
+  // Погода. Свободная поездка — как в исходной: нажатие кладёт участок с этой погодой в 100 м впереди
+  // (160 м), за ним — следующие, пока погода выбрана; «Ясно» — впереди сухо. В сценариях подсвечена
+  // погода под передней тележкой, нажатие задаёт её на всей линии поверх сценария, ↺ — вернуть.
+  const freeZone = (E, ahead, len) => ({ a: E.plant.s + ahead, b: E.plant.s + ahead + len, weather: UI.fwx, user: true });
+  function setFreeWx(w) {
+    const E = UI.eng, s = E.plant.s;
+    UI.fwx = w;
+    E.zones = E.zones.filter(z => !(z.user && z.a > s));            // участок, до которого не доехали, пропадает
+    for (const z of E.zones) if (z.user && z.b > s) z.b = s;          // тот, где вагон сейчас, кончается здесь
+    if (w !== 'dry') E.zones.push(freeZone(E, 100, 160));
+  }
+  function freeZonesTick() {
+    const E = UI.eng, s = E.plant.s;
+    if (UI.fwx !== 'dry') {
+      const last = E.zones.filter(z => z.user).pop();
+      if (!last || s > last.b + 20) E.zones.push(freeZone(E, 140 + Math.random() * 120, 130 + Math.random() * 70));
+    }
+    if (E.zones.some(z => z.user && z.b < s - 700)) E.zones = E.zones.filter(z => !z.user || z.b >= s - 700);
+  }
+  document.querySelectorAll('[data-sbwx]').forEach(b => b.addEventListener('click', () => {
+    const E = UI.eng, w = b.dataset.sbwx;
+    if (UI.key === 'free') setFreeWx(w); else E.userWeather = E.userWeather === w ? null : w;
+    syncControls(true);
+  }));
+  $('wxLbl').addEventListener('click', () => { if (UI.key !== 'free') UI.eng.userWeather = null; syncControls(true); });
   // датчики: подсвечено, что сейчас с тележками (сценарий или вы); «Норма» — норма поверх сценария
   const FAULT = { zero: { kind: 'zero' }, stuck: { kind: 'stuck' }, dropout: { kind: 'dropout' }, noise: { kind: 'noise', sigma_kmh: 0.9 }, outliers: { kind: 'outliers', p: 0.05 } };
   function setSens(sel, kind) {
@@ -152,7 +196,17 @@
   document.querySelectorAll('[data-sens]').forEach(b => b.addEventListener('click', () => setSens(b.dataset.sens)));
   $('sbKind').addEventListener('change', e => { const cur = sensSel(); setSens(cur === 'ok' ? 'front' : cur, e.target.value); });
   $('snLbl').addEventListener('click', () => { UI.eng.userFaults = [null, null]; UI.eng.userDrop = false; syncControls(true); layoutBoard(false); });
-  $('swUrban').addEventListener('click', () => { const E = UI.eng; E.userGnssOff = !(E.userGnssOff || E.gnssOff); syncControls(true); });
+  // Застройка. Свободная поездка — как в исходной: дома и пропажа спутников начинаются в 100 м впереди
+  // и идут, пока переключатель включён; выключили — спутники вернулись. В сценариях — сразу.
+  $('swUrban').addEventListener('click', () => {
+    const E = UI.eng, s = E.plant.s;
+    if (UI.key === 'free') {
+      UI.furban = !UI.furban;
+      if (UI.furban) E.gnssZones.push({ a: s + 100, b: Infinity });
+      else { E.gnssZones = E.gnssZones.filter(z => z.a <= s); for (const z of E.gnssZones) if (z.b > s) z.b = s; }
+    } else E.userGnssOff = !(E.userGnssOff || E.gnssOff);
+    syncControls(true);
+  });
   $('swRush').addEventListener('click', () => {
     const E = UI.eng;
     if (UI.key === 'free') UI.rush = !UI.rush;
@@ -171,16 +225,17 @@
   let lastRows = '';
   function syncControls(force) {
     const E = UI.eng, c = E.cond; if (!c) return;
-    setSeg('data-sbwx', E.userWeather || c.weatherB[0]);
-    $('wxLbl').classList.toggle('ovr', E.userWeather !== null);
-    $('wxLbl').title = E.userWeather !== null ? 'Погода задана вручную. Нажмите, чтобы вернуть как в сценарии' : 'Погода под передней тележкой (как в сценарии)';
+    const free = UI.key === 'free';
+    setSeg('data-sbwx', free ? UI.fwx : E.userWeather || c.weatherB[0]);
+    $('wxLbl').classList.toggle('ovr', !free && E.userWeather !== null);
+    $('wxLbl').title = free ? 'Погода: нажмите — через 100 м начнётся участок с такой погодой' : E.userWeather !== null ? 'Погода задана вручную на всей линии. Нажмите, чтобы вернуть как в сценарии' : 'Погода под передней тележкой (как в сценарии)';
     const sel = sensSel(); setSeg('data-sens', sel);
     const uf = userFault(), kind = !uf && c.drop ? 'dropout' : (((uf || c.faults)[0] || (uf || c.faults)[1]) || {}).kind;
     if (kind && document.activeElement !== $('sbKind')) $('sbKind').value = kind;
     const ovr = E.userFaults.some(x => x !== null);
     $('snLbl').classList.toggle('ovr', ovr);
     $('snLbl').title = ovr ? 'Датчики заданы вручную. Нажмите, чтобы вернуть как в сценарии' : 'Датчики скорости тележек (как в сценарии)';
-    $('swUrban').setAttribute('aria-checked', String(!!(E.userGnssOff || E.gnssOff)));
+    $('swUrban').setAttribute('aria-checked', String(free ? UI.furban : !!(E.userGnssOff || E.gnssOff)));
     $('swRush').setAttribute('aria-checked', String(UI.key === 'free' ? UI.rush : (E.userMass ?? c.mass) > 1.001));
     $('swWsp').setAttribute('aria-checked', String(!!E.plant.C.wsp));
     setSeg('data-drive', E.driver ? 'auto' : 'manual');
@@ -194,21 +249,22 @@
 
   // ---------------------------------------------------------------- список сценариев
   function buildScPop() {
-    let h = '';
+    let h = `<div id="scFull" class="sc-full"></div><div class="sc-g">Время</div><span class="seg" role="radiogroup" aria-label="Скорость времени">
+      <button role="radio" aria-checked="false" data-sbsp="1" title="Как в жизни">×1</button><button role="radio" aria-checked="false" data-sbsp="4">×4</button><button role="radio" aria-checked="false" data-sbsp="10">×10</button></span>`;
     for (const [g, keys] of GROUPS) {
       h += `<div class="sc-g">${g}</div><div class="sc-list" role="radiogroup" aria-label="${g}">`;
       for (const k of keys) { const p = presetOf(k); if (p) h += `<button role="radio" aria-checked="false" data-preset="${k}" title="${p.about.replace(/"/g, '&quot;')}">${p.ru}</button>`; }
       h += '</div>';
     }
-    h += '<div id="scFull" class="sc-full"></div>';
     $('scPop').innerHTML = h;
     $('scPop').querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { closePop(); stopPres(); load(b.dataset.preset); }));
+    $('scPop').querySelectorAll('[data-sbsp]').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.sbsp)));
+    setSpeed(UI.speed);
   }
   function syncScenario() {
     const p = presetOf(UI.key);
     $('scName').textContent = p.ru;
-    $('scBtn').title = `${p.ru}: ${p.about}`;
-    $('scAbout').textContent = p.about;
+    $('scBtn').title = `${p.ru}${isFinite(UI.eng.preset.T) ? ` (${fmtT(UI.eng.preset.T)})` : ''}: ${p.about} Нажмите, чтобы выбрать другой сценарий.`;
     setSeg('data-preset', UI.key);
     $('scFull').innerHTML = `<p><b>${p.ru}.</b> ${p.about}</p><p><span class="opacity-60">Модель должна:</span> ${p.expect}</p>`;
     $('thExpect').textContent = p.expect;
@@ -225,7 +281,7 @@
     if (below >= 300 || below >= above) { pop.style.top = (r.bottom + 6) + 'px'; pop.style.bottom = ''; pop.style.maxHeight = Math.max(160, below) + 'px'; }
     else { pop.style.top = ''; pop.style.bottom = (innerHeight - r.top + 6) + 'px'; pop.style.maxHeight = Math.max(160, above) + 'px'; }
   }
-  function openPop() { placePop(); $('scPop').hidden = false; $('scBtn').setAttribute('aria-expanded', 'true'); const cur = $('scPop').querySelector('[aria-checked="true"]'); if (cur) cur.focus({ preventScroll: true }); }
+  function openPop() { if (current || !$('sbHelpModal').hidden) return; placePop(); $('scPop').hidden = false; $('scBtn').setAttribute('aria-expanded', 'true'); const cur = $('scPop').querySelector('[data-preset][aria-checked="true"]'); if (cur) cur.focus({ preventScroll: true }); }
   function closePop() { $('scPop').hidden = true; $('scBtn').setAttribute('aria-expanded', 'false'); }
   $('scBtn').addEventListener('click', e => { e.stopPropagation(); $('scPop').hidden ? openPop() : closePop(); });
   addEventListener('pointerdown', e => { if (!$('scPop').hidden && !e.target.closest('#scPop, #scBtn')) closePop(); });
@@ -233,14 +289,21 @@
   $('dash').addEventListener('scroll', () => { if (!$('scPop').hidden) placePop(); }, { passive: true });
 
   // ---------------------------------------------------------------- «Что сейчас думает модель»
-  $('thMoreBtn').addEventListener('click', () => { const open = $('sbThinkMore').hidden; $('sbThinkMore').hidden = !open; $('thMoreBtn').setAttribute('aria-expanded', String(open)); $('thMoreBtn').textContent = open ? 'свернуть' : 'подробнее'; store.set('tv.think', open ? '1' : '0'); });
-  if (store.get('tv.think') === '1') $('thMoreBtn').click();
+  // одна строка над графиком; «подробнее» — поверх графика (на узком экране — в ленте табло)
+  function setThink(open) {
+    $('sbThinkMore').hidden = !open; $('thMoreBtn').setAttribute('aria-expanded', String(open)); $('thMoreBtn').textContent = open ? 'свернуть' : 'подробнее';
+    if (open) { lastThinkMode = null; renderThink(); }
+  }
+  $('thMoreBtn').addEventListener('click', () => setThink($('sbThinkMore').hidden));
   const fk = (x, d = 1) => isFinite(x) ? x.toFixed(d) : '—';
+  let lastThinkMode = null;
   function renderThink() {
     const E = UI.eng, x = UI.exp = SB.explain(E), o = E.last ? E.last.o : null, R = E.rows, n = R.n - 1;
-    $('thHead').textContent = x.head;
-    const m = x.mode;
-    $('thMode').innerHTML = `<span class="mode-ico" style="color:${modeCol(m)}">${ICO[m] || ''}</span><span style="color:${modeCol(m)}">${SB.M_RU[m]}</span>`;
+    if ($('thHead').textContent !== x.head) { $('thHead').textContent = x.head; $('thHead').title = x.head; $('thHeadFull').textContent = x.head; }
+    if ($('sbThinkMore').hidden) return;
+    // режим — тот же, что на табло (без мигания), чтобы панель и крупная надпись не расходились
+    const m = E.last ? shown.st : x.mode;
+    if (m !== lastThinkMode) { lastThinkMode = m; $('thMode').innerHTML = `<span class="mode-ico" style="color:${modeCol(m)}">${ICO[m] || ''}</span><span style="color:${modeCol(m)}">${SB.M_RU[m]}</span>`; }
     for (let b = 0; b < 2; b++) {
       const g = x.bogies[b], el = $('thBog' + b);
       if (!g) { el.innerHTML = `<span class="k">${b ? 'задняя' : 'передняя'}</span> —`; continue; }
@@ -264,7 +327,7 @@
   // ---------------------------------------------------------------- клавиши
   addEventListener('keydown', e => {
     if ((window.__tvMode || 'sandbox') !== 'sandbox') return;
-    if (e.key === 'Escape') { closePop(); closeHelp(); if (current) closeInfo(); return; }
+    if (e.key === 'Escape') { closePop(); closeHelp(); if (current) closeInfo(); else if (!$('sbThinkMore').hidden && innerWidth >= 900) setThink(false); return; }
     if (e.target.closest && e.target.closest('input, select, textarea')) return;
     if (current || !$('sbHelpModal').hidden) return;
     const E = UI.eng; if (!E) return;
@@ -619,7 +682,7 @@
   function stopPres() {
     if (presT < 0) return;
     presT = -1; $('pres').style.display = 'none'; $('presBtn').setAttribute('aria-pressed', 'false');
-    if (speedBeforePres) { UI.speed = speedBeforePres; setSeg('data-sbsp', UI.speed); speedBeforePres = null; }
+    if (speedBeforePres) { showSpeed(speedBeforePres); speedBeforePres = null; }
     if (mapBeforePres) setMap(true); mapBeforePres = false;
     layoutBoard();
   }
@@ -633,7 +696,7 @@
       if (st.end) { stopPres(); openInfo('metrics'); return; }
       load(st.key, { quiet: true });
       const E = UI.eng; while (E.t < st.ff - 1e-6 && !E.done) E.advance(Math.min(1, st.ff - E.t));
-      UI.speed = st.sp; setSeg('data-sbsp', UI.speed); UI.fade = 0.6;
+      showSpeed(st.sp); UI.fade = 0.6;
       $('presTxt').textContent = st.txt; $('presStep').textContent = `Шаг ${presI} из ${PRES.length - 1} · ${presetOf(st.key).ru}${st.sp !== 4 ? ` · время ×${st.sp}` : ''}`;
       render(true); layoutBoard(false);
     }
@@ -890,7 +953,7 @@
   const WX_RU = { rain: 'мокрые рельсы', ice: 'наледь', leaves: 'листопад' };
   function syncTrackBar() {
     const E = UI.eng, L = E.track.L, zs = sceneZones(), s = E.plant.s;
-    const key = JSON.stringify([zs, E.hill, UI.uz.map(z => [Math.round(z[0]), isFinite(z[1]) ? Math.round(z[1]) : 0])]);
+    const key = JSON.stringify([zs, E.hill, UI.uz.map(z => [Math.round(z[0]), isFinite(z[1]) ? Math.round(z[1]) : Math.round(s / 10)])]);
     if (key !== UI.barKey) {
       UI.barKey = key;
       const div = (a, b, col) => { const x0 = Math.max(0, a / L), x1 = Math.min(1, b / L); return x1 > x0 ? `<div style="left:${x0 * 100}%;width:${(x1 - x0) * 100}%;background:${col}"></div>` : ''; };
@@ -907,7 +970,7 @@
   }
 
   // ---------------------------------------------------------------- табло
-  const shown = { st: 'STANDSTILL', pend: null, since: 0 };
+  const shown = { st: 'STANDSTILL', pend: null, since: 0, sinceSim: 0 };
   let lastSt = null, lastSub = null, lastPanel = 0;
   const massHist = [];
   function aheadText() {
@@ -917,14 +980,15 @@
     if (!E.userWeather) for (const z of E.zones) { const n = note(z.a, z.b); if (n && z.a - s < 800) parts.push(`<span style="color:${ZONE_TXT[z.weather] || C_WET}">${WX_RU[z.weather] || z.weather} ${n}</span>`); }
     if (E.hill) { const up = note(E.hill[0], E.hill[1]), dn = note(E.hill[1], E.hill[2]); if (up && E.hill[0] - s < 800) parts.push(`<span style="color:#E0795A">подъём ${up}</span>`); else if (dn) parts.push(`<span style="color:#6FA8DC">спуск ${dn}</span>`); }
     if (E.gnssOff) parts.push('<span style="color:var(--warn)">застройка: спутников нет</span>');
+    else for (const z of E.gnssZones) if (z.a > s && z.a - s < 800) { parts.push(`<span style="color:var(--warn)">застройка через ${Math.ceil(z.a - s)} м</span>`); break; }
     return parts.length ? parts.join(', ') : 'путь чистый';
   }
   function updateBoard(force) {
     const E = UI.eng, o = E.last ? E.last.o : null, pl = E.plant, S = E.stats, nowT = performance.now() / 1000;
     const st = o ? SB.MODES[o.mode] : 'DEGRADED';
     if (st !== shown.st) {
-      if (shown.pend !== st) { shown.pend = st; shown.since = nowT; }
-      else if (nowT - shown.since > 0.5 || force) shown.st = st;
+      if (shown.pend !== st) { shown.pend = st; shown.since = nowT; shown.sinceSim = E.t; }
+      else if (nowT - shown.since > 0.5 || E.t - shown.sinceSim > 0.5 || force) shown.st = st;
     } else shown.pend = null;
     if (force) shown.st = st;
     const vk = o ? o.v * KMH : 0, sv = o ? o.sigma_v : 0;
@@ -936,7 +1000,8 @@
     $('bBrake').style.color = slick ? 'var(--wet)' : 'var(--ok)';
     $('bEm').textContent = S.n ? (S.ae / S.n * KMH).toFixed(2) : '0.00';
     $('bEb').textContent = S.n ? (S.aeN / S.n * KMH).toFixed(2) : '0.00';
-    $('bS').textContent = o ? o.s.toFixed(1) : '0.0';
+    if (o && (Math.abs(o.v) > 0.3 || Math.abs(o.s) > 0.5)) UI.moved = true;
+    $('bS').textContent = o && UI.moved ? o.s.toFixed(1) : '0.0';
     $('bSig').textContent = o ? (2 * o.sigma_s).toFixed(1) : '0.0';
     const sub = o && o.ambiguous ? 'колёса не свидетельствуют: стоим или скользим?' : o && o.slip_all ? 'обе тележки сорвались — скорость ведёт модель'
       : o && o.frozen ? 'обе тележки залипли — скорость по ручке' : o && o.wheels_stale ? 'колёса молчат — скорость по ручке и физике' : ST_SUB[shown.st];
@@ -956,7 +1021,7 @@
       drawMassSpark(pl.mass_factor * E.sheet.M_nom / 1000);
       $('aheadTxt').innerHTML = aheadText();
       const T = E.preset.T;
-      $('sbTime').textContent = `${fmtT(E.t)}${isFinite(T) ? ' / ' + fmtT(T) : ''}`;
+      $('sbTime').textContent = fmtT(E.t); $('sbTime').title = `Время сценария${isFinite(T) ? ` ${fmtT(E.t)} из ${fmtT(T)}` : ''}`;
       $('scBar').style.width = isFinite(T) ? Math.min(100, E.t / T * 100) + '%' : '0';
       syncControls(false);
     }
@@ -978,10 +1043,14 @@
   function sceneState(dt, simDt) {
     const E = UI.eng, pl = E.plant, R = E.rows, n = R.n - 1, s = pl.s;
     for (let b = 0; b < 2; b++) UI.wheelAng[b] += pl.w[b] / 0.35 * simDt;
-    // застройка на экране: дома вырастают вокруг вагона, пока GNSS нет, и заканчиваются, когда он вернулся
-    if (E.gnssOff && !UI.uzOn) { UI.uz.push([s - 60, Infinity]); UI.uzOn = true; }
-    else if (!E.gnssOff && UI.uzOn) { UI.uz[UI.uz.length - 1][1] = s + 40; UI.uzOn = false; }
-    UI.uz = UI.uz.filter(z => z[1] > s - 600);
+    // застройка на экране. Свободная поездка: дома стоят на участках без спутников (начинаются впереди,
+    // как в исходной). Сценарии: дома вырастают вокруг вагона, пока GNSS нет, и кончаются, когда он вернулся
+    if (UI.key === 'free') UI.uz = E.gnssZones.filter(z => z.b > s - 600).map(z => [z.a, z.b]);
+    else {
+      if (E.gnssOff && !UI.uzOn) { UI.uz.push([s - 60, Infinity]); UI.uzOn = true; }
+      else if (!E.gnssOff && UI.uzOn) { UI.uz[UI.uz.length - 1][1] = s + 40; UI.uzOn = false; }
+      UI.uz = UI.uz.filter(z => z[1] > s - 600);
+    }
     // пассажиры: приходят на остановки, садятся, пока вагон стоит
     const rush = UI.key === 'free' ? UI.rush : E.cond && E.cond.mass > 1.001, dr = E.driver;
     for (const p of UI.stops) if (p !== UI.boardStop && Math.random() < dt * (rush ? 0.9 : 0.25)) UI.pax.set(p, Math.min(rush ? 26 : 12, (UI.pax.get(p) || 0) + 1));
@@ -991,8 +1060,9 @@
     else if (here === undefined && UI.boardStop !== null) { UI.onboard = Math.max(0, Math.min(160, UI.onboard + UI.boardN - UI.alightN)); UI.pax.set(UI.boardStop, 0); UI.boardStop = null; paxMass(E); }
     while (UI.arrivals < E.arrivals.length) { UI.arrivals++; chime(); }
     UI.fade = Math.max(0, UI.fade - dt * 1.6);
-    // погода для частиц: под передней тележкой или в зоне впереди (снег начинается до наледи)
-    let wx = E.cond ? E.cond.weatherB[0] : 'dry';
+    // погода для частиц: выбранная в свободной поездке (идёт, пока выбрана, как в исходной); в сценариях —
+    // под передней тележкой или в зоне впереди (снег начинается до наледи)
+    let wx = UI.key === 'free' && UI.fwx !== 'dry' ? UI.fwx : E.cond ? E.cond.weatherB[0] : 'dry';
     if (wx === 'dry' && !E.userWeather) for (const z of E.zones) if (s > z.a - 150 && s < z.b + 50 && z.weather !== 'dry') { wx = z.weather; break; }
     const x = UI.exp;
     const bog = [0, 1].map(b => {
@@ -1007,26 +1077,35 @@
   }
 
   // ---------------------------------------------------------------- раскладка (как в исходной странице)
+  // От 900 px справа сверху вниз: подпись показа, карта, «Управление». Если по высоте не помещается,
+  // сначала ниже становятся план и профиль карты (до 72 и 30 px), и только потом карта сворачивается.
+  const MAP_H = 130, MAP_MIN = 72, PROF_H = 44, PROF_MIN = 30, BOTTOM = 24;
+  function setMapH(mh, ph) { $('mapC').style.height = mh + 'px'; $('profC').style.height = ph + 'px'; }
   function layoutBoard(full) {
     const c = $('ctrl'), pr = $('pres'), mp = $('map');
     const presOn = pr.style.display !== 'none';
     if (innerWidth >= 900) {
       c.classList.add('ctrl-side');
+      c.style.maxHeight = ''; c.style.overflowY = '';          // мерить полную высоту панели
       let top = 80;
       if (presOn) { pr.style.top = top + 'px'; top += pr.offsetHeight + 12; }
       mp.style.top = top + 'px';
       if (mapOn) {
-        if (full !== false || mapUser !== null) {
-          mp.classList.remove('collapsed');
-          const fits = top + mp.offsetHeight + 12 + c.offsetHeight + 44 <= innerHeight;
-          const col = mapUser === null ? !fits : mapUser;
+        const decide = full !== false || mapUser !== null, wasCol = mp.classList.contains('collapsed');
+        if (decide || !wasCol) {
+          mp.classList.remove('collapsed'); setMapH(MAP_H, PROF_H);
+          let short = top + mp.offsetHeight + 12 + c.offsetHeight + BOTTOM - innerHeight;
+          const dm = Math.max(0, Math.min(short, MAP_H - MAP_MIN)); short -= dm;
+          const dp = Math.max(0, Math.min(short, PROF_H - PROF_MIN)); short -= dp;
+          setMapH(MAP_H - dm, PROF_H - dp);
+          const col = decide ? (mapUser === null ? short > 0 : mapUser) : false;
           mp.classList.toggle('collapsed', col); $('mapHead').setAttribute('aria-expanded', String(!col));
         }
         top += mp.offsetHeight + 12;
       }
       c.style.top = top + 'px';
-      c.style.maxHeight = Math.max(240, innerHeight - top - 40) + 'px';
-      c.style.overflowY = top + c.scrollHeight + 40 > innerHeight ? 'auto' : '';
+      c.style.maxHeight = Math.max(240, innerHeight - top - BOTTOM) + 'px';
+      c.style.overflowY = top + c.scrollHeight + BOTTOM > innerHeight + 1 ? 'auto' : '';
     } else { c.classList.remove('ctrl-side'); c.style.top = ''; mp.style.top = ''; c.style.maxHeight = ''; c.style.overflowY = ''; pr.style.top = ''; }
     if (!$('scPop').hidden) placePop();
   }
@@ -1051,9 +1130,10 @@
     presTick(dt);
     let E = UI.eng;
     const t0 = E.t;
+    if (UI.key === 'free') freeZonesTick();
     if (UI.play && !E.done && !document.hidden) E.advance(dt * UI.speed);
-    // свободная поездка: в конце линии — новая поездка от начала
-    if (UI.key === 'free' && E.driver && E.driver.target === null && E.driver.state === 'dwell' && E.driver.t_state > 12) { load('free', { quiet: true }); E = UI.eng; }
+    // свободная поездка: в конце линии — новая поездка от начала (погода и застройка остаются)
+    if (UI.key === 'free' && E.driver && E.driver.target === null && E.driver.state === 'dwell' && E.driver.t_state > 12) { load('free', { quiet: true, lap: true }); E = UI.eng; }
     const simDt = Math.max(0, E.t - t0);
     scene.draw(now, sceneState(dt, simDt));
     render(false);
@@ -1068,7 +1148,7 @@
   if (SHEET) { $('sbSheet').textContent = `${SHEET.path.split('/').pop()} (${SHEET.sheet_sha1})`; $('sbSheet').title = `${SHEET.path}: ${SHEET.label}`; }
   scene.resize();
   mapOn = innerWidth >= 900; $('map').style.display = mapOn ? '' : 'none';
-  const want = qs.get('preset') || store.get('tv.preset');
+  const want = qs.get('preset');
   load(presetOf(want) ? want : 'free', { fade: false });
   UI.fade = 0;
   applyPort();
@@ -1079,7 +1159,7 @@
   window.__tvSandbox = {
     load, state: () => ({ key: UI.key, t: UI.eng.t, n: UI.eng.rows.n, done: UI.eng.done, play: UI.play, summary: UI.eng.summary() }),
     run: (sec, quiet) => { const e = UI.eng; const t1 = e.t + sec; while (!e.done && e.t < t1 - 5e-4) e.advance(Math.min(1, t1 - e.t)); if (!quiet) render(true); return UI.eng.summary(); },
-    explain: () => SB.explain(UI.eng), play: on => { UI.play = on; setRunLabel(); }, render: () => render(true),
+    explain: () => SB.explain(UI.eng), play: on => { UI.play = on; setRunLabel(); }, render: () => render(true), layout: () => layoutBoard(),
     think: open => { if (open !== !$('sbThinkMore').hidden) $('thMoreBtn').click(); return $('sbThink').innerText; },
     openInfo, closeInfo, tour: () => startPres(), engine: () => UI.eng,
   };

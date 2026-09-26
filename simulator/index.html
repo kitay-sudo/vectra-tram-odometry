@@ -175,20 +175,24 @@
   .rv-mode .mode-ico { width: .9em; height: .9em; }
   @media (prefers-reduced-motion: reduce) {
     .cursor { animation: none; }
-    .pills, .sheet, #board, .sc-bar > div, .sc-pill svg, #mapHead svg { transition: none; }
+    .pills, .sheet, #board, .sc-prog > span, .sc-pill svg, #mapHead svg { transition: none; }
   }
   /* ---------- песочница на ядре пакета: новые элементы в стиле исходной страницы (без Tailwind) ---------- */
   #ctrl { position: relative; }
   #ctrl .ctrl-grid { row-gap: 8px; }
   .ctrl-wide { grid-column: 1 / -1; }
-  .sc-pill { display: flex; align-items: center; gap: .5rem; width: 100%; min-width: 0; border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .3em .75em .3em .95em; font-size: 12px; text-align: left; transition: border-color .2s; }
+  /* строка «Сценарий»: имя, время сценария и полоска хода в одной «таблетке», рядом — скорость времени */
+  .sc-row { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
+  .sc-pill { position: relative; overflow: hidden; display: flex; align-items: center; gap: .5rem; flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .3em .75em .3em .95em; font-size: 12px; text-align: left; transition: border-color .2s; }
   .sc-pill:hover, .sc-pill[aria-expanded="true"] { border-color: var(--fg); }
-  .sc-pill > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-pill #scName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-time { flex: none; opacity: .6; }
   .sc-pill svg { flex: none; opacity: .6; transition: transform .2s; }
   .sc-pill[aria-expanded="true"] svg { transform: rotate(180deg); }
-  .sc-about { font-size: 12px; line-height: 1.45; opacity: .75; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .sc-bar { height: 3px; border-radius: 9999px; background: var(--line); overflow: hidden; margin-top: 2px; }
-  .sc-bar > div { height: 100%; width: 0; border-radius: 9999px; background: var(--ok); transition: width .3s linear; }
+  .sc-prog { position: absolute; left: 12px; right: 12px; bottom: 2px; height: 2px; border-radius: 9999px; pointer-events: none; }
+  .sc-prog > span { display: block; height: 100%; width: 0; border-radius: 9999px; background: var(--ok); opacity: .85; transition: width .3s linear; }
+  .sc-spd { flex: none; min-width: 2.9em; border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .3em .55em; font-size: 12px; text-align: center; transition: border-color .2s; }
+  .sc-spd:hover { border-color: var(--fg); }
   #scPop { position: fixed; z-index: 30; padding: 12px 14px 14px; overflow-y: auto; overscroll-behavior: contain; background: color-mix(in srgb, var(--bg) 82%, transparent) !important; }
   #scPop[hidden] { display: none; }
   .sc-g { font-size: 11px; opacity: .6; margin: 10px 0 5px; }
@@ -197,7 +201,7 @@
   .sc-list button { border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .22em .75em; font-size: 12px; line-height: 1.35; text-align: left; transition: background-color .2s, color .2s, border-color .2s; }
   .sc-list button:hover { border-color: var(--fg); }
   .sc-list button[aria-checked="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-  .sc-full { font-size: 12px; line-height: 1.5; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .sc-full { font-size: 12px; line-height: 1.5; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
   .sc-full p + p { margin-top: .4em; }
   .lbl-btn { text-align: left; white-space: nowrap; cursor: default; }
   .lbl-btn.ovr { cursor: pointer; opacity: 1; color: var(--ok); }
@@ -206,34 +210,38 @@
   #handleRow[hidden], #kindRow[hidden], #kindLbl[hidden] { display: none !important; }
   #sbHandleV { min-width: 2.6em; text-align: right; font-weight: 500; }
   .seg button:disabled { opacity: .35; cursor: default; }
-  /* «Что сейчас думает модель»: стеклянная панель, как карта и управление */
-  #sbThink { position: relative; z-index: 4; margin-top: 12px; padding: 11px 16px 12px; flex: none; }
-  .th-h { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; font-size: 12px; }
-  .th-h b { font-family: var(--font-heading); font-weight: 500; font-size: 14px; }
-  .th-h .th-sp { flex: 1; }
-  .th-link { font-size: 12px; opacity: .65; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); transition: opacity .2s; }
+  /* «Что сейчас думает модель»: одна строка в стекле слева от легенды графика; «подробнее» — поверх графика */
+  #thRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 14px; margin-top: 12px; margin-bottom: 4px; font-size: 12px; position: relative; z-index: 4; flex: none; }
+  #sbThink { position: relative; flex: 1 1 400px; min-width: 0; padding: 5px 6px 5px 14px; }
+  .th-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .th-t { flex: none; }
+  .th-head { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+  @media (min-height: 901px) { .th-head { -webkit-line-clamp: 2; } }
+  .th-legend { display: flex; flex-wrap: wrap; gap: 12px; padding-right: 10px; margin-left: auto; }
+  .th-link { flex: none; font-size: 12px; opacity: .65; padding: .15em .55em; border-radius: 9999px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); transition: opacity .2s; }
   .th-link:hover, .th-link[aria-expanded="true"] { opacity: 1; }
-  .th-head { font-size: 14px; line-height: 1.45; margin-top: 6px; }
+  .th-full { font-size: 14px; line-height: 1.45; margin-top: 4px; }
   .th-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 8px; font-size: 12px; }
   .th-bog { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
   .th-bog .k { font-size: 12px; }
   .th-chip { display: inline-block; font-size: 11px; border-radius: 9999px; padding: .06em .6em; border: 1px solid currentColor; white-space: nowrap; }
   .th-flags { display: inline-flex; flex-wrap: wrap; gap: 5px; }
   .th-flags .rv-flag { font-size: 11px; }
-  .th-mode { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-heading); font-weight: 500; font-size: 13px; }
+  .th-mode { flex: none; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-heading); font-weight: 500; font-size: 13px; white-space: nowrap; margin-left: 4px; }
   .th-mode .mode-ico { width: .95em; height: .95em; }
-  #sbThinkMore { position: absolute; left: -1px; right: -1px; top: calc(100% + 8px); z-index: 7; padding: 12px 16px 14px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; font-size: 13px; line-height: 1.45; }
+  #sbThinkMore { position: absolute; left: -1px; right: -1px; top: calc(100% + 8px); z-index: 7; padding: 12px 16px 14px; max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; font-size: 13px; line-height: 1.45; }
   #sbThinkMore[hidden] { display: none; }
   .th-lines { margin: 6px 0 0; padding-left: 18px; list-style: disc; }
   .th-lines li + li { margin-top: 4px; }
   .th-sec { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
   .th-sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  .th-sec b.th-title { font-family: var(--font-heading); font-weight: 500; font-size: 14px; }
   @media (max-width: 899px) {
     #dash { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; }
     #dash::-webkit-scrollbar { display: none; }
-    #sbThinkMore { position: static; margin-top: 10px; padding: 10px 0 0; max-height: none; overflow: visible; background: none !important; box-shadow: none !important; border: 0; border-top: 1px solid var(--line); border-radius: 0; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+    #sbThinkMore { position: static; margin-top: 8px; padding: 10px 0 4px; max-height: none; overflow: visible; background: none !important; box-shadow: none !important; border: 0; border-top: 1px solid var(--line); border-radius: 0; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
   }
-  @media (max-width: 767px) { #sbThink { padding: 10px 14px 11px; } .th-head { font-size: 13px; } }
+  @media (max-width: 767px) { #sbThink { flex-basis: 100%; padding: 5px 6px 5px 12px; } .th-head { font-size: 12.5px; -webkit-line-clamp: 1; } .th-t { display: none; } }
   /* карта: заголовок сворачивает панель */
   #mapHead { cursor: pointer; user-select: none; }
   #mapHead svg { opacity: .55; transition: transform .2s; }
@@ -253,7 +261,7 @@
   @media (min-width: 900px) { #ctrl.ctrl-side { width: 360px; } }
   @media (min-width: 900px) and (max-width: 1199px) { #dash { width: calc(100% - 64px - 392px); } }
   @media (max-width: 899px) { #pres { width: min(420px, calc(100% - 40px)); } }
-  @media (max-width: 767px) { #map { width: auto; } #sbThink { order: 1; } #sbNote { order: 2; } }
+  @media (max-width: 767px) { #map { width: auto; } #thRow { order: 1; margin-top: 8px; } #sbNote { order: 2; } }
   @media (min-width: 900px) { #sbThinkMore { background: color-mix(in srgb, var(--bg) 93%, transparent) !important; box-shadow: 0 16px 44px rgba(0,0,0,.18) !important; } }
 </style>
 <!-- Tailwind v3, собран статически (simulator/css/build_css.sh): страница работает с file:// без сети -->
@@ -316,21 +324,15 @@
     </div>
     <div class="ctrl-grid">
       <span class="ctrl-l">Сценарий</span>
-      <button id="scBtn" class="sc-pill" aria-haspopup="dialog" aria-expanded="false" aria-controls="scPop" title="Выбрать сценарий"><span id="scName">Свободная поездка</span><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
-      <div class="ctrl-wide ctrl-mob-hide"><div id="scAbout" class="sc-about"></div><div class="sc-bar" aria-hidden="true"><div id="scBar"></div></div></div>
-      <span class="ctrl-l ctrl-mob-hide">Время</span>
-      <span class="flex items-center gap-2 w-full ctrl-mob-hide">
-        <span class="seg" role="radiogroup" aria-label="Скорость времени">
-          <button role="radio" aria-checked="false" data-sbsp="1" title="Как в жизни">×1</button>
-          <button role="radio" aria-checked="true" data-sbsp="4">×4</button>
-          <button role="radio" aria-checked="false" data-sbsp="10">×10</button>
-        </span>
-        <span id="sbTime" class="ml-auto opacity-60 num">0:00</span>
+      <span class="sc-row">
+        <button id="scBtn" class="sc-pill" aria-haspopup="dialog" aria-expanded="false" aria-controls="scPop" title="Выбрать сценарий"><span id="scName">Свободная поездка</span><span id="sbTime" class="sc-time num">0:00</span><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="sc-prog" aria-hidden="true"><span id="scBar"></span></span></button>
+        <button id="sbSpd" class="sc-spd num" aria-label="Скорость времени ×4" title="Скорость времени: ×1 как в жизни, ×4, ×10 — нажмите, чтобы сменить">×4</button>
       </span>
       <span class="ctrl-l">Движение</span>
       <span class="flex flex-wrap items-center gap-2 w-full">
-        <button id="bRun" class="sw-btn flex-none" style="padding:.3em .9em;" aria-label="Стоп" title="Остановить или продолжить время (пробел)">
+        <button id="bRun" class="sw-btn flex-none" style="padding:.3em .9em;" aria-label="Стоп" title="Стоп: вагон тормозит до остановки и стоит, время идёт (пробел)">
           <svg id="icoStop" width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>
+          <svg id="icoPause" width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true" style="display:none"><rect x="2.2" y="1.8" width="2.6" height="8.4" rx=".8"/><rect x="7.2" y="1.8" width="2.6" height="8.4" rx=".8"/></svg>
           <svg id="icoStart" width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true" style="display:none"><path d="M3 1.8v8.4a.6.6 0 0 0 .9.5l7-4.2a.6.6 0 0 0 0-1l-7-4.2a.6.6 0 0 0-.9.5z"/></svg>
           <svg id="icoAgain" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" style="display:none"><path d="M2.2 6a3.8 3.8 0 1 0 1.2-2.8"/><path d="M2.2 1.6v2.1h2.1"/></svg>
           <span id="bRunTxt">Стоп</span>
@@ -393,19 +395,19 @@
 
   <div class="k mt-2" id="sbNote">Песочница: имитатор трамвая — приближение; оценку считает <span id="sbPort">ядро пакета</span>, лист жюри <span id="sbSheet"></span>. Реальные записи — «Прогон данных комиссии».</div>
 
-  <div id="sbThink" class="glass map-glass rounded-2xl" aria-live="off" aria-label="Что сейчас думает модель">
-    <div class="th-h"><b>Что сейчас думает модель</b><span id="thMode" class="th-mode"></span><span class="th-sp"></span><button id="thMoreBtn" class="th-link" aria-expanded="false" aria-controls="sbThinkMore">подробнее</button><button id="sbHelpBtn" class="th-link">как читать экран</button></div>
-    <div id="thHead" class="th-head">Вагон на старте: ждём первых сообщений тележек и ручки.</div>
-    <div class="th-row"><span id="thBog0" class="th-bog"></span><span id="thBog1" class="th-bog"></span><span id="thFlags" class="th-flags"></span></div>
-    <div id="sbThinkMore" class="glass map-glass rounded-2xl" hidden>
-      <div class="th-sec"><div class="k">Сценарий ждёт от модели:</div><div id="thExpect"></div></div>
-      <div class="th-sec"><div class="k">Модель:</div><ul id="thLines" class="th-lines"></ul></div>
-      <div class="th-sec"><div class="k">На самом деле (имитатор; модели это не известно):</div><ul id="thTruth" class="th-lines"></ul></div>
+  <div id="thRow">
+    <div id="sbThink" class="glass map-glass rounded-2xl" aria-live="off" aria-label="Что сейчас думает модель">
+      <div class="th-h"><span class="k th-t">Модель думает</span><span id="thHead" class="th-head">Вагон на старте: ждём первых сообщений тележек и ручки.</span><button id="thMoreBtn" class="th-link" aria-expanded="false" aria-controls="sbThinkMore" title="Что сейчас думает модель — подробно">подробнее</button></div>
+      <div id="sbThinkMore" class="glass map-glass rounded-2xl" hidden>
+        <div class="th-sec"><div class="flex flex-wrap items-center gap-2"><b class="th-title">Что сейчас думает модель</b><span id="thMode" class="th-mode"></span></div><div id="thHeadFull" class="th-full"></div>
+          <div class="th-row"><span id="thBog0" class="th-bog"></span><span id="thBog1" class="th-bog"></span><span id="thFlags" class="th-flags"></span></div></div>
+        <div class="th-sec"><div class="k">Сценарий ждёт от модели:</div><div id="thExpect"></div></div>
+        <div class="th-sec"><div class="k">Модель:</div><ul id="thLines" class="th-lines"></ul></div>
+        <div class="th-sec"><div class="k">На самом деле (имитатор; модели это не известно):</div><ul id="thTruth" class="th-lines"></ul></div>
+        <div class="th-sec"><button id="sbHelpBtn" class="th-link" style="padding-left:0">Как читать экран</button></div>
+      </div>
     </div>
-  </div>
-
-  <div class="mob-hide flex flex-wrap justify-end items-center gap-2 mt-4 mb-1 text-[12px]" style="padding-right: 10px;">
-    <span class="flex flex-wrap gap-3">
+    <span class="th-legend mob-hide">
       <span class="flex items-center gap-1.5"><span class="w-3 h-[3px] rounded-full" style="background: var(--ok);"></span>Модель и ±2σ</span>
       <span class="flex items-center gap-1.5"><span class="w-3 h-[3px] rounded-full" style="background: var(--warn);"></span>Колесо</span>
       <span class="flex items-center gap-1.5"><span class="w-4 h-0 opacity-80" style="border-top: 1.5px dotted #8a7fd0;"></span>Тележки</span>
@@ -544,8 +546,8 @@
       <li><b>Сцена.</b> Вагон едет вправо, передняя тележка — справа. Под тележками — их показание и решение модели: <span style="color:#0E9AA7">принята</span>, <span style="color:#E89B0C">отброшена</span> (и почему), <span style="color:#D6443A">исключена</span> как неисправная. Колесо с синим ореолом буксует, с искрами — юзит, красное — заблокировано. Полоса на кузове — режим модели: бирюзовая — всё хорошо, синяя — срыв сцепления, красная — колёсам верить нечему, оранжевая — нет спутников (модели они и не нужны). Рельс синеет в дождь, белеет на наледи, буреет в листопад; в застройке спутники пропадают.</li>
       <li><b>Цифры сверху.</b> Скорость по модели и тормозной путь по её верхней границе; «колесо» — просто среднее показаний тележек (база из оценки); ошибка — средняя с начала сценария против истины; путь по модели и его ±2σ; режим модели.</li>
       <li><b>График.</b> Пунктир — истина, <span style="color:#0E9AA7">бирюзовая</span> линия — модель, заливка — её <b>±2σ</b> (на реальных записях истина внутри 94,7 % времени; в песочнице полоса шире — ~99 %), <span style="color:#E89B0C">оранжевая</span> — «только колесо», тонкий пунктир — сами тележки. Фон: красный — отказ датчиков, синий — скользкий рельс, жёлтый — масса, уклон или нет GNSS. Полоса под графиком — режим модели.</li>
-      <li><b>«Что сейчас думает модель»</b> — простыми словами: кому из тележек она верит и почему. «Подробнее» — режим, сцепление μ, масштабы привода, неопределённость, что сценарий ждёт от модели и что на самом деле происходит в имитаторе (модели это не известно).</li>
-      <li><b>Управление.</b> «Сценарий» — готовые трудности одной кнопкой или свободная поездка по всей линии. «Стоп» останавливает время (пробел). «Ручное» — ведёте сами: W/S или ↑/↓ — позиция ручки, пробел — выбег. Погода, датчики и условия меняют имитатор поверх сценария; ↺ у подписи возвращает как в сценарии.</li>
+      <li><b>«Модель думает»</b> — строка над графиком: простыми словами, кому из тележек модель верит и почему. «Подробнее» — решение по каждой тележке, флаги, режим, сцепление μ, масштабы привода, неопределённость, что сценарий ждёт от модели и что на самом деле происходит в имитаторе (модели это не известно).</li>
+      <li><b>Управление.</b> «Сценарий» — готовые трудности одной кнопкой или свободная поездка по всей линии; в строке — время сценария, полоска его хода и скорость времени ×1 / ×4 / ×10. «Стоп» в свободной поездке — как в исходной песочнице: вагон тормозит до остановки и стоит, время идёт; «Старт» — поехали дальше. В сценариях время расписано, и кнопка там — «Пауза / Дальше»: время сценария стоит. Пробел — то же. «Ручное» — ведёте сами: W/S или ↑/↓ — позиция ручки, пробел — выбег. Погода и застройка в свободной поездке начинаются в 100 м впереди («Впереди: … через N м»), в сценариях — сразу на всей линии поверх сценария; датчики и условия меняют имитатор сразу; ↺ у подписи возвращает как в сценарии.</li>
       <li><b>Значки сверху.</b> Как устроена модель · пакет ROS 2 (топики, схема ноды, время шага ядра) · метрики по условиям · показ на 60 с · запись поездки · эта справка · день и ночь. Карта справа — линия, кривые, профиль высот (наведите курсор).</li>
       <li><b>Реальные данные</b> — режим «Прогон данных комиссии»: там оценку считает сам пакет ROS 2 по отложенной записи, эталон — GNSS. Путь в песочнице — чистая одометрия: привязок к остановкам и карты, которые есть в ноде, здесь нет.</li>
     </ul>
