@@ -214,6 +214,9 @@ const TramSandbox = (() => {
       this.t = 0; this.acc = 0;
       this.rows = this.emptyRows(); this.hist = [];
       this.userFaults = [null, null]; this.userDrop = false; this.userWeather = null; this.userMass = null; this.userGnssOff = false;
+      // свободная поездка страницы: участки без спутников по пути [{a, b}] и «Стоп» (вагон тормозит до
+      // остановки и стоит, время идёт). По умолчанию выключены: числа сценариев и docs/SANDBOX.md не меняются
+      this.gnssZones = []; this.hold = false;
       this.last = null; this.lastMsgT = [-Infinity, -Infinity]; this.lastKmh = [NaN, NaN];
       this.lastWhy = [12, 12]; this.lastWhyT = [-Infinity, -Infinity];
       this.events = []; this.arrivals = [];
@@ -233,8 +236,11 @@ const TramSandbox = (() => {
       for (const ev of pr.events || []) if (t >= ev.t0 && t < ev.t1) { if (ev.fault) faults = ev.fault.map((f, b) => f || faults[b]); if (ev.drop) drop = true; }
       // сцепление — по месту каждой тележки: передняя на s, задняя на 7,55 м позади
       const weatherB = [0, 1].map(b => this.weatherAt(s - b * this.plant.C.bogie_base));
-      faults = faults.map((f, b) => this.userFaults[b] || f);
-      return { faults, drop: drop || this.userDrop, weather: weatherB[0], weatherB, mass: this.userMass ?? (pr.mass || 1.0), gnssOff: this.userGnssOff || (pr.gnss_off !== undefined && t >= pr.gnss_off) };
+      // ручной переключатель по тележке: объект отказа; 'none' — «норма» поверх отказа сценария;
+      // null — как в сценарии (по умолчанию: числа сценариев и таблицы docs/SANDBOX.md не меняются)
+      faults = faults.map((f, b) => this.userFaults[b] === 'none' ? null : (this.userFaults[b] || f));
+      const gz = this.gnssZones.some(z => s >= z.a && s <= z.b);
+      return { faults, drop: drop || this.userDrop, weather: weatherB[0], weatherB, mass: this.userMass ?? (pr.mass || 1.0), gnssOff: this.userGnssOff || gz || (pr.gnss_off !== undefined && t >= pr.gnss_off) };
     }
     // погода на рельсе в точке линии s (зоны сценария, общий фон, ручной переключатель)
     weatherAt(s) {
@@ -259,6 +265,14 @@ const TramSandbox = (() => {
       this.cond = c;
     }
     setManual(n) { this.manualNotch = Math.max(-15, Math.min(15, Math.round(n))); }
+    // «Стоп»: служебное торможение ~1 м/с² (позиция — по таблице листа) до остановки, затем удержание
+    holdNotch() {
+      const v = this.plant.v, p = this.sheet;
+      if (v <= 0.05) return -5;
+      let best = -1, err = Infinity;
+      for (let n = -1; n >= -15; n--) { const e = Math.abs(-E.table_acc(E.notch_to_u(n, p), v, p) - 1.0); if (e < err) { err = e; best = n; } }
+      return best;
+    }
     // шаг имитации на dt секунд (имитатор 1 кГц, связка и ядро — по сообщениям)
     advance(dt) {
       if (this.done) return;
@@ -268,7 +282,7 @@ const TramSandbox = (() => {
         this.acc -= h;
         if (Math.abs((this.t / 0.05) - Math.round(this.t / 0.05)) < 1e-6) {
           this.applyConditions();
-          pl.notch = this.driver ? this.driver.update(0.05) : this.manualNotch;
+          pl.notch = this.hold ? this.holdNotch() : this.driver ? this.driver.update(0.05) : this.manualNotch;
         }
         pl.grade = this.track.grade(pl.s);
         pl.step(h);
