@@ -190,7 +190,10 @@ class Params:
                          "Срыв всех осей и шум")
     slip_pair_s: float = _f(0.5, "с", "настройка",
                             "скачки всех осей одного знака в этом окне — один "
-                            "срыв всех осей", "Срыв всех осей и шум")
+                            "срыв всех осей (тележка может сорваться позже "
+                            "другой на столько: её скачок помнится, ровное "
+                            "показание после него скачком обратно не "
+                            "считается)", "Срыв всех осей и шум")
     slip_cont_k: float = _f(2.0, "σ", "настройка",
                             "во время срыва всех осей показание дальше этого "
                             "числа σ шума показания в сторону срыва не "
@@ -201,6 +204,22 @@ class Params:
                            "наибольшая длительность срыва всех осей: дальше "
                            "колёсам снова верят (защита от защёлки при "
                            "ложном срабатывании или смене масштаба датчиков)",
+                           "Срыв всех осей и шум")
+    slip_ok_s: float = _f(1.0, "с", "настройка",
+                          "срыв всех осей снимается, когда все новые показания "
+                          "столько времени подряд принимаются (колёса снова "
+                          "катятся с корпусом, в том числе после плавного "
+                          "отпускания без скачка); 0 — только скачок обратно, "
+                          "нули, шум или slip_t_max", "Срыв всех осей и шум")
+    slip_ret_a: float = _f(0.7, "м/с²", "настройка",
+                           "во время срыва всех осей колесо возвращается к "
+                           "корпусу плавно, если его производная отходит от "
+                           "ρ·(ускорение модели) в сторону корпуса больше "
+                           "этого (ρ — показание/прогноз, сверх шума "
+                           "производной); когда отход снова меньше половины "
+                           "a_slip_margin — колесо вернулось, показания "
+                           "принимаются. Ошибка ускорения модели — до "
+                           "0,45 м/с²; 0 — только скачком",
                            "Срыв всех осей и шум")
     slip_sigma_a: float = _f(0.15, "м/с²", "измерение",
                              "СКО ускорения модели при разомкнутом прогнозе "
@@ -433,6 +452,8 @@ class Params:
                              "ss_map", "ss_rel")]
         checks += [
             (self.slip_sigma_a >= 0, "slip_sigma_a должен быть >= 0"),
+            (self.slip_ok_s >= 0, "slip_ok_s должен быть >= 0"),
+            (self.slip_ret_a >= 0, "slip_ret_a должен быть >= 0"),
             (self.noise_n >= 2, "noise_n должен быть >= 2"),
             (self.sv_gain > 0, "sv_gain должен быть > 0"),
             (self.n_axles >= 1, "n_axles должен быть >= 1"),
@@ -814,7 +835,10 @@ class Estimator:
         self.slip_j = 0.0           # наименьший скачок осей в начале срыва, м/с
         self.slip_back = set()      # оси, скачком вернувшиеся к корпусу
         self.slip_timeout = (0, -np.inf)   # знак и конец срыва, снятого по времени
+        self.slip_ok_t0 = None      # с этого момента все новые показания принимаются
+        self.slip_ret = set()       # оси, плавно возвращающиеся к корпусу
         self.n_slip_all = 0         # число таких срывов (диагностика)
+        self.notch_last = 0.0       # позиция ручки на текущем шаге (без запаздывания)
 
         self.initialised = False    # скорость взята из первых показаний
         self.have_meas = False      # показания колёс уже приходили
@@ -1107,7 +1131,11 @@ class Estimator:
 
         Конец срыва:
           * все оси скачком вернулись (скачок обратного знака) — колёса снова
-            катятся с корпусом;
+            катятся с корпусом; или вернулись плавно — по производной колеса
+            против ускорения модели (_slip_all_return);
+          * все новые показания принимаются подряд slip_ok_s — колёса
+            вернулись плавно, без скачка (иначе признак держался бы до
+            slip_t_max, хотя скорость уже снова по колёсам);
           * срыв длится дольше slip_t_max — дальше колёсам снова верят (иначе
             ложное срабатывание или смена масштаба датчиков держали бы
             защёлку); скачок обратного знака в следующие slip_t_max —
@@ -1123,6 +1151,8 @@ class Estimator:
             for a in live:
                 if self.jump_t[a] > self.slip_t0 and self.jump_s[a] == -s:
                     self.slip_back.add(a)
+            if p.slip_ret_a > 0:
+                self._slip_all_return(s, u, z, ok, hbar, live)
             fresh = [a for a in range(p.n_axles) if ok[a]]
             zeros = (v0 > p.v_dead_ref and bool(fresh)
                      and all(z[a] < p.v_standstill for a in fresh))
@@ -1130,9 +1160,16 @@ class Estimator:
                                     * float(np.max(self.nz_excess[live]))
                                     >= self.slip_j)
             back = bool(live) and all(a in self.slip_back for a in live)
+            # колёса вернулись плавно (без скачка): показания снова
+            # принимаются подряд slip_ok_s
+            agree = (p.slip_ok_s > 0 and self.slip_ok_t0 is not None
+                     and self.t - self.slip_ok_t0 >= p.slip_ok_s)
             timeout = self.t - self.slip_t0 > p.slip_t_max
-            if timeout or zeros or noisy or back:
-                self._slip_all_end(u)
+            if timeout or zeros or noisy or back or agree:
+                # Нули: скачок в ноль этого шага (и производная) остаются
+                # (см. _slip_all_end), а сами нули _correct не принимает
+                # (ended_zero) — неоднозначность, а не остановка.
+                self._slip_all_end(u, keep_jump=zeros)
                 if timeout:
                     self.slip_timeout = (s, self.t)
             return
@@ -1151,6 +1188,15 @@ class Estimator:
         s_to, t_to = self.slip_timeout
         if s_to == -s and self.t - t_to <= p.slip_t_max:
             return
+        # Буксование при ручке в торможении и юз при ручке в тяге физически
+        # невозможны: так выглядит конец НЕзамеченного срыва (юз, начавшийся
+        # плавно, отпускает скачком вверх). Прежде он открывал «буксование»
+        # на slip_t_max, и модель держала скорость 12 с после юза. Ручка —
+        # как есть, без запаздывания привода: сглаженная команда отстаёт в
+        # начале торможения, и настоящий юз в первые секунды терялся бы.
+        nl = self.notch_last
+        if (s > 0 and nl < 0) or (s < 0 and nl > 0):
+            return
         if (any(self.jump_s[a] != s for a in live)
                 or float(np.min(self.jump_m[live])) < p.slip_rel * v0
                 or any(s * (zb - hbar[a]) <= 0 for zb, a in zip(zl, live))
@@ -1160,6 +1206,8 @@ class Estimator:
         self.slip_t0 = self.t
         self.slip_j = float(np.min(self.jump_m[live]))
         self.slip_back = set()
+        self.slip_ok_t0 = None
+        self.slip_ret = set()
         self.n_slip_all += 1
         # Дальше скорость ведёт модель: σ возмущения — ошибка разомкнутого
         # прогноза (измерена на обучающих прогонах), чтобы σ скорости росла
@@ -1178,12 +1226,60 @@ class Estimator:
             self.P[ID, ID] = p.slip_sigma_a ** 2
         self.axle_dot[live] = self._a_model(u)
 
-    def _slip_all_end(self, u):
-        """Конец срыва всех осей: производная осей — заново от модели."""
+    def _slip_all_return(self, s, u, z, ok, hbar, live):
+        """Плавное возвращение колёс к корпусу во время срыва всех осей.
+
+        Отпускание юза (буксования) не всегда скачком: колесо может за 1–2 с
+        плавно догнать корпус. Скачка обратно нет, и прежде срыв держался,
+        пока показания отвергались «в сторону срыва», — а если модель за
+        время срыва ушла от вагона (таблица привода тормозит слабее), то
+        вернувшиеся колёса так и оставались «в сторону срыва» до
+        slip_t_max: модель вела скорость ещё до 8 с после юза.
+
+        Признак — производная колеса, а не уровень: уровень за время срыва
+        уходит вместе с ошибкой модели, а ускорение модели ошибается не
+        больше чем на ~0,45 м/с². Колесо в ровном срыве — доля ρ = z/прогноз
+        скорости корпуса, и его производная — ρ·(ускорение модели). Отход от
+        неё в сторону корпуса — колесо догоняет корпус: при отпускании за
+        1 с с 10 м/с это ~3 м/с². Прежде сравнивалось с самим ускорением
+        модели, без ρ: в глубоком юзе (−50 %) ровное колесо отходило от него
+        на 0,5·|a| ≈ 0,7 м/с², и срыв ложно снимался (юз −50 % на обучающих
+        прогонах: 0,435 → 0,579 м/с). Отход больше slip_ret_a (сверх шума
+        производной) — колесо возвращается; когда снова меньше половины
+        a_slip_margin (катится с корпусом) — вернулось (slip_back): его
+        показания принимаются. Ниже v_adapt_min прогноза признак не
+        считается: ρ там — отношение малых чисел."""
+        p = self.p
+        a_m = self._a_model(u)
+        tol = self._dot_tol()
+        for a in live:
+            if not ok[a] or a in self.slip_back or hbar[a] <= p.v_adapt_min:
+                continue
+            rho = z[a] / hbar[a]
+            r = -s * (self.axle_dot[a] - rho * a_m)     # > 0 — к корпусу
+            if r > p.slip_ret_a + tol[a]:
+                self.slip_ret.add(a)
+            elif a in self.slip_ret and r < 0.5 * p.a_slip_margin:
+                self.slip_back.add(a)
+
+    def _slip_all_end(self, u, keep_jump=False):
+        """Конец срыва всех осей: производная осей — заново от модели.
+
+        keep_jump — срыв закончился нулями всех осей (юз перешёл в
+        блокировку). Тогда признак скачка и производная ЭТОГО шага остаются:
+        step() только что посчитал их по этим самым нулям. Прежде они
+        сбрасывались, нули проходили правило согласия осей как остановка, и
+        оценка падала с 13 м/с в ноль с σ 0,02 и valid = true (обучающий
+        прогон 30618_2dbce472, скорость по GNSS 12,9 м/с). Этого мало, когда
+        последний шаг к нулю меньше порога скачка, — поэтому сами нули
+        отвергает _correct (ended_zero)."""
         self.slip_all = 0
         self.slip_back = set()
-        self.axle_dot[:] = self._a_model(u)
-        self.axle_jump[:] = False
+        self.slip_ret = set()
+        self.slip_ok_t0 = None
+        if not keep_jump:
+            self.axle_dot[:] = self._a_model(u)
+            self.axle_jump[:] = False
         self.jump_t[:] = -np.inf
 
     def _level_agree(self, a, z, ok, recent):
@@ -1218,7 +1314,18 @@ class Estimator:
         hbar = h_axles(self.x, u, self.mu, p)
         # срыв всех осей: начало и конец (может раздуть σ возмущения — до
         # расчёта сигма-точек)
+        ep_prev = self.slip_all
         self._slip_all_update(z, ok, u, hbar, v0)
+        # Срыв всех осей снят нулями всех новых показаний (юз перешёл в
+        # блокировку): нули не принимаются, дальше — неоднозначность «стоим
+        # или скользим», КАК БЫ ни выглядел последний шаг. Признак скачка
+        # этого шага (keep_jump) спасает не всегда: при плавном падении
+        # (5,25 → 3,09 → 0,64 → 0 м/с, холдаут 30618_a53d5f6f) последний шаг
+        # меньше порога скачка, нули проходили согласие осей как остановка, и
+        # публиковалось v = 0, valid = true на ходу 6 м/с.
+        ended_zero = (bool(ep_prev) and not self.slip_all
+                      and v0 > p.v_dead_ref
+                      and all(z[a] < p.v_standstill for a in axles))
         var0 = self._meas_var(F0, v0)
         order = sorted(axles, key=lambda a: abs(z[a] - hbar[a])
                        / np.sqrt(var0[a] + self.P[IV, IV]))
@@ -1342,7 +1449,7 @@ class Estimator:
                 # заблокированных колёс. Скорость ведёт модель с пониженным
                 # сцеплением — оценка остаётся сверху, а не падает в ноль при
                 # скользящем вагоне.
-                held = self.amb and z[a] < p.v_standstill
+                held = (self.amb or ended_zero) and z[a] < p.v_standstill
                 override = (nis > p.gate_nis
                             and not (spinning or forced or held) and agreed(a))
 
@@ -1378,6 +1485,13 @@ class Estimator:
             Zall = h_axles_batch(pts, u, self.mu, p)
 
         self.n_acc, self.n_rej = len(acc), len(rej)
+        # срыв всех осей идёт: все новые показания приняты (ни одно не
+        # отвергнуто как скольжение) — отсчёт для его снятия
+        if self.slip_all and acc and not rej:
+            if self.slip_ok_t0 is None:
+                self.slip_ok_t0 = self.t
+        else:
+            self.slip_ok_t0 = None
 
         # Признак насыщения сцепления: нагруженная ось отвергнута в сторону,
         # соответствующую срыву (читает больше под тягой, меньше при
@@ -1444,9 +1558,11 @@ class Estimator:
         # движении: блокировка или общий отказ датчиков, остановку это не
         # подтверждает ни в одном случае. Прежде нули после раздувания
         # неопределённости принимались, и оценка падала в ноль на ходу.
-        # (после срыва всех осей скорость вела модель — состояние тоже
-        # подтверждённое)
-        entry_ok = self.amb or self.t_since_acc <= p.t_valid or bool(ep)
+        # (во время срыва всех осей скорость вела модель — состояние тоже
+        # подтверждённое; ep_prev — срыв шёл до этого шага и закончился на
+        # нём нулями: ep к этому моменту уже сброшен)
+        entry_ok = (self.amb or self.t_since_acc <= p.t_valid or bool(ep)
+                    or bool(ep_prev))
         all_zero = all(z[a] < p.v_standstill for a in axles) \
             and v0 > p.v_dead_ref
         if not acc and rej and entry_ok and ((self.sat and F0 < 0) or all_zero):
@@ -1481,6 +1597,7 @@ class Estimator:
         """
         p = self.p
         self.t += p.dt
+        self.notch_last = notch
         u = self._drive_model(notch)
 
         fm = np.broadcast_to(np.asarray(fresh, dtype=bool), (self.nw,)).copy()
@@ -1529,10 +1646,23 @@ class Estimator:
                 if (self.nz_cnt[a] > 2 and gap <= p.slip_pair_s
                         and (self.t_since_acc <= p.slip_pair_s or self.slip_all)
                         and not (self.amb or self.frozen)):
-                    jr = (z[a] - self.axle_prev[a]) - self.axle_dot[a] * gap
-                    if abs(jr) > p.slip_jump + p.a_slip_margin * gap + nz:
+                    dz = z[a] - self.axle_prev[a]
+                    jr = dz - self.axle_dot[a] * gap
+                    thr = p.slip_jump + p.a_slip_margin * gap + nz
+                    sg = 1.0 if jr > 0 else -1.0
+                    # Отголосок своего скачка: сглаженная производная
+                    # вобрала скачок, и следующее РОВНОЕ показание выглядит
+                    # скачком обратного знака. Прежде он затирал знак и
+                    # момент настоящего скачка, и тележка, сорвавшаяся на
+                    # 0,3 с позже другой, в пару уже не попадала. Настоящее
+                    # возвращение (выброс ушёл) — само показание снова
+                    # прыгает, оно не отголосок.
+                    echo = (not self.slip_all and sg == -self.jump_s[a]
+                            and self.t - self.jump_t[a] <= p.slip_pair_s
+                            and abs(dz) <= thr)
+                    if abs(jr) > thr and not echo:
                         self.jump_t[a] = self.t
-                        self.jump_s[a] = 1.0 if jr > 0 else -1.0
+                        self.jump_s[a] = sg
                         self.jump_m[a] = abs(jr)
                 # Скачок за один интервал больше физически возможного (предел
                 # ускорения с запасом плюс допуск согласия осей) — срыв или
@@ -1698,6 +1828,7 @@ class Estimator:
         """
         p = self.p
         self.t += p.dt
+        self.notch_last = notch
         u = self._drive_model(notch)
         self._predict(u)
         self.mode_pre = self._mode(u)

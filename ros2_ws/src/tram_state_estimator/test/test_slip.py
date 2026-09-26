@@ -5,7 +5,9 @@
 время срыва — только ошибка самого механизма, а не модели. Показания — как в
 bag: тележки ~9,4 Гц со сдвигом, ручка 20 Гц, км/ч. Аномалии — как в
 tools/inject.py: юз −30 % и буксование +30 % обеих тележек на 4 с, шум ×5
-(σ = 0,25 м/с), одиночный выброс ×3, залипание обеих, скачок с нуля.
+(σ = 0,25 м/с), одиночный выброс ×3, залипание обеих, скачок с нуля. Формы
+срыва из ревью (tools/slip_study.py, виды EDGE): юз, перешедший в
+блокировку, задняя тележка на 0,3 с позже, плавное начало, плавный конец.
 """
 
 import os
@@ -14,8 +16,8 @@ from dataclasses import fields, replace
 import numpy as np
 import pytest
 
-from tram_state_estimator.estimator_core import (Estimator, Params, SLIP,
-                                                 f_process)
+from tram_state_estimator.estimator_core import (STANDSTILL, Estimator,
+                                                 Params, SLIP, f_process)
 from tram_state_estimator.runner import Runner
 
 PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -32,12 +34,13 @@ def _tram(**kw):
     return Params.from_dict(d)
 
 
-def _truth(p, notch_of_t, t_end, h=0.01):
+def _truth(p, notch_of_t, t_end, h=0.01, kb=1.0):
     """Истинная скорость по модели листа: привод с запаздыванием, таблица,
-    номинальное сцепление, без возмущения."""
+    номинальное сцепление, без возмущения. kb — масштаб торможения вагона
+    против таблицы (ошибка модели: kb > 1 — вагон тормозит сильнее)."""
     q = replace(p, dt=h)
     drv = Estimator(q)                       # только модель привода
-    x = np.array([0.0, 0.0, 0.0, 1.0, 1.0])
+    x = np.array([0.0, 0.0, 0.0, 1.0, kb])
     T, V = [0.0], [0.0]
     for k in range(int(round(t_end / h))):
         u = drv._drive_model(notch_of_t(k * h))
@@ -48,16 +51,17 @@ def _truth(p, notch_of_t, t_end, h=0.01):
     return np.array(T), np.array(V)
 
 
-def _run(p, notch_of_t, t_end, anomaly=None, seed=0):
+def _run(p, notch_of_t, t_end, anomaly=None, seed=0, offset=OFFSET, kb=1.0):
     """Поток в Runner. anomaly(i, t, z) -> показание тележки i (м/с) с
     аномалией. Возвращает выходы, истину на метках выходов и «голые колёса»
-    (среднее последних показаний) на тех же метках."""
-    T, V = _truth(p, notch_of_t, t_end)
+    (среднее последних показаний) на тех же метках. offset — сдвиг задней
+    тележки; 0 — обе приходят на одном шаге фильтра, как чаще всего в bag."""
+    T, V = _truth(p, notch_of_t, t_end, kb=kb)
     rng = np.random.default_rng(seed)
     ev = []
     for k in range(int(t_end * HZ_BOGIE)):
         t = 0.05 + k / HZ_BOGIE
-        ev += [(t, 0), (t + OFFSET, 1)]
+        ev += [(t, 0), (t + offset, 1)]
     ev += [(0.05 + k / HZ_HANDLE, 2) for k in range(int(t_end * HZ_HANDLE))]
     r = Runner(p)
     outs, last = [], [0.0, 0.0]
@@ -266,3 +270,201 @@ def test_slip_longer_than_limit_releases_and_return_is_not_a_new_slip():
     assert not (ep[st >= t0 + 3.2] != 0).any(), "после предела и при возвращении срыва нет"
     err = np.abs(_arr(outs, "v") - truth)
     assert err[st >= t1 + 1.0].max() < 0.15
+
+
+# ------------------------------------------------ формы срыва (ревью потока)
+
+T_LOCK0, T_LOCK1, T_LOCK2 = 30.6, 32.6, 35.6
+
+
+@pytest.mark.parametrize("offset", [0.0, OFFSET])
+def test_skid_turning_into_lock_is_not_a_stop(offset):
+    """Юз обеих тележек −30 % 2 с, затем блокировка (нули) 3 с, затем
+    колёса снова катятся. В bag обе тележки чаще приходят на одном шаге.
+    Прежде срыв всех осей снимался нулями вместе с признаком скачка этого же
+    шага, нули проходили правило согласия осей как остановка: v падала с
+    13 м/с в ноль с σ 0,02 и valid = true (обучающий прогон 30618_2dbce472).
+    Теперь — неоднозначность «стоим или скользим»: оценка держится, valid
+    снят, σ широкая."""
+    p = _tram()
+
+    def lock(i, t, z, rng):
+        if T_LOCK0 <= t < T_LOCK1:
+            return 0.7 * z
+        return 0.0 if T_LOCK1 <= t < T_LOCK2 else z
+    outs, st, truth, naive = _run(p, brake_from_speed, 45.0, lock, offset=offset)
+    v = _arr(outs, "v")
+    err = np.abs(v - truth)
+    valid = _arr(outs, "valid") > 0
+    amb = _arr(outs, "ambiguous") > 0
+    assert truth[np.searchsorted(st, T_LOCK1)] > 10.0
+    assert not any(o["mode"] == STANDSTILL and tv > 2.0
+                   for o, tv in zip(outs, truth)), "остановка на ходу"
+    lk = (st >= T_LOCK1 + 0.2) & (st < T_LOCK2)
+    assert amb[lk].all()
+    assert (v[lk] > 0.5 * truth[lk]).all()
+    win = (st >= T_LOCK0) & (st < T_LOCK2 + 3.0)
+    assert not (valid & (err > 1.0))[win].any(), "уверенно неверная скорость"
+    sv = _arr(outs, "sigma_v")
+    assert np.all(err[lk] <= 2.0 * sv[lk])
+    after = (st >= T_LOCK2 + 3.0) & (st < T_LOCK2 + 8.0)
+    assert err[after].max() < 0.15
+
+
+def test_staggered_skid_pairs_into_one_slip():
+    """Задняя тележка срывается на 0,3 с позже передней (slip_pair_s =
+    0,5 с). Прежде ровное показание после скачка давало «скачок» обратного
+    знака (сглаженная производная вобрала скачок), он затирал знак
+    передней, пара не складывалась, срыв не помечался, а отпускание юза
+    открывало ложное буксование на 12 с."""
+    p = _tram()
+
+    def stagger(i, t, z, rng):
+        s0 = T_SKID + (0.3 if i == 1 else 0.0)
+        return 0.7 * z if s0 <= t < T_SKID + DUR else z
+    outs, st, truth, naive = _run(p, brake_from_speed, 45.0, stagger)
+    ep = _arr(outs, "slip_all")
+    win = (st >= T_SKID + 0.5) & (st < T_SKID + DUR)
+    assert (ep[win] == -1).mean() > 0.9
+    assert not (ep > 0).any()
+    err = np.abs(_arr(outs, "v") - truth)
+    assert err[win].mean() < 0.2 * np.abs(naive - truth)[win].mean()
+    after = (st >= T_SKID + DUR + 1.0) & (st < T_SKID + DUR + 12.0)
+    assert err[after].max() < 0.15
+    assert not (_arr(outs, "slip")[after] > 0).any()
+
+
+def test_unflagged_ramp_in_skid_release_is_not_spin():
+    """Юз, начавшийся плавно (0,5 с, без скачка), не распознаётся — это
+    ограничение (MODEL.md §9). Но его отпускание скачком вверх при ручке в
+    торможении — не буксование: прежде оно открывало срыв всех осей «+1»,
+    и модель 12 с держала скорость после юза (ошибка до 1,8 м/с)."""
+    p = _tram()
+
+    def rampin(i, t, z, rng):
+        if T_SKID <= t < T_SKID + 0.5:
+            return z * (1.0 - 0.3 * (t - T_SKID) / 0.5)
+        return 0.7 * z if T_SKID + 0.5 <= t < T_SKID + DUR else z
+    outs, st, truth, naive = _run(p, brake_from_speed, 45.0, rampin)
+    assert not (_arr(outs, "slip_all") > 0).any()
+    err = np.abs(_arr(outs, "v") - truth)
+    after = (st >= T_SKID + DUR + 1.0) & (st < T_SKID + DUR + 8.0)
+    assert err[after].max() < 0.15
+    assert not (_arr(outs, "slip")[after] > 0).any()
+
+
+@pytest.mark.parametrize("kind", ["skid", "spin"])
+def test_gradual_release_ends_slip(kind):
+    """Срыв начался скачком, а отпускается плавно (1 с, без скачка
+    обратно). Прежде признак держался до slip_t_max (ещё ~8 с после того,
+    как колёса вернулись). Теперь срыв снимается, когда все новые
+    показания принимаются подряд slip_ok_s."""
+    p = _tram()
+    lo, t0, hnd, te = ((0.7, T_SKID, brake_from_speed, 45.0) if kind == "skid"
+                       else (1.3, T_SPIN, traction_long, 25.0))
+
+    def rampout(i, t, z, rng):
+        if t0 <= t < t0 + DUR - 1.0:
+            return lo * z
+        if t0 + DUR - 1.0 <= t < t0 + DUR:
+            return z * (lo + (1.0 - lo) * (t - (t0 + DUR - 1.0)))
+        return z
+    outs, st, truth, naive = _run(p, hnd, te, rampout)
+    ep = _arr(outs, "slip_all")
+    sign = -1 if kind == "skid" else 1
+    win = (st >= t0 + 0.3) & (st < t0 + DUR - 1.0)
+    assert (ep[win] == sign).all()
+    t_end = st[np.flatnonzero(ep != 0)].max()
+    assert t_end < t0 + DUR + p.slip_ok_s + 1.0, f"срыв снят только в {t_end:.1f} с"
+    err = np.abs(_arr(outs, "v") - truth)
+    assert err[(st >= t0) & (st < t0 + DUR)].mean() < 0.2 * np.abs(
+        naive - truth)[(st >= t0) & (st < t0 + DUR)].mean()
+    after = (st >= t0 + DUR + 1.0) & (st < t0 + DUR + 8.0)
+    assert err[after].max() < 0.15
+
+
+T_LOCK_FAST = 36.0      # истинная скорость ≈ 6 м/с
+
+
+@pytest.mark.parametrize("offset", [0.0, OFFSET])
+@pytest.mark.parametrize("seq", [(0.82, 0.10), (0.82, 0.48, 0.10), "ramp03"])
+def test_fast_lock_to_zero_is_ambiguous_not_a_stop(seq, offset):
+    """Блокировка с 6 м/с: обе тележки падают в ноль за 0,2–0,3 с (два-три
+    показания при 10 Гц) и 5 с стоят на нуле, как при экстренном торможении.
+    Срыв всех осей начинается скачком вниз и снимается нулями. Если
+    последний шаг к нулю меньше порога скачка (0,6 → 0 м/с), прежде нули
+    проходили согласие осей как остановка: v = 0, σ 0,02, valid = true на
+    ходу 6 м/с (холдаут 30618_a53d5f6f, 5,25 → 3,09 → 0,64 → 0). Теперь —
+    неоднозначность «стоим или скользим»: valid снят, оценка держится."""
+    p = _tram()
+    t0, dur = T_LOCK_FAST, 5.0
+
+    def lock(i, t, z, rng):
+        tr = t - t0
+        if not 0.0 <= tr < dur:
+            return z
+        if seq == "ramp03":
+            return z * max(0.0, 1.0 - tr / 0.3)
+        k = int(tr * HZ_BOGIE)
+        return z * (seq[k] if k < len(seq) else 0.0)
+    outs, st, truth, naive = _run(p, brake_from_speed, 45.0, lock, offset=offset)
+    v = _arr(outs, "v")
+    err = np.abs(v - truth)
+    valid = _arr(outs, "valid") > 0
+    amb = _arr(outs, "ambiguous") > 0
+    assert truth[np.searchsorted(st, t0)] > 5.5
+    win = (st >= t0) & (st < t0 + dur)
+    assert not (valid & (err > 1.0))[win].any(), "уверенно неверная скорость"
+    lk = (st >= t0 + 0.5) & (st < t0 + dur)
+    assert amb[lk].all() and not valid[lk].any()
+    moving = win & (truth > 2.0)
+    assert not any(outs[i]["mode"] == STANDSTILL for i in np.flatnonzero(moving))
+    assert (v[moving] > 1.0).all(), "оценка упала в ноль на ходу"
+
+
+@pytest.mark.parametrize("ramp", [1.0, 2.0])
+@pytest.mark.parametrize("kb", [1.0, 1.1, 1.3])
+def test_gradual_release_with_model_error_returns_to_wheels(kb, ramp):
+    """Юз обеих тележек −30 %, отпускание плавное (1–2 с), а таблица
+    привода тормозит слабее вагона (kb = 1,1–1,3: за 4 с срыва модель уходит
+    от вагона на 0,4–1,6 м/с). Вернувшиеся колёса оставались «в сторону
+    срыва» от ушедшей модели: срыв держался до нулей или slip_t_max, модель
+    вела скорость ещё до 5–8 с (на обучающих прогонах — до 8 с). Теперь
+    возвращение видно по производной колеса против ускорения модели."""
+    p = _tram()
+    t0 = 31.0
+
+    def rampout(i, t, z, rng):
+        if t0 <= t < t0 + DUR - ramp:
+            return 0.7 * z
+        if t0 + DUR - ramp <= t < t0 + DUR:
+            return z * (0.7 + 0.3 * (t - (t0 + DUR - ramp)) / ramp)
+        return z
+    outs, st, truth, naive = _run(p, brake_from_speed, 45.0, rampout, kb=kb)
+    ep = _arr(outs, "slip_all")
+    assert (ep[(st >= t0 + 0.3) & (st < t0 + DUR - ramp)] == -1).all()
+    assert not (ep[st >= t0 + DUR + 1.0] != 0).any(), "срыв не снят после отпускания"
+    err = np.abs(_arr(outs, "v") - truth)
+    after = (st >= t0 + DUR + 1.0) & (st < t0 + DUR + 8.0)
+    assert err[after].max() < 0.15
+
+
+@pytest.mark.parametrize("depth", [0.7, 0.55])
+@pytest.mark.parametrize("kb", [0.85, 1.0, 1.1])
+def test_steady_skid_with_model_error_is_not_a_return(kb, depth):
+    """Ровный юз −30 % и −45 % 4 с при ошибке таблицы торможения −15…+10 %:
+    колесо — доля ρ скорости вагона, его производная — ρ·a, модель —
+    быстрее или медленнее вагона. Это не возвращение колёс: срыв держится
+    всё окно. Прежде (без ρ) в глубоком юзе ровное колесо отходило от
+    ускорения модели на (1 − ρ)·|a| (0,6–0,7 м/с²), и срыв ложно снимался
+    (юз −50 % на обучающих прогонах: 0,435 → 0,579 м/с); при пороге
+    slip_ret_a = 0,5 так было уже в юзе −30 % при kb = 0,85. Юз −50 % в
+    этой синтетике — ровно порог блокировки lock_ratio (другая ветка),
+    поэтому здесь −45 %."""
+    p = _tram()
+
+    def deep(i, t, z, rng):
+        return z * depth if T_SKID <= t < T_SKID + DUR else z
+    outs, st, truth, naive = _run(p, brake_from_speed, 45.0, deep, kb=kb)
+    ep = _arr(outs, "slip_all")
+    assert (ep[(st >= T_SKID + 0.3) & (st < T_SKID + DUR)] == -1).all()
