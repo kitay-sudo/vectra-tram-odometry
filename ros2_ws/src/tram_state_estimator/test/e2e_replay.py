@@ -74,7 +74,18 @@ POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("nomap_mode", "nomap_mode"), ("keep_offset_xy", "keep_offset_xy"),
                  ("keep_offset_z", "keep_offset_z"), ("output_point", "output_point"),
                  ("antenna_master_x", "antenna_master_x"),
-                 ("antenna_rover_x", "antenna_rover_x"), ("antenna_z", "antenna_z"))
+                 ("antenna_rover_x", "antenna_rover_x"), ("antenna_z", "antenna_z"),
+                 # коррекция по GNSS после окна (26.09): имена — как у ноды
+                 ("gnss_correction", "gnss_correction"),
+                 ("gnss_sigma_rtk_m", "gnss_sigma_rtk_m"),
+                 ("gnss_sigma_sbas_m", "gnss_sigma_sbas_m"),
+                 ("gnss_sigma_fix_m", "gnss_sigma_fix_m"), ("gnss_gate", "gnss_gate"),
+                 ("gnss_jump_m", "gnss_jump_m"), ("gnss_confirm_n", "gnss_confirm_n"),
+                 ("gnss_min_interval_s", "gnss_min_interval_s"),
+                 ("gnss_max_skew_s", "gnss_max_skew_s"),
+                 ("gnss_prior_rel", "gnss_prior_rel"),
+                 ("gnss_scale_adapt", "gnss_scale_adapt"),
+                 ("gnss_stop_skip_m", "gnss_stop_skip_m"))
 # tf антенн в base_link (организаторы 25.09); независимо от body.py пакета
 MASTER_X, ROVER_X, ANTENNA_Z = -9.873, 2.563, 3.0
 

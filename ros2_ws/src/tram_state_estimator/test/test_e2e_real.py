@@ -254,9 +254,11 @@ def test_output_point_is_base_link(fx, run_map):
                           "(WP1): с ним маркер не действует, тест обязан пройти",
                    strict=True)
 def test_gnss_whole_slice_does_not_change_position(fx, run_map):
-    """GNSS идёт весь кусок (как в демо и, возможно, у жюри): после окна
-    выставки он не должен влиять ни на что."""
-    outs = E.replay(fx, use_map=True, gnss="all")
+    """GNSS идёт весь кусок (как в демо и, возможно, у жюри): при
+    gnss_correction: false после окна выставки он не влияет ни на что. С
+    коррекцией (по умолчанию с 26.09) — test_gnss_correction.py: сетка и
+    скорость те же, положение ближе к GNSS."""
+    outs = E.replay(fx, use_map=True, gnss="all", gnss_correction=False)
     m = E.metrics(outs, fx)
     assert m["v_mae"] < MAE_MAX
     assert m["p_mean3d"] < MEAN3D_MAX, m
