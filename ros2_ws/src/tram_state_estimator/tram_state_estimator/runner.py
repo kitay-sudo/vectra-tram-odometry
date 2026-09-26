@@ -295,7 +295,12 @@ class Position:
             self.map.bind(self.frame)
             self._bound = True
         if az is None and self.map is not None:
-            az = self.map.heading_at(anchor[:2])
+            # курс по карте у антенны; карта base_link лежит дальше от антенны
+            # на стоянке у конечной (карта — из точек на ходу, а антенна master
+            # на 9,87 м позади base_link): радиус поиска шире на это плечо
+            arm = abs(self.body.x("rover" if from_rover else "master")
+                      - self.body.x(self.track_point))
+            az = self.map.heading_at(anchor[:2], r_wide=30.0 + arm)
         # якорь антенны -> ведомая точка вагона (base_link у карт с 26.09):
         # на ходу — по паре master+rover у последней точки окна (кузов жёсткий,
         # base_link на отрезке антенн и на кривой), иначе перенос вдоль курса;

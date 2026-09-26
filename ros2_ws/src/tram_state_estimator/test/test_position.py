@@ -848,3 +848,21 @@ def test_real_pathgraph_is_37ucb_continuous():
         h = np.arctan2(np.diff(xy[:, 1]), np.diff(xy[:, 0]))
         assert np.degrees(np.abs(np.angle(np.exp(1j * (pg["tang"][:-1] - h))))).max() < 1.0
         assert 140.0 < pg["z"].min() and pg["z"].max() < 180.0
+
+
+def test_no_rover_standing_off_map_heading_from_map():
+    """Нет rover, вагон стоит у конечной вне карты (карта — из точек на ходу):
+    ближайшая точка карты base_link — в 38 м от антенны master (base_link на
+    9,87 м впереди неё). Курс берётся по карте в радиусе 30 м + плечо антенны,
+    выставка полная, и дальше выход идёт по карте, а не стоит в якоре."""
+    route = Route(L1=400.0)
+    keep = route.s >= 38.0
+    tm = TrackMap.from_polylines([np.c_[route.P[keep], np.full(int(keep.sum()), ALT_RAIL)]],
+                                 crs="utm", zone=37, bidirectional=False)
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+    r = Runner(_tram(), track_map=tm)
+    outs = _feed(r, 0.0, 60.0, v_of_t, route, s_of_t, rover=False)
+    assert r.pos.ready and r.pos.az == pytest.approx(math.pi / 2, abs=0.05)
+    E, N = _continuous(outs[-1], r.pos.frame)
+    e, n = route.bl(s_of_t(outs[-1]["stamp"]))
+    assert math.hypot(E - e, N - n) < 5.0

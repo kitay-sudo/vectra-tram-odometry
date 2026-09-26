@@ -39,15 +39,16 @@ base_link = master + 9,873/12,436 · (rover − master), z — по той же 
     опции: --source auto|gnss|pathgraph|hybrid, --pathgraph <каталог>, --join-r 2.0,
            --point base_link|master, --calib <tram_calibration.json>
            (meas_scale колёс; по умолчанию лист своего набора: EVAL —
-           config/eval/, JURY — config/), --n-runs 30, --e2e-mult 0.999
+           config/eval/, JURY — config/), --n-runs 30, --e2e-mult
            (поправка множителя по сквозной оценке, см. ниже)
 
 Поправка --e2e-mult выбрана ТОЛЬКО по обучающим прогонам: полная связка
-(выставка, карта, привязки, онлайн-масштаб) на 68 обучающих прогонах с GNSS,
-множитель карты × 0,997 / 0,998 / 0,999 / 1,000 / 1,001 даёт ср. 3D
-3,95 / 3,84 / 3,69 / 3,81 / 4,75 м (tools/position_eval.py, теги tr_*; карта
-по master, 25.09). Перебег курсора вреднее недобега: привязка к остановке
-ловит остановку в окне впереди хуже, чем позади.
+(выставка, карта, привязки, онлайн-масштаб) на 68 обучающих прогонах с GNSS.
+Карта по base_link, гибрид (26.09, tools/map_compare.py, эталон base_link,
+MGRS 37UCB): × 0,998 / 0,999 / 1,000 / 1,001 / 1,002 / 1,003 — ср. 3D
+4,55 / 4,07 / 3,95 / 3,76 / 3,79 / 4,30 м; по умолчанию 1,001. Карта по
+антенне master (25.09, tools/position_eval.py, теги tr_*): × 0,997 / 0,998 /
+0,999 / 1,000 / 1,001 — 3,95 / 3,84 / 3,69 / 3,81 / 4,75 м; 0,999.
 
 Множитель зависит от meas_scale листа: после смены листа карты пересобрать.
 """
@@ -78,6 +79,9 @@ PATHGRAPH = bagio.ROOT / "_incoming" / "pathgraph"
 CALIB = PKG / "config" / "tram_calibration.json"            # лист ЖЮРИ (все данные)
 CALIB_EVAL = PKG / "config" / "eval" / "tram_calibration.json"  # лист ОЦЕНКИ (train)
 PAIR_TOL = 0.05                    # с: master и rover одной эпохи
+# поправка множителя пути по сквозной оценке на train (docstring): у карт по
+# base_link (гибрид, 26.09) — 1,001, у прежних по антенне master — 0,999
+E2E_MULT = {"base_link": 1.001, "master": 0.999}
 BASE_OK = (5.0, 25.0)              # м: годная база пары
 BODY = Body()
 
@@ -107,7 +111,9 @@ def main():
                          "набора: EVAL — config/eval/tram_calibration.json, JURY — "
                          "config/tram_calibration.json")
     ap.add_argument("--n-runs", type=int, default=30)
-    ap.add_argument("--e2e-mult", type=float, default=0.999)
+    ap.add_argument("--e2e-mult", type=float, default=None,
+                    help="поправка множителя по сквозной оценке на train: по умолчанию 1.001 "
+                         "для base_link (26.09), 0.999 для master (25.09)")
     ap.add_argument("--point", default="base_link", choices=["base_link", "master"],
                     help="точка вагона, по траектории которой строится карта")
     ap.add_argument("--source", default="auto", choices=["auto", "gnss", "pathgraph", "hybrid"],
@@ -135,6 +141,8 @@ def main():
             print(f"pathgraph {a.pathgraph} не найден: карта только из GNSS (--source gnss)")
     if a.source != "gnss" and a.point != "base_link":
         sys.exit("pathgraph — ось пути точки base_link: --point base_link")
+    if a.e2e_mult is None:
+        a.e2e_mult = E2E_MULT[a.point]
     ms = Params.from_dict(json.loads(bagio.Path(a.calib).read_text(encoding="utf-8"))
                           ["params"]).meas_scale
     tracks = {b: track(bagio.load(b), a.point) for b in ids}
