@@ -54,7 +54,7 @@ def position(raw, fixture):
     j = np.clip(np.searchsorted(T, t_ref), 1, len(T) - 1)
     j = np.where(np.abs(T[j - 1] - t_ref) < np.abs(T[j] - t_ref), j - 1, j)
     ok = np.abs(T[j] - t_ref) <= 0.05
-    # до выставки нода публикует (s, 0, 0); после — y и z ненулевые
+    # /result/position публикуется только после выставки (pos_valid); признак выставки — y и z ненулевые
     aligned = bool(np.any(X[-20:, 1] != 0.0) or np.any(X[-20:, 2] != 0.0))
     if not ok.any():
         return {"aligned": aligned, "pairs": 0}
@@ -144,7 +144,7 @@ def main():
             ("трассировки при останове (справочно, WP3)", str(a.trace)),
             ("CPU ноды, % ядра", str(R.get("node_process", {}).get("cpu_pct_1core"))),
             ("RSS ноды, МБ (первый/последний/макс)", str(R.get("node_process", {}).get("rss_mb_first_last_max"))),
-            ("точность по GNSS из bag (санити)",
+            ("точность по GNSS из bag (санити; положение — против АНТЕННЫ master: ~10 м — плечо до base_link, не ошибка)",
              json.dumps({k: v for k, v in R.get("accuracy_sanity_vs_bag_gnss", {}).items() if k != "note"},
                         ensure_ascii=False))]
     if pos is not None and not a.need_position:
