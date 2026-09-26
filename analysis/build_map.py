@@ -10,8 +10,8 @@ base_link = master + 9,873/12,436 · (rover − master), z — по той же 
 движения (скорость GNSS > 1 м/с), z − 3,0. Курс точки — касательная самой
 траектории base_link (±1 с). --point master — прежняя карта по антенне.
 
-Источник (--source):
-  gnss      (по умолчанию) точки траектории на ходу (скорость > 1 м/с)
+Источник (--source; по умолчанию auto — hybrid, если есть pathgraph, иначе gnss):
+  gnss      точки траектории на ходу (скорость > 1 м/с)
             агрегируются по клеткам 1 м и секторам курса 15°: средние широта,
             долгота, высота, истинный курс; вес — число разных прогонов,
             прошедших через клетку в этом направлении;
@@ -36,7 +36,7 @@ base_link = master + 9,873/12,436 · (rover − master), z — по той же 
     python3 analysis/build_map.py eval   # -> config/eval/track_map.npz
     python3 analysis/build_map.py jury   # -> config/track_map.npz
     python3 analysis/build_map.py --set train --split tools/split.json --out F
-    опции: --source gnss|pathgraph|hybrid, --pathgraph <каталог>, --join-r 2.0,
+    опции: --source auto|gnss|pathgraph|hybrid, --pathgraph <каталог>, --join-r 2.0,
            --point base_link|master, --calib <tram_calibration.json>
            (meas_scale колёс; по умолчанию лист своего набора: EVAL —
            config/eval/, JURY — config/), --n-runs 30, --e2e-mult 0.999
@@ -110,7 +110,9 @@ def main():
     ap.add_argument("--e2e-mult", type=float, default=0.999)
     ap.add_argument("--point", default="base_link", choices=["base_link", "master"],
                     help="точка вагона, по траектории которой строится карта")
-    ap.add_argument("--source", default="gnss", choices=["gnss", "pathgraph", "hybrid"])
+    ap.add_argument("--source", default="auto", choices=["auto", "gnss", "pathgraph", "hybrid"],
+                    help="auto (по умолчанию) — hybrid, если есть pathgraph (--pathgraph), иначе "
+                         "gnss (выбор на train, docs/POSITION_FRAME.md §3)")
     ap.add_argument("--pathgraph", default=str(PATHGRAPH),
                     help="каталог pathgraph организаторов (или файл, или список через «;»)")
     ap.add_argument("--join-r", type=float, default=2.0,
@@ -124,6 +126,13 @@ def main():
         # карта ОЦЕНКИ — с масштабом колёс листа ОЦЕНКИ (только train), иначе
         # множитель карты подогнан к масштабу листа жюри (утечка через масштаб)
         a.calib = str(CALIB if which == "all" or not CALIB_EVAL.exists() else CALIB_EVAL)
+    if a.source == "auto":
+        from tram_state_estimator.track_map import _pathgraph_files
+        have = all(f.exists() for f in _pathgraph_files(a.pathgraph)) and \
+            bool(_pathgraph_files(a.pathgraph))
+        a.source = "hybrid" if have and a.point == "base_link" else "gnss"
+        if a.source == "gnss":
+            print(f"pathgraph {a.pathgraph} не найден: карта только из GNSS (--source gnss)")
     if a.source != "gnss" and a.point != "base_link":
         sys.exit("pathgraph — ось пути точки base_link: --point base_link")
     ms = Params.from_dict(json.loads(bagio.Path(a.calib).read_text(encoding="utf-8"))

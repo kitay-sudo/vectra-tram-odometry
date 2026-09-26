@@ -164,6 +164,9 @@ def map_key(sheet=None):
         f = ROOT / rel
         h.update(rel.encode())
         h.update(f.read_bytes() if f.exists() else b"-")
+    for f in sorted((ROOT / "_incoming" / "pathgraph").glob("*.json")):   # гибридная карта
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
     if sheet is not None and build_map_cli() == "argparse":
         h.update(json.dumps(sheet["core"], sort_keys=True).encode())
     return h.hexdigest()[:8]
@@ -285,6 +288,8 @@ def run_task(task):
     p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
     runners, unused = _runners(cfg, p, task.get("naive", True))
     evs = R.events(a, task.get("gnss", cfg["gnss"]))
+    if cfg.get("drop_antenna"):             # выставка без одной антенны (WP14)
+        evs = [e for e in evs if not (e[1] == 2 and e[2] == cfg["drop_antenna"])]
     outs = R.replay(evs, runners, cfg["sheet"]["node"])
     res = dict(task=task["id"], bag=bag, vehicle=bag.split("_")[0], inject=None, t_first=_t_first(a),
                wall_s=0.0, n_events=len(evs), node_params_unused=unused,
@@ -653,7 +658,7 @@ def evaluate(args, log):
                gnss=args.gnss, frame=args.frame, runner_frame=args.runner_frame,
                runner_grid=args.runner_grid, judge_grid=args.judge_grid,
                quick_s=QUICK_S if args.quick else 0.0, ref_point=args.ref_point,
-               pathgraph=pg_spec)
+               pathgraph=pg_spec, drop_antenna=args.drop_antenna)
     base_p = R.make_params(sheet, core_ov)
     tasks = []
     for b in ids:
@@ -725,7 +730,7 @@ def evaluate(args, log):
         gnss=args.gnss, frame=args.frame, frame_ru=M.FRAMES_RU[args.frame],
         runner_frame=args.runner_frame, runner_grid=args.runner_grid, judge_grid=args.judge_grid,
         boundary_grid=args.judge_grid or M.BOUNDARY_GRID, quick=args.quick,
-        ref_point=args.ref_point,
+        ref_point=args.ref_point, drop_antenna=args.drop_antenna,
         pathgraph=(dict(src=Path(pg_spec).relative_to(ROOT).as_posix()
                         if Path(pg_spec).is_relative_to(ROOT) else pg_spec,
                         paths=len(pg.paths), length_m=pg.length) if pg is not None else None),
@@ -835,6 +840,9 @@ def main():
     ap.add_argument("--ref-point", default="base_link", choices=M.REF_POINTS,
                     help="точка эталона положения: base_link (по tf антенн, как у судьи) | "
                          "master (антенна, прежний эталон — для сравнения)")
+    ap.add_argument("--drop-antenna", default="", choices=("", "master", "rover"),
+                    help="не подавать в связку GNSS этой антенны (выставка по одной антенне, "
+                         "WP14); эталон по-прежнему по обеим")
     ap.add_argument("--pathgraph", default="auto",
                     help="pathgraph организаторов для поперечной ошибки и пути вдоль него: "
                          "auto — _incoming/pathgraph, если есть; none; путь (каталог, файл, «;»)")
