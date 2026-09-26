@@ -40,7 +40,9 @@
   window.TV_PORT_CLAIM = portClaim; window.TV_PORT_APPLY = applyPort; window.TV_EST_PORT = PORT;
 
   // ---------------------------------------------------------------- движок
-  const UI = { eng: null, play: true, speed: +(qs.get('sbsp') || store.get('tv.sbsp') || 4), win: 60, zoom: 'near', visible: true, keys: {} };
+  // скорость показа из ссылки или памяти: только 1, 4 или 10 (иначе ?sbsp=abc давал NaN и песочница вставала)
+  const sbsp0 = +(qs.get('sbsp') || store.get('tv.sbsp') || 4);
+  const UI = { eng: null, play: true, speed: [1, 4, 10].includes(sbsp0) ? sbsp0 : 4, win: 60, zoom: 'near', visible: true, keys: {} };
   function load(key) {
     UI.eng = new SB.Engine({ sheet: SHEET, track: window.TV_TRACK, preset: key, seed: +(qs.get('seed') || 7) });
     UI.key = key; store.set('tv.preset', key);
@@ -395,7 +397,7 @@
   const FAULT_RU = { zero: 'показывает 0', stuck: 'залип', dropout: 'нет сообщений', noise: 'шум ×5', outliers: 'выбросы ×3' };
 
   // ---------------------------------------------------------------- панели
-  const BOG_COL = { ok: C_OK, agree: C_OK, spin: C_NAIVE, skid: C_NAIVE, jump: C_NAIVE, forced: C_NAIVE, held: C_NAIVE, gate: C_NAIVE, stuck: C_BAD, dead: C_BAD, stale: C_BAD, frozen: C_BAD, wait: '' };
+  const BOG_COL = { ok: C_OK, agree: C_OK, spin: C_NAIVE, skid: C_NAIVE, jump: C_NAIVE, forced: C_NAIVE, held: C_NAIVE, gate: C_NAIVE, slipall: C_NAIVE, stuck: C_BAD, dead: C_BAD, stale: C_BAD, frozen: C_BAD, wait: '' };
   function thinkHTML() {
     const E = UI.eng, x = SB.explain(E);
     const o = E.last ? E.last.o : null;
@@ -414,6 +416,7 @@
       <div class="rv-flags">
         ${flag(o && o.valid, o && o.valid ? 'достоверно' : 'недостоверно', o && o.valid ? C_OK : C_BAD, 'valid: есть принятые показания колёс за последнюю секунду')}
         ${flag(o && o.slip, 'срыв', C_WET, 'slip: признак срыва сцепления')}
+        ${flag(o && o.slip_all, 'срыв обеих', C_WET, 'slip_all: обе тележки сорвались разом (юз или буксование) — скорость ведёт модель')}
         ${flag(o && o.ambiguous, 'стоим или скользим?', C_WET, 'ambiguous: все колёса в срыве при торможении — по ним не различить остановку и юз')}
         ${flag(o && o.frozen, 'залипли обе', C_BAD, 'frozen: показания обеих тележек застыли при команде тяги или тормоза')}
         ${flag(o && o.wheels_stale, 'колёса молчат', C_BAD, 'wheels_stale: нет показаний тележек дольше 1 с — только модель')}

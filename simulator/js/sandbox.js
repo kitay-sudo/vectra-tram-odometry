@@ -317,7 +317,7 @@ const TramSandbox = (() => {
       if (o.valid && Math.abs(e) > Math.max(0.5, 2 * o.sigma_v)) S.overconf++;
       S.muMin = Math.min(S.muMin, o.mu); S.svMax = Math.max(S.svMax, o.sigma_v);
       if (row.w0 === 1 || row.w1 === 1) S.agree++;
-      for (let b = 0; b < 2; b++) { const w = row['w' + b]; if (w === 9 || w === 10) S.exc[b]++; if ((w >= 2 && w <= 7) || w === 13) { S.rej[b]++; if (row.win) S.winRej[b]++; } else if (w <= 1) S.acc[b]++; if (row.win && w !== 12) S.winSeen[b]++; }
+      for (let b = 0; b < 2; b++) { const w = row['w' + b]; if (w === 9 || w === 10) S.exc[b]++; if ((w >= 2 && w <= 7) || w === 13 || w === 14) { S.rej[b]++; if (row.win) S.winRej[b]++; } else if (w <= 1) S.acc[b]++; if (row.win && w !== 12) S.winSeen[b]++; }
       if (row.win) { const W = S.win; W.n++; W.ae += Math.abs(e); W.aeN += Math.abs(eN); W.maxE = Math.max(W.maxE, Math.abs(e)); W.maxEN = Math.max(W.maxEN, Math.abs(eN)); W.cov += Math.abs(e) <= 2 * o.sigma_v ? 1 : 0; }
     }
     route0() { return this.track.stops[Math.min(this.preset.route[0], this.track.stops.length - 1)]; }
@@ -340,7 +340,7 @@ const TramSandbox = (() => {
   }
   Engine.KEYS = ['t', 'vt', 'st', 'v', 'sv', 's', 'ss', 'mode', 'fl', 'nv', 'ns', 'fr', 'rr', 'h', 'wf', 'wr', 'mu', 'kt', 'kb', 'd', 'w0', 'w1', 'a', 'muf', 'mur', 'm', 'f0', 'f1', 'dr', 'g', 'wx', 'gn', 'win'];
   // решение по тележке: 0 ok … 8 gate — из ядра (est.js diag), 9–12 — связка/исправность
-  Engine.WHY = ['ok', 'agree', 'spin', 'skid', 'jump', 'forced', 'held', 'gate', 'x', 'stuck', 'dead', 'stale', 'wait', 'frozen'];
+  Engine.WHY = ['ok', 'agree', 'spin', 'skid', 'jump', 'forced', 'held', 'gate', 'x', 'stuck', 'dead', 'stale', 'wait', 'frozen', 'slipall'];
   Engine.FAULTS = ['zero', 'stuck', 'dropout', 'noise', 'outliers'];
   Engine.WX = ['dry', 'rain', 'leaves', 'ice'];
 
@@ -361,6 +361,7 @@ const TramSandbox = (() => {
     stale: ['молчит', 'сообщений нет дольше 1 с'],
     wait: ['ждёт', 'нового показания ещё нет (датчик шлёт ~9 раз в секунду)'],
     frozen: ['не принята', 'обе тележки залипли разом — показания не принимаются, скорость по ручке'],
+    slipall: ['отброшена', 'обе тележки сорвались разом (скачок показаний в одну сторону) — показание в сторону срыва говорит лишь о границе скорости вагона, скорость ведёт модель'],
   };
   const f1 = x => (x < 0 ? '−' : '') + Math.abs(x).toFixed(1).replace('.', ',');
   const f2 = x => (x < 0 ? '−' : '') + Math.abs(x).toFixed(2).replace('.', ',');
@@ -382,13 +383,14 @@ const TramSandbox = (() => {
     });
     const name = ['передняя', 'задняя'], Name = ['Передняя', 'Задняя'];
     let head;
-    const rej = bog.map(x => ['spin', 'skid', 'jump', 'forced', 'held', 'gate'].includes(x.code));
+    const rej = bog.map(x => ['spin', 'skid', 'jump', 'forced', 'held', 'gate', 'slipall'].includes(x.code));
     const out = bog.map(x => ['stuck', 'dead', 'stale'].includes(x.code));
     const okB = bog.map(x => ['ok', 'agree'].includes(x.code));
     const Gen = ['передней', 'задней'];
     const verb = b => out[b] ? (bog[b].code === 'stale' ? 'молчит' : 'исключена') : 'отброшена';
     if (o.frozen) head = 'Обе тележки залипли разом: при команде тяги или тормоза их показания не меняются. Модель их не принимает и ведёт скорость по ручке и физике вагона; полоса неопределённости растёт.';
     else if (o.wheels_stale) head = 'Показаний колёс нет дольше 1 с: модель ведёт скорость только по ручке и физике вагона (разомкнутый режим). Полоса ±2σ растёт, пока данные не вернутся.';
+    else if (o.slip_all) head = `Обе тележки сорвались разом (${o.slip_all > 0 ? 'буксование' : 'юз'}): показания обеих скакнули в одну сторону, и согласие тележек между собой здесь ничего не доказывает. Скорость ведёт модель — ручка и физика вагона; показания принимаются снова, когда колёса вернутся к вагону (скачком, плавно или ${f1(p.slip_ok_s ?? 1)} с подряд согласны с моделью), но не дольше ${Math.round(p.slip_t_max ?? 12)} с.`;
     else if (o.ambiguous) head = 'Стоим или скользим? Вагон только что ехал, а колёса разом показывают почти ноль — так выглядит и остановка, и юз с заблокированными колёсами (и отказ обоих датчиков). Модель не верит нулям: держит скорость по ручке с пониженным сцеплением и широкой полосой ±2σ, пока колёса снова не покатятся.';
     else if (rej[0] && rej[1] && bog[0].code === bog[1].code) head = `Обе тележки отброшены: ${bog[0].why}. Скорость идёт по модели${o.slip ? ' с пониженным сцеплением' : ''}.`;
     else if ((rej[0] || out[0]) && (rej[1] || out[1])) head = `Ни одной тележке сейчас верить нельзя: передняя ${verb(0)} (${bog[0].why.split(';')[0]}), задняя ${verb(1)} (${bog[1].why.split(';')[0]}). Скорость — только по модели: ручка и физика вагона${o.slip ? ' с пониженным сцеплением' : ''}.`;
@@ -415,7 +417,7 @@ const TramSandbox = (() => {
     const FR = { zero: 'датчик показывает 0', stuck: 'датчик залип', dropout: 'сообщений нет', noise: 'датчик шумит ×5', outliers: 'выбросы ×3' };
     for (let b = 0; b < 2; b++) truth.push(`${Name[b]}: ${slipTxt(b)}${c.faults[b] ? '; ' + FR[c.faults[b].kind] : ''}${c.drop ? '; сообщения пропали' : ''}.`);
     const wxTxt = c.weatherB[0] === c.weatherB[1] ? P.WEATHER[c.weatherB[0]].ru : `под передней — ${P.WEATHER[c.weatherB[0]].ru}, под задней — ${P.WEATHER[c.weatherB[1]].ru}`;
-    truth.push(`Рельс: ${wxTxt} (μ пика ${f2(pl.mu_peak[0])} / ${f2(pl.mu_peak[1])}); масса ${Math.round(c.mass * p.M_nom / 1000)} т; уклон ${f1(1000 * Math.tan(pl.grade))} ‰; ручка ${pl.notch > 0 ? '+' : ''}${pl.notch}.`);
+    truth.push(`Рельс: ${wxTxt} (μ пика ${f2(pl.mu_peak[0])} / ${f2(pl.mu_peak[1])}); масса ×${f2(c.mass)} от номинала листа; уклон ${f1(1000 * Math.tan(pl.grade))} ‰; ручка ${pl.notch > 0 ? '+' : ''}${pl.notch}.`);
     return { head, lines, bogies: bog, truth, mode, valid: o.valid, amb: o.ambiguous };
   }
 
