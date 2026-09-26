@@ -31,15 +31,20 @@
 #                   @SHARE@ = share пакета, напр. --params-file @SHARE@/config/tram.yaml)
 #   --build         собрать пакеты из /repo/ros2_ws/src во временный ws
 #                   (иначе используется сборка образа /ws, если исходники совпадают)
-# Переменные: IMAGE (vectra/tram:dev), DATA_DIR (<repo>/data).
+# Переменные: IMAGE (vectra/tram:compose, как у ros_smoke.sh и measure_realtime.sh;
+#   если образа нет — собирается из docker/Dockerfile), DATA_DIR (<repo>/data).
 # Результат: out/ros_e2e/<tag>/{summary.json,raw.npz,node.log,bag.log,probe.log,run.log}
 # (без set -u: setup.bash ROS обращается к неустановленным переменным)
 
 if [ ! -d /opt/ros/humble ]; then
   # ---------------- хост: запускаем себя внутри контейнера ----------------
   here="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
-  IMAGE="${IMAGE:-vectra/tram:dev}"
+  IMAGE="${IMAGE:-vectra/tram:compose}"
   DATA_DIR="${DATA_DIR:-$here/data}"
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    echo "[e2e] образа $IMAGE нет — собираю (docker build -f docker/Dockerfile)"
+    docker build -f "$here/docker/Dockerfile" -t "$IMAGE" "$here" || exit 1
+  fi
   tag="e2e"; mem=""; cpus=""
   args=("$@")
   for ((i = 0; i < ${#args[@]}; i++)); do

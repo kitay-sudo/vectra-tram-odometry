@@ -12,9 +12,12 @@
      проверка «GNSS весь прогон» на 5 прогонах (первые 5 мин);
   4. считает метрики ТЗ против GNSS: скорость (master — основной эталон,
      rover — дополнительный) RMSE/MAE/смещение, по фазам, ±2σ, ложные стоянки;
-     положение в системе судьи MGRS (x — восток, y — север, z — высота),
-     только опубликованное (pos_valid): 3D, вдоль/поперёк пути, дрейф % по
-     концу прогона; квадраты 100 км и матрица соглашений на границе;
+     положение точки base_link (по tf антенн; --ref-point master — прежний
+     эталон) в системе судьи MGRS от угла 37UCB непрерывно (x — восток,
+     y — север, z — высота уровня рельса), только опубликованное (pos_valid):
+     3D, вдоль/поперёк пути, дрейф % по концу прогона, шаги без положения
+     после выставки; поперечная ошибка и путь вдоль карты организаторов
+     pathgraph (если есть _incoming/pathgraph); квадраты 100 км;
   5. рядом — причинная база «только колесо» на той же машинерии карты;
   6. инъекции аномалий (tools/inject.py) в реальные отложенные прогоны:
      до / во время / после, восстановление, флаги;
@@ -49,6 +52,7 @@ sys.path.insert(0, str(ROOT / "analysis"))
 import bagio                    # noqa: E402
 import eval_geo as G            # noqa: E402
 import eval_metrics as M        # noqa: E402
+import eval_pathgraph as PGM    # noqa: E402
 import eval_replay as R         # noqa: E402
 import inject as I              # noqa: E402
 
@@ -160,6 +164,9 @@ def map_key(sheet=None):
         f = ROOT / rel
         h.update(rel.encode())
         h.update(f.read_bytes() if f.exists() else b"-")
+    for f in sorted((ROOT / "_incoming" / "pathgraph").glob("*.json")):   # гибридная карта
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
     if sheet is not None and build_map_cli() == "argparse":
         h.update(json.dumps(sheet["core"], sort_keys=True).encode())
     return h.hexdigest()[:8]
@@ -281,6 +288,8 @@ def run_task(task):
     p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
     runners, unused = _runners(cfg, p, task.get("naive", True))
     evs = R.events(a, task.get("gnss", cfg["gnss"]))
+    if cfg.get("drop_antenna"):             # выставка без одной антенны (WP14)
+        evs = [e for e in evs if not (e[1] == 2 and e[2] == cfg["drop_antenna"])]
     outs = R.replay(evs, runners, cfg["sheet"]["node"])
     res = dict(task=task["id"], bag=bag, vehicle=bag.split("_")[0], inject=None, t_first=_t_first(a),
                wall_s=0.0, n_events=len(evs), node_params_unused=unused,
@@ -379,6 +388,8 @@ def _score(res, task, cfg, p, a, runners, outs):
             continue
         frame = M.Frame(cfg["frame"], origin)
         O["GEO"], e["runner_frame"] = _geo(O, r, a, cfg, frame.zone)
+        pg = PGM.load(cfg.get("pathgraph")) if cfg["frame"] in ("mgrs", "utm") else None
+        rpt = cfg.get("ref_point", "base_link")
         naive = name == "naive"
         if naive:
             O["has_mode"] = False         # ложная стоянка базы: v < v_standstill (как core_metrics)
@@ -387,7 +398,8 @@ def _score(res, task, cfg, p, a, runners, outs):
         row.update({f"rover_{k}": v for k, v in row_r.items()
                     if k in ("v_pairs", "v_rmse", "v_mae", "v_bias", "v_max")})
         rowp, s_p = M.score_position(O, a, frame, cfg["judge_grid"], full=task.get("full", True),
-                                     boundary_grid=cfg["judge_grid"] or M.BOUNDARY_GRID)
+                                     boundary_grid=cfg["judge_grid"] or M.BOUNDARY_GRID,
+                                     ref_point=rpt, pg=pg)
         row.update(rowp)
         row["n_out"] = int(len(O["T"]))
         row["rate_hz"] = float(len(O["T"]) / max(O["T"][-1] - O["T"][0], 1e-9))
@@ -403,7 +415,7 @@ def _score(res, task, cfg, p, a, runners, outs):
             for fr in SENS_FRAMES:
                 if fr == cfg["frame"]:
                     continue
-                rp, _ = M.score_position(O, a, M.Frame(fr, origin), full=False)
+                rp, _ = M.score_position(O, a, M.Frame(fr, origin), full=False, ref_point=rpt)
                 sens[fr] = {k: rp.get(k) for k in ("p3d_mean", "p3d_max", "p3d_end")}
             e["sens"] = sens
         e["row"] = row
@@ -638,10 +650,15 @@ def evaluate(args, log):
     sheet["node"].update(node_ov)                  # --set mgrs_grid=37UDB и т. п. — параметры ноды
     map_path, map_label, map_leak = resolve_map(args.map, cache, train, workers, args.rebuild_map, log,
                                                 sheet)
+    pg_spec = PGM.default_spec() if args.pathgraph == "auto" else args.pathgraph
+    pg = PGM.load(pg_spec)
+    if pg is None:
+        pg_spec = "none"
     cfg = dict(sheet=sheet, overrides=core_ov, map_path=str(map_path) if map_path else None,
                gnss=args.gnss, frame=args.frame, runner_frame=args.runner_frame,
                runner_grid=args.runner_grid, judge_grid=args.judge_grid,
-               quick_s=QUICK_S if args.quick else 0.0)
+               quick_s=QUICK_S if args.quick else 0.0, ref_point=args.ref_point,
+               pathgraph=pg_spec, drop_antenna=args.drop_antenna)
     base_p = R.make_params(sheet, core_ov)
     tasks = []
     for b in ids:
@@ -713,6 +730,10 @@ def evaluate(args, log):
         gnss=args.gnss, frame=args.frame, frame_ru=M.FRAMES_RU[args.frame],
         runner_frame=args.runner_frame, runner_grid=args.runner_grid, judge_grid=args.judge_grid,
         boundary_grid=args.judge_grid or M.BOUNDARY_GRID, quick=args.quick,
+        ref_point=args.ref_point, drop_antenna=args.drop_antenna,
+        pathgraph=(dict(src=Path(pg_spec).relative_to(ROOT).as_posix()
+                        if Path(pg_spec).is_relative_to(ROOT) else pg_spec,
+                        paths=len(pg.paths), length_m=pg.length) if pg is not None else None),
         runs=ids, kinds=kinds, split=SPLIT.relative_to(ROOT).as_posix(), pkg_src_sha=src_digest(),
         tol_s=M.TOL, v_stand_gnss=M.V_STAND_GNSS, v_false_ss=M.V_FALSE_SS,
         params=dict(dt=base_p.dt, q_v=base_p.q_v, c_creep=base_p.c_creep,
@@ -784,6 +805,14 @@ def evaluate(args, log):
     return dict(summary=report, runs=runs, inject=inj, kinds=kinds), timing, base, res
 
 
+def _shown(path):
+    """Путь для журнала: от корня дерева, а вне дерева (--out снаружи) —
+    как есть. Прежде relative_to падал на последней строке журнала, уже
+    после записи JSON, и timing.json оставался без wall_with_doc_s."""
+    path = Path(path)
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -812,9 +841,19 @@ def main():
                     help="как ЧИТАТЬ выход Runner'а в MGRS (\"\" — перенос по точке, 37UDB — "
                          "непрерывно от квадрата); по умолчанию — параметр ноды mgrs_grid. Runner "
                          "этот ключ не настраивает: чтобы Runner выдавал 37UDB, --set mgrs_grid=37UDB")
-    ap.add_argument("--judge-grid", default="",
-                    help="соглашение судьи на границе квадратов: \"\" — перенос по точке, "
-                         "или код квадрата (37UDB) — непрерывно от него")
+    ap.add_argument("--judge-grid", default=M.JUDGE_GRID,
+                    help="соглашение судьи на границе квадратов: код квадрата — непрерывно от "
+                         "него (по умолчанию 37UCB, как pathgraph организаторов), \"\" — "
+                         "перенос по точке")
+    ap.add_argument("--ref-point", default="base_link", choices=M.REF_POINTS,
+                    help="точка эталона положения: base_link (по tf антенн, как у судьи) | "
+                         "master (антенна, прежний эталон — для сравнения)")
+    ap.add_argument("--drop-antenna", default="", choices=("", "master", "rover"),
+                    help="не подавать в связку GNSS этой антенны (выставка по одной антенне, "
+                         "WP14); эталон по-прежнему по обеим")
+    ap.add_argument("--pathgraph", default="auto",
+                    help="pathgraph организаторов для поперечной ошибки и пути вдоль него: "
+                         "auto — _incoming/pathgraph, если есть; none; путь (каталог, файл, «;»)")
     ap.add_argument("--runs", default="", help="прогоны через запятую (по умолчанию holdout_scored)")
     ap.add_argument("--inject-runs", default=",".join(INJECT_RUNS))
     ap.add_argument("--inject-kinds", default="", help="виды инъекций (по умолчанию все)")
@@ -877,7 +916,7 @@ def main():
             pics = eval_report.existing_pics(ROOT, eval_report.img_dir(ROOT, args))
         (ROOT / args.doc).write_text(eval_report.render(result, timing, args, pics, ROOT),
                                      encoding="utf-8")
-        log(f"пересобран {args.doc} из {out.relative_to(ROOT)}")
+        log(f"пересобран {args.doc} из {_shown(out)}")
         return
     result, timing, base, res = evaluate(args, log)
     files = {"summary.json": dumps(result["summary"]), "runs.json": dumps(result["runs"]),
@@ -914,7 +953,7 @@ def main():
                      inject=json.loads(files["inject.json"]), kinds=result["kinds"])
         eval_report.write(shown, json.loads(dumps(timing)), base, res, args, ROOT, out)
         log(f"записано {args.doc} и {eval_report.img_dir(ROOT, args).relative_to(ROOT).as_posix()}/eval_*.png")
-    log(f"готово за {time.perf_counter() - t_start:.0f} с; JSON в {out.relative_to(ROOT)}")
+    log(f"готово за {time.perf_counter() - t_start:.0f} с; JSON в {_shown(out)}")
     timing["wall_with_doc_s"] = round(time.perf_counter() - t_start, 1)
     (out / "timing.json").write_text(dumps(timing), encoding="utf-8")
     if check is not None and not check["identical"]:

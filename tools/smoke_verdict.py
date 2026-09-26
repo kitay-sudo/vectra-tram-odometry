@@ -7,12 +7,16 @@
 Критерии (TODO WP9): >= 19 Гц по меткам и стенным часам; in2out p99 < 100 мс в
 установившемся режиме; >= 95 % узлов сетки; /result/position — не меньше 95 %
 узлов сетки и не больше, чем /result/velocity (до якоря нода положение не
-публикует); 0 NaN; frame_id map/base_link; нода жива; останов по SIGINT. С
---fixture — положение против GNSS фикстуры в системе выхода (refgeo): ошибка
-без вычета скачка на границе 100-км квадратов MGRS, как у судьи (развёрнутая —
-справочно); в системе "mgrs" выход и эталон должны быть в одном квадрате
-(фикстура целиком в 37UCB). С --need-position положение обязательно: выставка
-прошла и средняя 3D < 10 м (сценарий «GNSS только первые секунды»).
+публикует); 0 NaN; frame_id map/base_link; нода жива; останов по SIGINT;
+положение в системе судьи — MGRS от угла 37UCB непрерывно, точка base_link:
+x 98 800…103 700 м (линия E 398,8…403,7 км), z 140…180 м (уровень рельса). С
+--fixture — положение против эталона base_link по GNSS фикстуры (пары
+master+rover, tf антенн; e2e_replay.reference) в системе выхода (refgeo):
+ошибка без вычета скачка на границе 100-км квадратов MGRS, как у судьи
+(развёрнутая — справочно); в системе "mgrs" выход и эталон должны быть в
+одном квадрате (фикстура целиком в 37UCB). С --need-position положение
+обязательно: выставка прошла и средняя 3D < 10 м (сценарий «GNSS только
+первые секунды»).
 
 С --bag-meta (metadata.yaml bag, проигранного целиком) проверяется и обвязка:
 получила ли проба все входы bag. Если проба потеряла начало bag (гонка
@@ -32,22 +36,29 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, "ros2_ws", "src", "tram_state_estimator", "test"))
 
 
+X_RANGE = (98800.0, 103700.0)   # м: MGRS от 37UCB, линия E 398,8…403,7 км
+Z_RANGE = (140.0, 180.0)         # м: высота уровня рельса на линии (pathgraph 144,8…173,6)
+
+
 def position(raw, fixture):
+    import e2e_replay
     import refgeo
     odo = np.load(raw)["odo"]
-    m = np.load(fixture)["mfix"]
+    fx = e2e_replay.load_fixture(fixture)
+    m = fx["mfix"]
     if len(odo) < 2:
         return {"aligned": False, "pairs": 0}
     o = odo[np.argsort(odo[:, 1])]
     T, X = o[:, 1], o[:, 2:5]
-    j = np.clip(np.searchsorted(T, m[:, 1]), 1, len(T) - 1)
-    j = np.where(np.abs(T[j - 1] - m[:, 1]) < np.abs(T[j] - m[:, 1]), j - 1, j)
-    ok = np.abs(T[j] - m[:, 1]) <= 0.05
-    # до выставки нода публикует (s, 0, 0); после — y и z ненулевые
+    t_ref, fr_all = e2e_replay.reference(fx)            # base_link по парам антенн
+    j = np.clip(np.searchsorted(T, t_ref), 1, len(T) - 1)
+    j = np.where(np.abs(T[j - 1] - t_ref) < np.abs(T[j] - t_ref), j - 1, j)
+    ok = np.abs(T[j] - t_ref) <= 0.05
+    # /result/position публикуется только после выставки (pos_valid); признак выставки — y и z ненулевые
     aligned = bool(np.any(X[-20:, 1] != 0.0) or np.any(X[-20:, 2] != 0.0))
     if not ok.any():
         return {"aligned": aligned, "pairs": 0}
-    fr = refgeo.frames(m[ok, 2], m[ok, 3], m[ok, 4], origin=tuple(m[0, 2:5]))
+    fr = {k: v[ok] for k, v in fr_all.items()}
     frame, _ = refgeo.detect(X[j[ok]], fr)
     d3, d3u, mism = refgeo.errors(X[j[ok]], fr[frame], frame)
     return {"aligned": aligned, "frame": frame, "pairs": int(ok.sum()),
@@ -109,6 +120,14 @@ def main():
         ("нода жива до конца bag", "да" if a.alive else "НЕТ", bool(a.alive)),
         ("останов по SIGINT за 15 с", "да" if a.shut else "НЕТ", bool(a.shut)),
     ]
+    if a.raw and os.path.exists(a.raw):
+        odo = np.load(a.raw)["odo"]
+        if len(odo):
+            x, z = odo[:, 2], odo[:, 4]
+            rows.append(("положение: MGRS от 37UCB, base_link (x 98 800…103 700, z 140…180 м)",
+                         f"x {x.min():.1f}…{x.max():.1f}, z {z.min():.1f}…{z.max():.1f}",
+                         bool(X_RANGE[0] <= x.min() and x.max() <= X_RANGE[1]
+                              and Z_RANGE[0] <= z.min() and z.max() <= Z_RANGE[1])))
     pos = None
     if a.fixture and a.raw:
         pos = position(a.raw, a.fixture)
@@ -125,7 +144,7 @@ def main():
             ("трассировки при останове (справочно, WP3)", str(a.trace)),
             ("CPU ноды, % ядра", str(R.get("node_process", {}).get("cpu_pct_1core"))),
             ("RSS ноды, МБ (первый/последний/макс)", str(R.get("node_process", {}).get("rss_mb_first_last_max"))),
-            ("точность по GNSS из bag (санити)",
+            ("точность по GNSS из bag (санити; положение — против АНТЕННЫ master: ~10 м — плечо до base_link, не ошибка)",
              json.dumps({k: v for k, v in R.get("accuracy_sanity_vs_bag_gnss", {}).items() if k != "note"},
                         ensure_ascii=False))]
     if pos is not None and not a.need_position:

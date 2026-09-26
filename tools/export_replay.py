@@ -11,7 +11,10 @@ ros2_ws/src/tram_state_estimator, лист параметров вагона, к
     привязка к остановкам, система выхода — код пакета без копий), но на
     месте ядра — среднее свежих (не старше wheel_timeout) показаний тележек в
     м/с, путь — интеграл на сетке (как NaiveCore в tools/eval_replay.py);
-  * эталон GNSS master (скорость |vel|, положение fix), rover vel — справочно;
+  * эталон: скорость — |vel| GNSS master (rover vel — справочно); положение —
+    та же точка вагона, что на выходе связки: base_link по паре антенн
+    (tools/eval_metrics.reference, после потока «кадр») или fix master (код,
+    где выход — антенна master);
   * входы (тележки, км/ч; ручка) и диагностика оценщика: поля
     EstimatorStatus и состояние каждой тележки (принята / нет новых данных /
     отвергнута / исключена / поток прерван).
@@ -30,7 +33,8 @@ tram.yaml, tram_calibration.json}, а пока его нет — config/tram_cal
 
 Система координат на экране: система выхода модели (MGRS/UTM, ENU или
 equirect — берётся из настроек Runner и проверяется по данным), сдвинутая в
-первую точку GNSS master. Разрыв MGRS на границе квадратов 100 км снимается.
+первую точку эталона положения (base_link или master — как выход связки).
+Разрыв MGRS на границе квадратов 100 км снимается.
 Судья считает в MGRS; ошибки в плане от сдвига начала не зависят.
 
 Выход:
@@ -188,7 +192,10 @@ def make_variant(a, bag, kind):
             if t0 is None:
                 return None, None
             b, _ = shared.apply(a, kind, t0, dur, seed=shared.seed_for(bag, kind))
-            return b, dict(kind=kind, ru=KINDS[kind]["ru"], t0=t0, dur=dur,
+            # подпись с заглавной буквы (в tools/inject.py они со строчной)
+            ru = KINDS[kind]["ru"] if kind in KINDS else shared.KINDS[kind]["ru"]
+            ru = ru[:1].upper() + ru[1:]
+            return b, dict(kind=kind, ru=ru, t0=t0, dur=dur,
                            eval=float(shared.eval_window(kind)), src="tools/inject.py")
     except ImportError:
         pass
@@ -491,6 +498,31 @@ def frame_hint(r):
     return cand, proj, grid
 
 
+def output_point(r):
+    """Точка вагона на выходе связки: Position.output_point (после потока «кадр»:
+    base_link — ось поворота передней тележки на уровне рельса, как у судьи);
+    в коде без этого параметра выход — антенна master."""
+    return str(getattr(getattr(r, "pos", None), "output_point", "") or "master")
+
+
+def reference_fix(a, point):
+    """Эталон положения для точки выхода point -> (строки как a["mfix"]:
+    [t, t, lat, lon, alt], подпись). master — сами фиксы master; base_link —
+    tools/eval_metrics.reference (та же функция, что в tools/eval.py): пара
+    master+rover одной эпохи по tf организаторов, base_link = master +
+    9,873/12,436·(rover − master), z − 3,0; без пары — перенос вдоль курса.
+    Эталон и выход — одна точка вагона, иначе на плане ложная ошибка ~9,9 м."""
+    if point == "master":
+        return a["mfix"], "антенна GNSS master"
+    import eval_metrics as EMX      # tools/eval_metrics.py
+    if not hasattr(EMX, "reference"):
+        raise SystemExit(f"выход связки — точка {point}, а tools/eval_metrics.py не строит "
+                         "эталон для неё (нужен eval_metrics.reference после потока «кадр»)")
+    R = EMX.reference(a, point)
+    m = np.c_[R["t"], R["t"], R["lat"], R["lon"], R["alt"]]
+    return m, f"{point} по GNSS (пара антенн master и rover, tf организаторов)"
+
+
 def detect_frame(xyz, T, ready, m, hint=None):
     """Система выхода: кандидат из настроек связки (hint), проверенный по
     данным. Для каждого кандидата — эталон master fix в этой системе и
@@ -573,6 +605,8 @@ def selftest(bag):
     cases = {
         "mgrs_wrap": (np.c_[np.mod(U + nz, 1e5), alt], "utm_abs"),
         "mgrs_37UDB": (np.c_[U + nz - (4e5, 61e5), alt], "utm_abs"),
+        # соглашение судьи и pathgraph организаторов: от угла 37UCB непрерывно
+        "mgrs_37UCB": (np.c_[U + nz - (3e5, 61e5), alt], "utm_abs"),
         "utm_abs": (np.c_[U + nz, alt], "utm_abs"),
         "utm_rel": (np.c_[U + nz - U[0], alt - o[2]], "utm_rel"),
         "enu": (proj_enu(lat, lon, alt, o) + np.c_[nz, np.zeros(len(nz))], "enu"),
@@ -653,7 +687,10 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     XYZn = np.c_[O("x", no), O("y", no), O("z", no)]
     ready_n = pos_ok(no)
 
-    m, g = a["mfix"], a["mvel"]
+    # эталон положения — та же точка вагона, что на выходе связки (base_link или master)
+    point = output_point(r)
+    m, ref_label = reference_fix(a, point)
+    g = a["mvel"]
     hint = frame_hint(r)
     fr = detect_frame(XYZ, T, ready, m, hint)
     frn = detect_frame(XYZn, T, ready_n, m, hint)
@@ -847,7 +884,8 @@ def run_variant(a, params, node, map_path, bag, kind, info):
                    zone=fr["zone"], z_abs=fr["z_abs"], origin=list(fr["origin"]),
                    medians_m={k_: round(v_, 3) for k_, v_ in fr["medians"].items()},
                    runner_projection=hint[1], runner_grid=hint[2],
-                   note="экран: система выхода модели, сдвинутая в первую точку GNSS master; "
+                   ref_point=point, ref_label=ref_label,
+                   note=f"экран: система выхода модели, сдвинутая в первую точку эталона ({ref_label}); "
                         "судья считает в MGRS"),
         flags="bit0 valid (и нет разрыва входов), bit1 slip, bit2 ambiguous, bit3 handle_ok, "
               "bit4 wheels_stale, bit5 pos_ready, bit6 odometry_used",

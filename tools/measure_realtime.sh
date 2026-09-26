@@ -31,8 +31,12 @@ if [ -d /opt/ros/humble ] && [ "${1:-}" = "--inside" ]; then
   source /ws/install/setup.bash
   export PYTHONUNBUFFERED=1 RCUTILS_LOGGING_BUFFERED_STREAM=0
   ts() { date +%H:%M:%S.%3N; }
+  # Без --report-every: промежуточная сводка считается в том же цикле, что принимает
+  # сообщения, и за 20 мин растёт до ~0,3 с простоя пробы раз в 120 с — пробе входы и
+  # выходы приходят с опозданием, и in2out > 250 мс ложно (интеграция, раунд 2:
+  # паузы приёма 0,08 → 0,31 с ровно каждые 120 с при паузах меток входов ≤ 0,08 с).
   python3 /repo/tools/ros_probe.py --out "$OUT/summary_probe.json" --npz "$OUT/raw.npz" \
-    --rate "$RATE" --tag "realtime" --idle 15 --report-every 120 >"$OUT/probe.log" 2>&1 &
+    --rate "$RATE" --tag "realtime" --idle 15 >"$OUT/probe.log" 2>&1 &
   PROBE=$!
   python3 /repo/tools/ros_wait.py --subscribers /vehicle/front_bogie_velocity:2 \
     --publishers /result/velocity:1 --timeout 120 || echo "[$(ts)] нода/проба не подписались"

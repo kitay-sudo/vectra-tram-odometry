@@ -6,7 +6,8 @@ step_open_loop так, как их вызывает Runner (маска свеж�
     docker run --rm -v <repo>:/repo -v <repo>/analysis/cache:/repo/analysis/cache:ro \
       -w /repo/js-port vectra/tram:dev python3 record_bag.py [bag] [variant]
 
-variant — как в tools/export_replay.py (clean, front_zero, both_zero, dropout, skid_brake).
+variant — как в tools/export_replay.py (clean, front_zero, both_zero, dropout, skid_brake) или
+форма срыва из tools/slip_study.py EDGE (skid_then_lock, lock_ramp03, skid_stagger03, …).
 """
 import dataclasses
 import json
@@ -24,7 +25,18 @@ variant = sys.argv[2] if len(sys.argv) > 2 else "clean"
 sheet = sys.argv[3] if len(sys.argv) > 3 else os.path.join(X.PKG, "config", "tram.yaml")
 params, node, _ = X.resolve_sheet(sheet)
 a = X.bagio.load(bag)
-b, info = X.make_variant(a, bag, variant)
+
+try:        # формы срыва из ревью потока «срыв» (tools/slip_study.py EDGE): блокировка, сдвиг тележек…
+    import slip_study as SS  # noqa: E402
+except ImportError:
+    SS = None
+if SS is not None and variant in SS.EDGE:
+    t0, _ = SS.I.choose_window(a, variant)
+    if t0 is None:
+        sys.exit(f"вариант {variant}: окно не найдено")
+    b, info = SS._apply_edge(a, variant, t0)
+else:
+    b, info = X.make_variant(a, bag, variant)
 C = X.EC.Estimator
 rows = []
 o_step, o_ol = C.step, C.step_open_loop
@@ -35,14 +47,16 @@ def step(self, notch, meas, fresh=True, handle_ok=True):
     m = [float(x) for x in meas]
     o = o_step(self, notch, meas, fresh=fresh, handle_ok=handle_ok)
     rows.append([0, float(notch), m, fm, bool(handle_ok), o["v"], o["s"], int(o["mode"]), o["sigma_v"],
-                 o["k_t"], o["mu"], o["d"], o["sigma_s"], bool(o["ambiguous"])])
+                 o["k_t"], o["mu"], o["d"], o["sigma_s"], bool(o["ambiguous"]), bool(o["slip"]),
+                 int(o.get("slip_all", 0))])
     return o
 
 
 def step_open_loop(self, notch):
     o = o_ol(self, notch)
     rows.append([1, float(notch), [], [], True, o["v"], o["s"], int(o["mode"]), o["sigma_v"],
-                 o["k_t"], o["mu"], o["d"], o["sigma_s"], bool(o["ambiguous"])])
+                 o["k_t"], o["mu"], o["d"], o["sigma_s"], bool(o["ambiguous"]), bool(o["slip"]),
+                 int(o.get("slip_all", 0))])
     return o
 
 

@@ -321,8 +321,9 @@ def test_pos_valid_rows_are_not_paired():
     pv_all = np.ones(len(t), bool)
     pv_late = pv_all.copy()
     pv_late[:50] = False                                 # первые 5 с — без якоря
-    r_all, _ = M.score_position(_out(t, lat_e, lon, alt, pv_all), a, fr, full=False)
-    r_late, _ = M.score_position(_out(t, lat_e, lon, alt, pv_late), a, fr, full=False)
+    kw = dict(full=False, ref_point="master", judge_grid="")   # механика пар, выход в антенне
+    r_all, _ = M.score_position(_out(t, lat_e, lon, alt, pv_all), a, fr, **kw)
+    r_late, _ = M.score_position(_out(t, lat_e, lon, alt, pv_late), a, fr, **kw)
     assert r_all["p_unpaired"] == 0 and r_late["p_unpaired"] == 50
     assert r_late["p_pairs"] == r_all["p_pairs"] - 50 and r_late["p_out_invalid"] == 50
     assert r_late["p3d_mean"] == pytest.approx(r_all["p3d_mean"], rel=1e-6)
@@ -331,8 +332,10 @@ def test_pos_valid_rows_are_not_paired():
     o = _out(t, lat_e, lon, alt, pv_all)
     o["XYZ"][100] = np.nan
     o["PV"][100] = False
-    r_nan, _ = M.score_position(o, a, fr, full=False)
+    r_nan, _ = M.score_position(o, a, fr, **kw)
     assert r_nan["p_nan"] == 1 and r_nan["p_unpaired"] == 1
+    # после первого опубликованного: 5 с без якоря не «пропуски», NaN — пропуск
+    assert r_late["p_gap_steps"] == 0 and r_nan["p_gap_steps"] == 1
 
 
 def test_replay_marks_pos_valid():
@@ -379,13 +382,115 @@ def test_boundary_matrix():
     разные — 100 км у каждой пары западнее границы."""
     a, t, E, N, lat, lon, alt = _line_ref()
     fr = M.Frame("mgrs", (lat[0], lon[0], alt[0]))
-    r, _ = M.score_position(_out(t, lat, lon, alt, np.ones(len(t), bool)), a, fr, full=False)
+    r, _ = M.score_position(_out(t, lat, lon, alt, np.ones(len(t), bool)), a, fr, full=False,
+                            ref_point="master")
     west = int(np.sum(E < 4e5))
     assert 0 < west < len(t)
     assert r["bx_wrap_wrap_3d_mean"] < 1e-6 and r["bx_grid_grid_3d_mean"] < 1e-6
     assert r["bx_wrap_grid_km"] == west and r["bx_grid_wrap_km"] == west
     assert r["bx_wrap_grid_3d_mean"] == pytest.approx(1e5 * west / len(t), rel=1e-6)
     assert r["sq_mismatch"] == 0
+
+
+def _pair_ref(n=600, E0=399700.0, N0=6185000.0, grade=0.02, rover_gap=()):
+    """Прямая на восток через E = 400 км: master и rover (на 12,436 м впереди,
+    на 12,436·grade выше), фиксы 10 Гц; rover_gap — индексы без rover."""
+    a, t, E, N, lat, lon, alt = _line_ref(n, E0, N0)
+    Er = E + 12.436
+    la_r, lo_r = G.utm_inv(Er, N, 37)
+    keep = np.ones(n, bool)
+    keep[list(rover_gap)] = False
+    alt_r = alt + 12.436 * grade
+    a["rfix"] = np.c_[t + 0.05, t + 0.01, la_r, lo_r, alt_r, np.zeros(n), np.zeros((n, 3))][keep]
+    return a, t, E, N, lat, lon, alt
+
+
+def test_reference_base_link_by_tf():
+    """Эталон base_link: по паре — master + 9,873/12,436·(rover − master), z по
+    той же доле минус 3; без пары (rover пропал) — master + 9,873 м по курсу
+    траектории, z − 3; антенна master — прежний эталон."""
+    gap = range(200, 260)
+    a, t, E, N, lat, lon, alt = _pair_ref(rover_gap=gap)
+    ref = M.reference(a, "base_link")
+    assert len(ref["t"]) == len(t) and ref["zone"] == 37
+    Eb, Nb = G.utm_fwd(ref["lat"], ref["lon"], 37)
+    assert np.abs(Eb - (E + 9.873)).max() < 1e-3 and np.abs(Nb - N).max() < 1e-3
+    pair = ref["paired"]
+    assert not pair[list(gap)].any() and pair[:200].all()
+    assert ref["alt"][pair] == pytest.approx(alt[pair] + 9.873 * 0.02 - 3.0, abs=1e-6)
+    assert ref["alt"][~pair] == pytest.approx(alt[~pair] - 3.0, abs=1e-6)
+    assert np.abs(ref["yaw"]).max() < 1e-3                 # на восток
+    tm, la, lo, al = M.reference_geo(a)                    # по умолчанию — антенна master
+    assert np.array_equal(la, lat) and np.array_equal(al, alt)
+    # выход в антенне master против эталона base_link: 9,873 м вдоль и 3 м по высоте
+    fr = M.Frame("mgrs", (lat[0], lon[0], alt[0]))
+    r_bl, _ = M.score_position(_out(t, lat, lon, alt, np.ones(len(t), bool)), a, fr, full=False)
+    assert r_bl["p2d_mean"] == pytest.approx(9.873, abs=1e-3)
+    assert r_bl["pz_bias"] == pytest.approx(3.0 - 9.873 * 0.02 * (1 - len(gap) / len(t)), abs=1e-3)
+
+
+def test_build_map_track_is_base_link():
+    """Карта строится по траектории base_link: та же точка, что эталон оценки
+    (пара антенн по tf), z — уровень рельса; курс — по ходу движения."""
+    sys.path.insert(0, str(ROOT / "analysis"))
+    import build_map
+    a, t, E, N, lat, lon, alt = _pair_ref(n=600, grade=0.0, rover_gap=range(300, 320))
+    a["mfix"][:, 5] = 2
+    a["rfix"][:, 5] = 2
+    tr = build_map.track(a, "base_link")
+    assert len(tr["t"]) == len(t)
+    lone = np.zeros(len(t), bool)
+    lone[300:320] = True                   # без rover: вперёд по курсу скорости GNSS
+    for m, tol in ((~lone, 1e-3), (lone, 0.3)):
+        assert np.abs(tr["E"][m] - (E[m] + 9.873)).max() < tol
+        assert np.abs(tr["N"][m] - N[m]).max() < tol
+    assert np.abs(tr["alt"] - (alt - 3.0)).max() < 1e-9
+    ref = M.reference(a, "base_link")
+    Eb, Nb = G.utm_fwd(ref["lat"], ref["lon"], 37)
+    assert np.abs(Eb - tr["E"])[~lone].max() < 1e-3
+    # истинный курс «на восток по сетке» = 90° + сближение меридианов (≈ −1,3°, как test_position)
+    assert np.degrees(np.median(tr["head"])) == pytest.approx(88.7, abs=0.2)
+    trm = build_map.track(a, "master")
+    assert np.abs(np.asarray(trm["E"]) - E).max() < 1e-3
+
+
+def _pg_files(tmp_path, E0=399700.0, E1=400300.0, N0=6185000.0, gap=3.5):
+    """Два пути pathgraph (на восток по N0, на запад по N0 + gap), z 150."""
+    import json as _json
+    d = tmp_path / "pg"
+    d.mkdir(exist_ok=True)
+    for name, E, N in (("w - e", np.arange(E0, E1, 1.0), N0),
+                       ("e - w", np.arange(E1, E0, -1.0), N0 + gap)):
+        x, y = E - 3e5, np.full(len(E), N - 6.1e6)
+        tang = np.full(len(E), 0.0 if E[1] > E[0] else math.pi)
+        pts = [dict(x=float(p), y=float(q), z=150.0, tang=float(g), curv=0.0)
+               for p, q, g in zip(x, y, tang)]
+        (d / f"{name}.json").write_text(_json.dumps(dict(points=pts, paths=[dict(
+            ext_id=None, point_indices=list(range(len(pts))))])), encoding="utf-8")
+    return d
+
+
+def test_pathgraph_cross_and_along(tmp_path):
+    """Поперечная ошибка и путь вдоль pathgraph: выход на 0,5 м левее и на 2 м
+    впереди эталона; эталон за концом pathgraph не считается; путь встречного
+    направления (3,5 м) не выбирается."""
+    import eval_pathgraph as PGM
+    pg = PGM.Pathgraph(_pg_files(tmp_path, E0=399800.0, E1=400200.0, N0=6185000.0))
+    a, t, E, N, lat, lon, alt = _pair_ref(n=600, E0=399700.0 - 9.873, N0=6185000.0, grade=0.0)
+    ref = M.reference(a, "base_link")                     # base_link: E 399700…400299
+    Eb, Nb = G.utm_fwd(ref["lat"], ref["lon"], 37)
+    row, s_ = PGM.score(pg, Eb, Nb, ref["alt"], ref["yaw"], Eb + 2.0, Nb + 0.5)
+    on = (Eb >= 399800.0) & (Eb <= 400199.0)
+    assert row["pg_pairs"] == pytest.approx(on.sum(), abs=2)
+    assert row["pg_frac"] == pytest.approx(on.mean(), abs=0.01)
+    assert row["pg_cross_mean"] == pytest.approx(0.5, abs=1e-6)
+    assert row["pg_along_mean"] == pytest.approx(2.0, abs=1e-6)
+    assert row["pg_ref_lat_med"] < 1e-6 and row["pg_ref_dz_med"] == pytest.approx(-3.0, abs=1e-6)
+    # едем на запад по встречному пути: выбирается путь своего направления
+    row_w, _ = PGM.score(pg, Eb[::-1], Nb + 3.5, ref["alt"], np.full(len(Eb), math.pi),
+                         Eb[::-1] - 1.0, Nb + 3.5)
+    assert row_w["pg_cross_mean"] == pytest.approx(0.0, abs=1e-6)
+    assert row_w["pg_along_mean"] == pytest.approx(1.0, abs=1e-6)
 
 
 def test_no_master_fix_does_not_crash():

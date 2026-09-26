@@ -9,6 +9,8 @@
 Пороги — санитарные (TODO WP9): MAE скорости < 0,08 м/с, средняя 3D < 10 м,
 20 Гц, ни одного NaN. Положение сравнивается в той системе, в которой
 публикует Runner (refgeo.detect): тест не зависит от параметра projection.
+Эталон — точка base_link по tf антенн (как у судьи с 26.09); выход в точке
+master от него на 9,87 м вдоль пути и на 3 м выше (test_output_point_is_base_link).
 В пары идут только выходы, которые нода публикует в /result/position
 (pos_valid), ошибка — без вычета скачка на границе квадратов MGRS, как у судьи.
 Это не отчётные числа точности: лист и карта здесь боевые (config/, построены
@@ -121,10 +123,12 @@ def test_position_mean_3d(run_map, fx):
     assert m["p_pairs"] > 1500
     assert m["p_mean3d"] < MEAN3D_MAX, m
     assert outs[-1]["pos_ready"], "выставка по GNSS не прошла"
-    # положение публикуется почти на каждом шаге после первой точки master
+    # положение публикуется на каждом шаге после первого опубликованного
+    # (37UCB непрерывно: полосы у края квадрата нет)
+    assert m["n_pos_gaps"] == 0, m
     t0 = fx["mfix"][0, 1]
     after = [o for o in outs if o["stamp"] > t0 + 1.0]
-    assert sum(bool(o.get("pos_valid", True)) for o in after) >= 0.95 * len(after)
+    assert all(bool(o.get("pos_valid", True)) for o in after)
     # фикстура целиком в 37UCB: выход и эталон в одном 100-км квадрате
     assert m["squares"] == ["37UCB"]
     assert m["p_square_mismatch"] == 0, m
@@ -161,11 +165,12 @@ def test_output_frame_is_mgrs_by_default(run_map):
 # Кусок фикстуры целиком западнее границы квадратов (UTM E 399,0…399,6 км):
 # по диапазону x видно, какое соглашение реально применила нода.
 @pytest.mark.parametrize("over,expect,xr", [
+    ({"projection": "mgrs", "mgrs_grid": "37UCB"}, ("mgrs:37UCB", "mgrs"), (99000.0, 100000.0)),
     ({"projection": "mgrs", "mgrs_grid": ""}, ("mgrs", "mgrs:37UCB"), (99000.0, 100000.0)),
     ({"projection": "mgrs", "mgrs_grid": "37UDB"}, ("mgrs:37UDB",), (-1100.0, 0.0)),
     ({"projection": "utm"}, ("utm",), (398000.0, 401000.0)),
     ({"projection": "enu"}, ("enu",), (-100.0, 1000.0)),
-], ids=["mgrs-wrap", "mgrs-37UDB", "utm", "enu"])
+], ids=["mgrs-37UCB", "mgrs-wrap", "mgrs-37UDB", "utm", "enu"])
 def test_projection_switch(fx, over, expect, xr):
     """Параметр projection/mgrs_grid переключает систему без правки кода; в
     каждой системе точность та же. Эталон — независимая refgeo. Средняя 3D —
@@ -220,9 +225,27 @@ def test_map_free_fallback_default(fx, run_map):
                   if o.get("pos_valid", True) and o.get("pos_ready") and o["stamp"] > t_end])
     assert len(X) > 1500
     assert np.ptp(X, axis=0).max() < 1e-6, "без карты (hold) положение стоит в якоре"
-    w = fx["mfix"][fx["mfix"][:, 1] <= t_end]        # точки master окна выставки
-    fr = refgeo.frames(w[:, 2], w[:, 3], w[:, 4], origin=tuple(fx["mfix"][0, 2:5]))
-    assert np.linalg.norm(fr[m["p_frame"]] - X[-1], axis=1).min() < 5.0, m
+    t_ref, fr = E.reference(fx)                      # base_link по парам антенн
+    w = t_ref <= t_end                               # окно выставки
+    assert np.linalg.norm(fr[m["p_frame"]][w] - X[-1], axis=1).min() < 5.0, m
+
+
+def test_output_point_is_base_link(fx, run_map):
+    """Выход — base_link (ось передней тележки, уровень рельса), как эталон
+    судьи и pathgraph. Тот же прогон с output_point master ближе к антенне
+    master, чем к base_link; разница — ~9,87 м вдоль пути и 3 м по высоте."""
+    outs, m = run_map
+    assert m["p_mean3d"] < MEAN3D_MAX
+    mm = E.metrics(outs, fx, point="master")
+    assert mm["p_mean3d"] > m["p_mean3d"] + 5.0, (m, mm)       # к антенне — дальше
+    om = E.replay(fx, use_map=True, gnss="window", output_point="master")
+    a, b = E.metrics(om, fx, point="master"), E.metrics(om, fx)
+    assert a["p_mean3d"] < MEAN3D_MAX and b["p_mean3d"] > a["p_mean3d"] + 5.0, (a, b)
+    X = np.array([[o["x"], o["y"], o["z"]] for o in outs[-200:]])
+    Y = np.array([[o["x"], o["y"], o["z"]] for o in om[-200:]])
+    d = X - Y
+    assert np.median(np.hypot(d[:, 0], d[:, 1])) == pytest.approx(9.873, abs=0.3)
+    assert np.median(d[:, 2]) == pytest.approx(-3.0, abs=0.3)
 
 
 @pytest.mark.xfail(condition=not E.runner_accepts("projection"),

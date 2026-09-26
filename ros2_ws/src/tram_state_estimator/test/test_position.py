@@ -1,7 +1,13 @@
 """Тесты положения: геодезия (UTM/MGRS/ENU против PROJ и GeoTrans), выходная
-система MGRS (перенос по квадратам и фиксированный квадрат), GNSS только в
-окне выставки (C2), запасная выставка (нет rover, старт на ходу), проверка
-точек GNSS, тупики карты, онлайн-масштаб пути. ROS не требуется.
+система MGRS (от квадрата 37UCB непрерывно — по умолчанию, перенос по
+квадратам), точка выхода base_link по tf антенн, GNSS только в окне выставки
+(C2), запасная выставка (нет rover, нет master, старт на ходу), проверка
+точек GNSS, тупики карты, онлайн-масштаб пути, pathgraph организаторов. ROS
+не требуется.
+
+Синтетический вагон: master на пути в точке s, rover — в s + 12,436 (база
+по tf), base_link — в s + 9,873 (BL); антенны на 3 м выше рельса (карта Route
+— ось пути на уровне рельса, z = 150).
 
 Эталонные числа получены 25.09.2026 независимыми реализациями: pyproj 3.7.1
 (PROJ 9.5.1, etmerc и topocentric) и пакет `mgrs` (NGA GeoTrans), в
@@ -16,9 +22,10 @@ import numpy as np
 import pytest
 
 from tram_state_estimator import geodesy as g
+from tram_state_estimator.body import ANTENNA_Z, MASTER_X, ROVER_X, Body
 from tram_state_estimator.estimator_core import Params
 from tram_state_estimator.runner import Position, Runner
-from tram_state_estimator.track_map import TrackMap
+from tram_state_estimator.track_map import TrackMap, read_pathgraph
 
 PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(PKG)))
@@ -135,6 +142,10 @@ def test_independent_eval_reference_agrees():
 # ================================================================ синтетика
 
 LAT_B, E_B, N_B = 55.8, 399800.0, 6185000.0       # старт западнее границы 400 км
+BASE = ROVER_X - MASTER_X                         # 12,436 м: rover впереди master
+BL = -MASTER_X                                    # 9,873 м: base_link впереди master
+ALT_RAIL = 150.0                                  # высота рельса (карта Route)
+ALT_ANT = ALT_RAIL + ANTENNA_Z                    # высота антенн
 
 
 def _tram():
@@ -167,11 +178,15 @@ class Route:
         la, lo = g.utm_inv(e, n, 37)
         return float(la), float(lo)
 
-    def track_map(self, end=None, terminals=False):
+    def bl(self, s):
+        """E, N base_link, если master в точке s пути (на прямой — ровно)."""
+        return self.en(s + BL)
+
+    def track_map(self, end=None, terminals=False, point="base_link"):
         P = self.P if end is None else self.P[self.s <= end]
-        return TrackMap.from_polylines([np.c_[P, np.full(len(P), 150.0)]], crs="utm",
+        return TrackMap.from_polylines([np.c_[P, np.full(len(P), ALT_RAIL)]], crs="utm",
                                        zone=37, bidirectional=False,
-                                       find_terminals=terminals)
+                                       find_terminals=terminals, point=point)
 
 
 def _feed(r, t0, t_end, v_of_t, route=None, s_of_t=None, gnss_until=2.0,
@@ -194,14 +209,14 @@ def _feed(r, t0, t_end, v_of_t, route=None, s_of_t=None, gnss_until=2.0,
         elif t - t0 <= gnss_until:
             s = s_of_t(t)
             la, lo = route.latlon(s)
-            outs += r.on_fix(t, "master", la, lo, 150.0, fix_status)
+            outs += r.on_fix(t, "master", la, lo, ALT_ANT, fix_status)
             if rover:
-                la, lo = route.latlon(s + 12.4)
-                outs += r.on_fix(t, "rover", la, lo, 150.0, fix_status)
+                la, lo = route.latlon(s + BASE)
+                outs += r.on_fix(t, "rover", la, lo, ALT_ANT, fix_status)
         elif late is not None and t - t0 > late_after:
             la, lo = late(t)
-            outs += r.on_fix(t, "master", la, lo, 150.0, fix_status)
-            outs += r.on_fix(t, "rover", la + 1e-4, lo, 150.0, fix_status)
+            outs += r.on_fix(t, "master", la, lo, ALT_ANT, fix_status)
+            outs += r.on_fix(t, "rover", la + 1e-4, lo, ALT_ANT, fix_status)
     return outs
 
 
@@ -212,31 +227,35 @@ def _profile(v, t_start):
 
 
 def _continuous(o, fr):
-    """Выход MGRS (перенос по квадратам) -> непрерывные E, N рядом с началом."""
+    """Выход MGRS (от квадрата или перенос по квадратам) -> непрерывные E, N
+    рядом с началом."""
     E = o["x"] + 1e5 * round((fr.E0 - o["x"]) / 1e5)
     N = o["y"] + 1e5 * round((fr.N0 - o["y"]) / 1e5)
     return E, N
 
 
 def test_position_follows_map_in_mgrs():
+    """По умолчанию: MGRS от квадрата 37UCB непрерывно (как pathgraph), точка
+    base_link на уровне рельса, положение на КАЖДОМ шаге после выставки —
+    и через границу квадратов E = 400 км."""
     route = Route()
     v_of_t, s_of_t = _profile(5.0, 3.0)
     r = Runner(_tram(), track_map=route.track_map())
     outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
     fr = r.pos.frame
     assert r.pos.ready and fr.projection == "mgrs" and fr.zone == 37
+    assert fr.grid == "37UCB" and r.pos.output_point == "base_link"
     o = outs[-1]
     s_true = s_of_t(o["stamp"])
-    e, n = route.en(s_true)
+    e, n = route.bl(s_true)
     E, N = _continuous(o, fr)
-    assert math.hypot(E - e, N - n) < 0.02 * s_true + 3.0
-    assert o["z"] == pytest.approx(150.0, abs=0.5)                   # абсолютная высота
-    assert 0.0 <= o["x"] < 1e5 and 0.0 <= o["y"] < 1e5
-    # положение есть всегда, кроме полосы mgrs_guard_m = 20 м у E = 400 км
-    for q in outs:
-        if q["stamp"] > 0.2 and not q["pos_valid"]:
-            e, _ = route.en(s_of_t(q["stamp"]))
-            assert abs(e - 400000.0) < 27.0          # 20 м + ошибка оценки
+    assert math.hypot(E - e, N - n) < 0.01 * s_true + 2.0
+    assert o["z"] == pytest.approx(ALT_RAIL, abs=0.5)                # уровень рельса
+    assert (o["x"], o["y"]) == pytest.approx((E - 3e5, N - 6.1e6), abs=1e-6)
+    first = next(i for i, q in enumerate(outs) if q["pos_valid"])
+    assert all(q["pos_valid"] for q in outs[first:])                 # без пропусков
+    xs = np.array([q["x"] for q in outs[first:]])
+    assert xs.min() < 1e5 < xs.max() and np.abs(np.diff(xs)).max() < 1.0
 
 
 def test_whole_run_gnss_does_not_freeze_or_shift_outputs():
@@ -258,8 +277,8 @@ def test_whole_run_gnss_does_not_freeze_or_shift_outputs():
     assert r2.pos.n_used == r1.pos.n_used
     # и не замёрзло: последнее положение ≈ истинное, далеко от выставки
     E, N = _continuous(b[-1], r2.pos.frame)
-    e, n = route.en(s_of_t(b[-1]["stamp"]))
-    assert math.hypot(E - e, N - n) < 10.0
+    e, n = route.bl(s_of_t(b[-1]["stamp"]))
+    assert math.hypot(E - e, N - n) < 5.0
     assert math.hypot(E - E_B, N - N_B) > 200.0
 
 
@@ -289,7 +308,8 @@ def test_invalid_fixes_are_rejected():
     r.on_wheel(0, 0.05, 0.0)                   # метка <= 0 отбрасывается (WP3)
     r.on_wheel(0, 0.6, 0.0)                    # сетка прошла метку 0,4
     assert r.pos.fixed and r.pos.frame.lat0 == pytest.approx(la)
-    assert r.pos.xyz0[2] == pytest.approx(150.0, abs=0.5)           # высота карты
+    # высота карты (уровень рельса): антенна = карта + 3 м, base_link = карта
+    assert r.pos.xyz0[2] == pytest.approx(ALT_RAIL, abs=0.5)
 
 
 def test_gnss_never_steps_the_grid_and_speed_ignores_it():
@@ -327,8 +347,13 @@ def test_no_rover_heading_from_map():
     outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t, rover=False)
     assert r.pos.ready
     E, N = _continuous(outs[-1], r.pos.frame)
-    e, n = route.en(s_of_t(outs[-1]["stamp"]))
-    assert math.hypot(E - e, N - n) < 10.0
+    e, n = route.bl(s_of_t(outs[-1]["stamp"]))
+    assert math.hypot(E - e, N - n) < 5.0
+    # только master: base_link — вперёд по курсу карты на 9,873 м, z − 3 м
+    first = next(q for q in outs if q["pos_valid"])
+    E, N = _continuous(first, r.pos.frame)
+    assert math.hypot(E - (E_B + BL), N - N_B) < 1.0
+    assert first["z"] == pytest.approx(ALT_RAIL, abs=0.5)
 
 
 def test_no_rover_no_map_holds_anchor():
@@ -337,7 +362,9 @@ def test_no_rover_no_map_holds_anchor():
     outs = _feed(r, 0.0, 30.0, _profile(5.0, 3.0)[0], route, lambda t: 0.0, rover=False)
     assert r.pos.fixed and not r.pos.ready
     E, N = _continuous(outs[-1], r.pos.frame)
+    # курса нет — вперёд не перенести: точка антенны, только высота рельса
     assert math.hypot(E - E_B, N - N_B) < 0.5 and outs[-1]["pos_valid"]
+    assert outs[-1]["z"] == pytest.approx(ALT_RAIL, abs=1e-6)
 
 
 @pytest.mark.parametrize("rover", [True, False])
@@ -353,22 +380,26 @@ def test_start_on_the_move(rover):
     err = []
     for o in outs[-200:]:
         E, N = _continuous(o, r.pos.frame)
-        e, n = route.en(20.0 + v * (o["stamp"] - 100.0))
+        e, n = route.bl(20.0 + v * (o["stamp"] - 100.0))
         err.append(math.hypot(E - e, N - n))
     assert max(err) < 5.0
 
 
 def test_mgrs_wrap_vs_fixed_grid_across_boundary():
     """Путь пересекает E = 400 км (37UCB -> 37UDB). Внутри всё непрерывно;
-    «перенос» даёт скачок x на 100 км на границе, «37UDB» — непрерывно (x < 0
-    западнее границы). y и z одинаковы."""
+    «37UCB» (по умолчанию, как pathgraph) — непрерывно, x > 100 000 восточнее
+    границы; «перенос» даёт скачок x на 100 км на границе, «37UDB» —
+    непрерывно (x < 0 западнее границы). y и z одинаковы."""
     route = Route()
     v_of_t, s_of_t = _profile(5.0, 3.0)
     res = {}
-    for grid in ("", "37UDB"):
+    for grid in ("", "37UDB", "37UCB"):
         r = Runner(_tram(), track_map=route.track_map(), mgrs_grid=grid, mgrs_guard_m=0.0)
         res[grid] = (r, _feed(r, 0.0, 70.0, v_of_t, route, s_of_t))
     (ra, a), (rb, b) = res[""], res["37UDB"]
+    xc = np.array([o["x"] for o in res["37UCB"][1] if o["pos_valid"]])
+    assert xc.min() < 1e5 < xc.max() and np.abs(np.diff(xc)).max() < 1.0
+    assert xc == pytest.approx(np.array([o["x"] for o in b if o["pos_valid"]]) + 1e5, abs=1e-6)
     xa = np.array([o["x"] for o in a if o["pos_valid"]])
     xb = np.array([o["x"] for o in b if o["pos_valid"]])
     assert xb.min() < 0.0 < xb.max()                 # непрерывно от угла 37UDB
@@ -419,7 +450,7 @@ def test_map_gap_is_not_a_dead_end():
     r = Runner(_tram(), track_map=tm)
     outs = _feed(r, 0.0, 3.0 + 300.0 / 5.0, v_of_t, route, s_of_t)
     E, N = _continuous(outs[-1], r.pos.frame)
-    e, n = route.en(s_of_t(outs[-1]["stamp"]))
+    e, n = route.bl(s_of_t(outs[-1]["stamp"]))
     assert math.hypot(E - e, N - n) < 6.0
 
 
@@ -459,7 +490,7 @@ def test_map_gap_curved():
         r = Runner(_tram(), track_map=tm, terminal_hold=mode)
         o = _feed(r, 0.0, t_end, v_of_t, route, s_of_t)[-1]
         E, N = _continuous(o, r.pos.frame)
-        e, n = route.en(s_of_t(o["stamp"]))
+        e, n = route.bl(s_of_t(o["stamp"]))
         res[mode] = (math.hypot(E - e, N - n), r.pos._cursor["on_map"])
     # прошёл разрыв по прямой и снова на карте (ошибка вдоль пути — от
     # точки возврата на карту: ~25 м), а не стоит у края разрыва
@@ -595,7 +626,8 @@ def test_skewed_fix_stamp_does_not_block_alignment(bad):
 
 def test_rover_only_window():
     """В окне нет master, есть rover: якорь — rover, сдвинутый назад по курсу
-    на базу 12,42 м (rover впереди); курс — по смещению rover или по карте."""
+    на 2,563 м до base_link (rover впереди); курс — по смещению rover или по
+    карте. С output_point master — назад на всю базу 12,436 м."""
     route = Route(L1=400.0)
     for v, t_start in ((0.0, 99.0), (8.0, -1.0)):     # стоим / едем с начала
         v_of_t = (lambda t, v=v: v)
@@ -614,15 +646,20 @@ def test_rover_only_window():
             elif kind < 2:
                 outs += r.on_wheel(kind, t, v_of_t(t) * 3.6)
             else:
-                la, lo = route.latlon(s_of_t(t) + 12.42)
-                outs += r.on_fix(t, "rover", la, lo, 150.0)
+                la, lo = route.latlon(s_of_t(t) + BASE)
+                outs += r.on_fix(t, "rover", la, lo, ALT_ANT)
         assert r.pos.fixed and r.pos.ready and r.pos._frame_rover
         err = []
         for o in outs[-100:]:
             E, N = _continuous(o, r.pos.frame)
-            e, n = route.en(s_of_t(o["stamp"]))
+            e, n = route.bl(s_of_t(o["stamp"]))
             err.append(math.hypot(E - e, N - n))
         assert max(err) < 4.0
+        # сразу после выставки (до движения по карте): ровно rover − 2,563 м
+        first = next(q for q in outs if q["pos_valid"])
+        E, N = _continuous(first, r.pos.frame)
+        e, n = route.bl(s_of_t(first["stamp"]))
+        assert math.hypot(E - e, N - n) < 1.0
 
 
 def test_grid_nodes_are_multiples_of_dt():
@@ -639,24 +676,28 @@ def test_grid_nodes_are_multiples_of_dt():
 
 
 def test_mgrs_guard_band_suppresses_position_near_square_edge():
-    """mgrs_guard_m: ближе g к краю 100-км квадрата положение не публикуется
-    (pos_valid = False), чтобы выход и эталон не оказались в разных квадратах."""
+    """mgrs_guard_m (только при переносе по квадатам, mgrs_grid ""): ближе g к
+    краю 100-км квадрата положение не публикуется (pos_valid = False). По
+    умолчанию (37UCB, g = 0) — положение на каждом шаге."""
     route = Route()
     v_of_t, s_of_t = _profile(5.0, 3.0)
-    r = Runner(_tram(), track_map=route.track_map())       # по умолчанию 20 м
-    assert r.pos.mgrs_guard_m == 20.0
+    r = Runner(_tram(), track_map=route.track_map())
+    assert r.pos.mgrs_guard_m == 0.0 and r.pos.mgrs_grid == "37UCB"
+    assert all(o["pos_valid"] for o in _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
+               if o["stamp"] > 1.0)
+    r = Runner(_tram(), track_map=route.track_map(), mgrs_grid="", mgrs_guard_m=20.0)
     outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
     bad = [o for o in outs if not o["pos_valid"] and o["stamp"] > 1.0]
     assert 120 <= len(bad) <= 200                   # полоса 40 м при 5 м/с — около 8 с
     for o in outs:
         if o["pos_valid"] and o["stamp"] > 1.0:
             assert 20.0 <= o["x"] <= 1e5 - 20.0
-    r = Runner(_tram(), track_map=route.track_map(), mgrs_guard_m=5.0)
+    r = Runner(_tram(), track_map=route.track_map(), mgrs_grid="", mgrs_guard_m=5.0)
     bad = [o for o in _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
            if not o["pos_valid"] and o["stamp"] > 1.0]
     assert 25 <= len(bad) <= 60                     # 10 м — около 2 с
     # защита только для MGRS с переносом: от фиксированного квадрата — нет
-    r = Runner(_tram(), track_map=route.track_map(), mgrs_grid="37UDB")
+    r = Runner(_tram(), track_map=route.track_map(), mgrs_grid="37UDB", mgrs_guard_m=20.0)
     outs = _feed(r, 0.0, 70.0, v_of_t, route, s_of_t)
     assert all(o["pos_valid"] for o in outs if o["stamp"] > 1.0)
 
@@ -672,8 +713,156 @@ def test_no_map_fallback_modes(mode):
     outs = _feed(r, 0.0, 23.0, v_of_t, route, s_of_t)
     assert r.pos.ready and outs[-1]["pos_valid"]
     E, N = _continuous(outs[-1], r.pos.frame)
-    moved = math.hypot(E - E_B, N - N_B)
+    moved = math.hypot(E - (E_B + BL), N - N_B)          # от base_link выставки
     if mode == "hold":
         assert moved < 0.5
     else:
         assert moved == pytest.approx(s_of_t(outs[-1]["stamp"]), abs=5.0)
+    assert outs[-1]["z"] == pytest.approx(ALT_RAIL, abs=1e-6)
+
+
+# ================================================================ base_link (tf 25.09)
+
+def test_base_link_offset_math():
+    """tf организаторов: master (−9,873; 0; 3), rover (2,563; 0; 3) в base_link.
+    base_link = master + 9,873/12,436 · (rover − master), z − 3; перенос вдоль
+    курса между любыми точками вагона обратим."""
+    b = Body()
+    assert b.baseline == pytest.approx(12.436) and b.frac() == pytest.approx(9.873 / 12.436)
+    m, r = (10.0, 20.0, 153.0), (10.0 + 12.436, 20.0, 153.4)      # едем на восток, в гору
+    x, y, z = b.from_pair(m, r)
+    assert (x, y) == pytest.approx((19.873, 20.0)) and z == pytest.approx(153.0 + 0.4 * 0.7939 - 3.0, abs=1e-4)
+    assert b.from_pair(m, r, "master") == pytest.approx(m)          # точка master — сама антенна
+    az = math.radians(30.0)                                          # курс от севера по часовой
+    p = b.shift(m, az, "master", "base_link")
+    assert p == pytest.approx((10.0 + 9.873 * 0.5, 20.0 + 9.873 * math.sqrt(3) / 2, 150.0))
+    assert b.shift(p, az, "base_link", "master") == pytest.approx(m)
+    q = b.shift((0.0, 0.0, 153.0), az, "rover", "base_link")
+    assert math.hypot(q[0], q[1]) == pytest.approx(2.563) and q[2] == pytest.approx(150.0)
+    assert b.shift(m, None, "master", "base_link") == pytest.approx((10.0, 20.0, 150.0))
+    # массивы numpy: по парам
+    M = np.array([[0.0, 0.0, 153.0], [1.0, 1.0, 153.0]])
+    R = M + [0.0, 12.436, 0.0]
+    X = np.c_[b.from_pair(M, R)]
+    assert X[:, 1] == pytest.approx(M[:, 1] + 9.873) and X[:, 2] == pytest.approx([150.0, 150.0])
+    with pytest.raises(ValueError):
+        Body(master_x=3.0, rover_x=2.0)
+
+
+@pytest.mark.parametrize("rover", [True, False])
+def test_output_point_master_and_legacy_master_map(rover):
+    """output_point master — выход в антенне (как до 26.09); карта по
+    траектории master (прежние карты, point master) с выходом base_link —
+    курсор ведёт master, выход переносится вперёд по курсу карты на 9,873 м
+    и вниз на 3 м. Во всех сочетаниях — та же точка вагона."""
+    route = Route()
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+    for pt, mp, shift, z in (("master", "base_link", 0.0, ALT_ANT),
+                             ("base_link", "master", BL, ALT_ANT - ANTENNA_Z),
+                             ("master", "master", 0.0, ALT_ANT)):
+        alt = ALT_RAIL if mp == "base_link" else ALT_ANT
+        tm = TrackMap.from_polylines([np.c_[route.P, np.full(len(route.P), alt)]], crs="utm",
+                                     zone=37, bidirectional=False, point=mp)
+        r = Runner(_tram(), track_map=tm, output_point=pt)
+        assert r.pos.track_point == mp and r.pos.output_point == pt
+        o = _feed(r, 0.0, 40.0, v_of_t, route, s_of_t, rover=rover)[-1]
+        E, N = _continuous(o, r.pos.frame)
+        # путь ядра от выставки (отставание ядра на разгоне — общее для всех)
+        e, n = route.en(o["s"] - r.pos.s_ref + shift)
+        assert math.hypot(E - e, N - n) < 0.3, (pt, mp)
+        assert o["z"] == pytest.approx(z, abs=0.5), (pt, mp)
+
+
+def test_map_file_point_roundtrip(tmp_path):
+    """Точка карты хранится в .npz; карта без этого поля (до 26.09) — master."""
+    tm = Route().track_map()
+    assert tm.point == "base_link"
+    f = tmp_path / "m.npz"
+    tm.save(f)
+    assert TrackMap.load(f).point == "base_link"
+    z = dict(np.load(f))
+    z.pop("point")
+    np.savez(tmp_path / "old.npz", **z)
+    assert TrackMap.load(tmp_path / "old.npz").point == "master"
+
+
+def _pathgraph_json(path, E, N, z):
+    """Файл в формате pathgraph организаторов (x, y от угла 37UCB)."""
+    import json as _json
+    x, y = E - 3e5, N - 6.1e6
+    tang = np.arctan2(np.diff(y), np.diff(x))
+    tang = np.r_[tang, tang[-1]]
+    pts = [dict(x=float(a), y=float(b), z=float(c), tang=float(t), curv=0.0)
+           for a, b, c, t in zip(x, y, z, tang)]
+    path.write_text(_json.dumps(dict(points=pts, paths=[dict(
+        ext_id=None, point_indices=list(range(len(pts))))])), encoding="utf-8")
+
+
+def test_pathgraph_loader(tmp_path):
+    """pathgraph -> TrackMap: две ломаные (по одной на направление), точка
+    base_link, не в обе стороны, x переходит 100 000 (E = 400 км) без
+    скачка, курс по ребру = tang файла, z — уровень рельса."""
+    d = tmp_path / "pg"
+    d.mkdir()
+    E = np.arange(399900.0, 400100.0, 1.0)
+    N = 6185000.0 + 0.02 * (E - E[0])
+    _pathgraph_json(d / "a - b.json", E, N, np.full(len(E), ALT_RAIL))
+    _pathgraph_json(d / "b - a.json", E[::-1], N[::-1] + 3.5, np.full(len(E), ALT_RAIL))
+    pgs = read_pathgraph(d)
+    assert len(pgs) == 2 and pgs[0]["xy"][:, 0].min() < 1e5 < pgs[0]["xy"][:, 0].max()
+    for spec in (d, f"{d / 'a - b.json'};{d / 'b - a.json'}"):
+        tm = TrackMap.load(spec)
+        assert tm.point == "base_link" and len(tm.lat) == pytest.approx(2 * len(E), abs=4)
+        Eg, Ng = g.utm_fwd(tm.lat, tm.lon, 37)
+        assert Eg.min() == pytest.approx(E[0], abs=1e-6) and Eg.max() == pytest.approx(E[-1], abs=1.0)
+        assert np.all(np.abs(tm.alt - ALT_RAIL) < 1e-9)
+    one = TrackMap.load(d / "a - b.json")
+    fr = g.Frame(55.8, 37.4, 0.0, "utm")
+    one.bind(fr)
+    # курс сетки карты = направление tang файла (от оси x против часовой)
+    grid_az = math.pi / 2 - pgs[0]["tang"][0]
+    assert float(np.angle(np.exp(1j * (one._head[5] - grid_az)))) == pytest.approx(0.0, abs=1e-3)
+    # по ней едет выставка: base_link на ломаной, выход в 37UCB
+    route = Route(L1=150.0, E0=399900.0)
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+    r = Runner(_tram(), track_map=one)
+    o = [q for q in _feed(r, 0.0, 25.0, v_of_t, route, s_of_t) if q["pos_valid"]][-1]
+    assert 99900.0 < o["x"] < 100150.0 and o["z"] == pytest.approx(ALT_RAIL, abs=0.5)
+
+
+PG_DIR = os.path.join(ROOT, "_incoming", "pathgraph")
+
+
+@pytest.mark.skipif(not os.path.isdir(PG_DIR), reason="pathgraph организаторов не в git")
+def test_real_pathgraph_is_37ucb_continuous():
+    """Настоящий pathgraph: два пути по ~4,71 км, x 99 156…103 347 (через
+    100 000 без скачка), шаг 1 м, tang совпадает с направлением рёбер."""
+    pgs = read_pathgraph(PG_DIR)
+    assert len(pgs) == 2
+    for pg in pgs:
+        xy = pg["xy"]
+        seg = np.hypot(*np.diff(xy, axis=0).T)
+        assert seg.sum() == pytest.approx(4708.0, abs=5.0) and seg.max() < 1.01
+        assert 99150.0 < xy[:, 0].min() < 99160.0 and 103340.0 < xy[:, 0].max() < 103350.0
+        assert np.abs(np.diff(xy[:, 0])).max() < 1.01
+        h = np.arctan2(np.diff(xy[:, 1]), np.diff(xy[:, 0]))
+        assert np.degrees(np.abs(np.angle(np.exp(1j * (pg["tang"][:-1] - h))))).max() < 1.0
+        assert 140.0 < pg["z"].min() and pg["z"].max() < 180.0
+
+
+def test_no_rover_standing_off_map_heading_from_map():
+    """Нет rover, вагон стоит у конечной вне карты (карта — из точек на ходу):
+    ближайшая точка карты base_link — в 38 м от антенны master (base_link на
+    9,87 м впереди неё). Курс берётся по карте в радиусе 30 м + плечо антенны,
+    выставка полная, и дальше выход идёт по карте, а не стоит в якоре."""
+    route = Route(L1=400.0)
+    keep = route.s >= 38.0
+    tm = TrackMap.from_polylines([np.c_[route.P[keep], np.full(int(keep.sum()), ALT_RAIL)]],
+                                 crs="utm", zone=37, bidirectional=False)
+    v_of_t, s_of_t = _profile(5.0, 3.0)
+    r = Runner(_tram(), track_map=tm)
+    outs = _feed(r, 0.0, 60.0, v_of_t, route, s_of_t, rover=False)
+    assert r.pos.ready and r.pos.az == pytest.approx(math.pi / 2, abs=0.05)
+    E, N = _continuous(outs[-1], r.pos.frame)
+    e, n = route.bl(s_of_t(outs[-1]["stamp"]))
+    assert math.hypot(E - e, N - n) < 5.0
