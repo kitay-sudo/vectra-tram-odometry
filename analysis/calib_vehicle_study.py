@@ -190,6 +190,30 @@ def study_speed(delay, tau, workers):
     return res
 
 
+SEG_MIN_L, SEG_MAX_DEV, SEG_MIN_N, SEG_CAP = 300.0, 0.03, 2, 0.02
+DEADBANDS = (0.003, 0.005)
+
+
+def seg_scale(log, s0, nlog):
+    """Причинная оценка масштаба колёс по отрезкам между привязками к
+    остановкам: у отрезка k = (L·s0·mult + δ) / (L·s0) (как Position.
+    _adapt_scale, но без ворот ±1 % и отключения); медиана отрезков длиннее
+    SEG_MIN_L с |k − 1| < SEG_MAX_DEV, не меньше SEG_MIN_N отрезков, в пределах
+    ±SEG_CAP. nlog — длина журнала привязок на каждом выходе."""
+    ks = []
+    used = 1.0          # mult, с которым курсор шёл по отрезку (в журнале — после привязки)
+    for (_ds, d, L, mult) in log:
+        k = (L * s0 * used + d) / (L * s0) if L > 0 else float("nan")
+        ks.append(k if L >= SEG_MIN_L and abs(k - 1.0) < SEG_MAX_DEV else float("nan"))
+        used = mult
+    est = np.ones(len(log) + 1)
+    for n in range(1, len(log) + 1):
+        x = [k for k in ks[:n] if np.isfinite(k)]
+        if len(x) >= SEG_MIN_N:
+            est[n] = min(max(float(np.median(x)), 1.0 - SEG_CAP), 1.0 + SEG_CAP)
+    return est[np.asarray(nlog, int)]
+
+
 def _online_run(b):
     """Связка как в eval.py (лист ОЦЕНКИ, vehicle auto, карта ОЦЕНКИ, GNSS 3 с);
     на каждом выходе запоминается текущий Position.mult (причинно)."""
@@ -204,20 +228,28 @@ def _online_run(b):
     tmap = ER.load_map(CE.PKG / "config" / "eval" / "track_map.npz")
     r, _ = ER.make_runner(p, node, tmap)
     gl = ER.Glue(r, node)
-    T, Vv, Mm = [], [], []
+    T, Vv, Mm, Nl = [], [], [], []
     for tb, kind, i, th, val in ER.events(a, "3"):
         for o in gl.feed(tb, kind, i, th, val):
             T.append(o["stamp"])
             Vv.append(o["v"])
             Mm.append(r.pos.mult)
-    T, Vv, Mm = map(np.asarray, (T, Vv, Mm))
+            Nl.append(len(r.pos.scale_log))
+    T, Vv, Mm, Nl = map(np.asarray, (T, Vv, Mm, Nl))
+    Ks = seg_scale(r.pos.scale_log, tmap.scale, Nl)
     O = dict(T=T, V=Vv)
     _, s0 = EM.score_speed(O, a)
     _, s1 = EM.score_speed(dict(T=T, V=Vv * Mm), a)
+    _, s2 = EM.score_speed(dict(T=T, V=Vv * Ks), a)
     if s0 is None:
         return b, None
+    dead = {}
+    for db in DEADBANDS:            # мёртвая зона: поправка, только если |k − 1| > db
+        Kd = np.where(np.abs(Ks - 1.0) > db, Ks, 1.0)
+        dead[f"ev_d{db:g}"] = EM.score_speed(dict(T=T, V=Vv * Kd), a)[1]["ev"]
     ratio = CV.run_ratio(b)
-    return b, dict(ev=s0["ev"], ev_m=s1["ev"], mult_end=float(Mm[-1]),
+    return b, dict(ev=s0["ev"], ev_m=s1["ev"], ev_s=s2["ev"], **dead, mult_end=float(Mm[-1]),
+                   seg_end=float(Ks[-1]),
                    anchors=int(r.pos.anchors), adapt_on=bool(r.pos.scale_adapt),
                    k_run=(float(1.0 / np.median(ratio) / p.meas_scale) if ratio is not None
                           else float("nan")))
@@ -239,8 +271,11 @@ def study_online(workers):
         rs = [res[b] for b in groups[key]]
         e0 = np.concatenate([r["ev"] for r in rs])
         e1 = np.concatenate([r["ev_m"] for r in rs])
+        e2 = np.concatenate([r["ev_s"] for r in rs])
         row = dict(runs=len(rs), mae=float(np.mean(np.abs(e0))), mae_mult=float(np.mean(np.abs(e1))),
                    bias=float(np.mean(e0)), bias_mult=float(np.mean(e1)),
+                   mae_seg=float(np.mean(np.abs(e2))), bias_seg=float(np.mean(e2)),
+                   seg_end=float(np.mean([r["seg_end"] for r in rs])),
                    k_run=float(np.nanmean([r["k_run"] for r in rs])),
                    mult_end=float(np.mean([r["mult_end"] for r in rs])),
                    adapt_off=int(sum(not r["adapt_on"] for r in rs)))
@@ -248,7 +283,22 @@ def study_online(workers):
         print(f"{key[0]}  {key[1]}  {row['runs']:7d}  {row['mae']:.4f} / {row['mae_mult']:.4f}"
               f"        {row['bias']:+.4f} / {row['bias_mult']:+.4f}              "
               f"{row['k_run']:.4f}    {row['mult_end']:.4f} (выкл. {row['adapt_off']})")
-    out["_runs"] = {b: {k: v for k, v in r.items() if k not in ("ev", "ev_m")}
+        print(f"                           по отрезкам: MAE {row['mae_seg']:.4f}, смещение "
+              f"{row['bias_seg']:+.4f}, оценка в конце (ср.) {row['seg_end']:.4f}")
+        for db in DEADBANDS:
+            e = np.concatenate([r[f"ev_d{db:g}"] for r in rs])
+            row[f"mae_d{db:g}"], row[f"bias_d{db:g}"] = float(np.mean(np.abs(e))), float(np.mean(e))
+            print(f"                           по отрезкам, мёртвая зона {100 * db:.1f} %: MAE "
+                  f"{row[f'mae_d{db:g}']:.4f}, смещение {row[f'bias_d{db:g}']:+.4f}")
+    allr = list(res.values())
+    for key, name in (("ev", "как есть"), ("ev_m", "× mult"), ("ev_s", "по отрезкам"),
+                      *((f"ev_d{db:g}", f"по отрезкам, мёртвая зона {100 * db:.1f} %")
+                        for db in DEADBANDS)):
+        e = np.concatenate([r[key] for r in allr])
+        out[f"_all_{key}"] = dict(mae=float(np.mean(np.abs(e))), bias=float(np.mean(e)))
+        print(f"все {len(allr)} записей, {name}: MAE {np.mean(np.abs(e)):.4f}, смещение "
+              f"{np.mean(e):+.4f}")
+    out["_runs"] = {b: {k: v for k, v in r.items() if not k.startswith("ev")}
                     for b, r in res.items()}
     return out
 

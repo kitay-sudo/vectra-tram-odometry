@@ -64,8 +64,14 @@ ros2 bag play <путь к прогону> -d 3
 
    ```
    оценщик запущен: шаг 50 мс, карта есть; лист: .../share/tram_state_estimator/config/tram.yaml ...;
-   единицы km_h; пульс 2.0 с; выход mgrs от квадрата 37UCB непрерывно; точка base_link (карта по base_link)
+   единицы km_h; вагон 30618: meas_scale 1.001362 (общий лист 1.001093); пульс 2.0 с;
+   выход mgrs от квадрата 37UCB непрерывно; точка base_link (карта по base_link)
    ```
+
+   **Вагон.** По умолчанию нода настроена на вагон 30618 (проверка идёт на нём).
+   Для записи вагона 30639 — `ros2 launch tram_state_estimator tram.launch.py
+   vehicle:=30639`, для неизвестного вагона — `vehicle:=auto` (общий лист по обоим).
+   Разница вагонов и что она даёт — [VEHICLES.md](VEHICLES.md).
 
    **Рекомендуем `ros2 launch`**: он подставляет лист `config/tram.yaml` и
    перезапускает ноду при падении (`respawn`). `ros2 run tram_state_estimator

@@ -165,6 +165,7 @@ ros2 bag play <путь к прогону> -d 3
 | [docs/DEMO.md](docs/DEMO.md) | сценарий показа: 9 пунктов, у каждого команда или экран |
 | [docs/SUBMISSION.md](docs/SUBMISSION.md) | тексты для формы платформы |
 | [docs/POSITION_FRAME.md](docs/POSITION_FRAME.md) | положение: MGRS 37UCB, `base_link`, карта путей |
+| [docs/VEHICLES.md](docs/VEHICLES.md) | учёт различий трамваев: масштаб колёс 30618 и 30639 по датам, параметр `vehicle` |
 | [docs/ROBUST.md](docs/ROBUST.md) | устойчивость ноды: плохие входы, разрывы времени, пульс |
 | [docs/audit/SLIP.md](docs/audit/SLIP.md) | юз и буксование обеих тележек, шум показаний |
 | [docs/SANDBOX.md](docs/SANDBOX.md) | песочница: что в ней настоящее, таблица сценариев, слабые места |
@@ -186,6 +187,7 @@ ros2_ws/src/                    пакеты ROS 2 Humble (их собирает
       runner.py                 связка: сетка 50 мс по меткам, выставка, положение по карте
       track_map.py, geodesy.py  карта путей; MGRS/UTM
       body.py                   точка base_link по антеннам
+      vehicle.py                параметр vehicle: масштаб колёс вагона 30618 / 30639 / auto
       tram_node.py              нода: подписки, публикация, проверка входов, пульс
     config/tram.yaml            лист жюри (генерируется tools/gen_params.py)
     config/track_map.npz        карта путей жюри
