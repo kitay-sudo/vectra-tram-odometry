@@ -7,10 +7,15 @@
 //   Params (DEFAULT ниже: поля и значения по умолчанию), notch_to_u, sensor_to_speed,
 //   sensor_layout, _cell, table_acc, _drive_nominal, drive_force, rated_force, resistance,
 //   axle_load, body_force, axle_shares, creep, f_process, h_axles, h_axles_batch,
-//   position_sigma; Estimator: __init__, _drive_model, _mode, _diagnose, _axle_speeds,
-//   _calibrate, _chol (+ eigh), _sigma, _predict, _a_limit, _meas_var, _correct, step
-//   (маска fresh, axle_jump, первая инициализация), _frozen_all, _adapt_scale (окно по
-//   реальному времени, adapt_on), step_open_loop, _sigma_v_out, _finish.
+//   position_sigma, MAD_TO_SIGMA; Estimator: __init__, _drive_model, _mode, _diagnose,
+//   _axle_speeds, _noise, _dot_tol, _calibrate, _chol (+ eigh), _sigma, _predict, _a_limit,
+//   _meas_var (+ шум сверх паспортного), _a_model, _live, _slip_all_update,
+//   _slip_all_return, _slip_all_end, _level_agree, _correct (срыв всех осей: ep / ep_prev /
+//   ended_zero / ep_rej, признак насыщения с apart, slip_ok_t0), step (маска fresh, notch_last,
+//   оценка шума, скачок против тренда с правилом отголоска, axle_jump, первая инициализация),
+//   _frozen_all, _adapt_scale (окно по реальному времени, adapt_on), step_open_loop,
+//   _sigma_v_out, _finish (slip_all, meas_noise).
+//   Срыв всех осей и шум (поток «срыв», docs/audit/SLIP.md §7) перенесены 26.09 при интеграции (раунд 2).
 //   Не перенесено (на выход не влияет): проверка листа Params.__post_init__, adapt_stats.
 //   Добавлено (не из ядра, на числа не влияет): diag() — запись решений фильтра по осям для
 //   панели «Что сейчас думает модель» в песочнице.
@@ -22,7 +27,8 @@
 // node js-port/sync.js, проверяют js-port/check.sh и simulator/test/page_test.js).
 const TramEst = (() => {
   const G = 9.81;
-  const PORT = { core_git: '5852b8e', core_sha1: 'ed61cb444c94', checked: '26.09', dv: '≤ 6·10⁻¹³ м/с' };
+  const MAD_TO_SIGMA = 1.4826;                      // σ = 1,4826 · медиана |нормальной величины|
+  const PORT = { core_git: '3466ac4', core_sha1: '684530832766', checked: '26.09', dv: '≤ 2·10⁻¹² м/с' };
   const DEFAULT = {
     M_nom: 28000.0, r_nom: 0.35, n_axles: 4, driven: [true, true, false, false], braked: [true, true, true, true], v_max_line: 20.0,
     F_notch: 36000.0, F_brake: 30000.0, v_base: 8.0, v_ed_fade: 1.5, brake_hold_frac: 1.0,
@@ -30,7 +36,9 @@ const TramEst = (() => {
     tau_drive: 0.30, delay_drive: 0.10, T_dead: 0.05, t_confirm: 0.15,
     res_A: 2400.0, res_B: 55.0, res_C: 3.5,
     mu_nominal: 0.25, mu_min: 0.02, tau_sat: 0.3, tau_rec: 30.0, c_creep: 0.020, c_creep_drag: 0.002, sigma_creep: 0.004,
-    a_max_acc: 1.5, a_max_brake: 3.0, theta_max: 0.06, d_extra: 0.30, a_free_decel: 0.75, lock_ratio: 0.7, a_slip_margin: 1.0,
+    a_max_acc: 1.5, a_max_brake: 3.0, theta_max: 0.06, d_extra: 0.30, a_free_decel: 0.75, lock_ratio: 0.5, a_slip_margin: 1.0,
+    slip_all_on: true, slip_jump: 0.3, slip_rel: 0.2, slip_pair_s: 0.5, slip_cont_k: 2.0, slip_t_max: 12.0, slip_ok_s: 1.0,
+    slip_ret_a: 0.7, slip_sigma_a: 0.15, noise_n: 12, noise_k: 3.0,
     meas_units: 'rad_s', ppr: 200, meas_scale: 1.0, sensor_ratio: 1.0, sensors_per_axle: 2, sensor_axles: [true, true, true, true],
     curve_ratio_max: 0.038, sigma_meas: 0.15, stuck_n: 60, stuck_dv: 0.5, recover_tol: 0.5, recover_rel: 0.1, t_recover: 2.0,
     v_dead_ref: 2.0, axle_dot_alpha: 0.2, calib_gain: 0.01, calib_v_min: 2.0, scale_range: 0.10,
@@ -218,6 +226,21 @@ const TramEst = (() => {
       this.axle_seen = new Array(p.n_axles).fill(false);
       this.axle_jump = new Array(p.n_axles).fill(false);   // скачок оси за интервал больше физически возможного
       this.axle_scale = new Array(p.n_axles).fill(1);
+      // шум показаний оси: остатки линейной экстраполяции (вторые разности), окно noise_n, медиана
+      this.nz_buf = Array.from({ length: p.n_axles }, () => []);   // deque(maxlen=noise_n)
+      this.nz_cnt = new Array(p.n_axles).fill(0);
+      this.axle_prev2 = new Array(p.n_axles).fill(0);
+      this.gap_prev = new Array(p.n_axles).fill(p.dt);
+      this.axle_gap = new Array(p.n_axles).fill(p.dt);
+      this.nz_sigma = new Array(p.n_axles).fill(0);
+      this.nz_excess = new Array(p.n_axles).fill(0);
+      // срыв всех осей: момент, знак и величина последнего скачка оси против её тренда
+      this.jump_t = new Array(p.n_axles).fill(-Infinity);
+      this.jump_s = new Array(p.n_axles).fill(0);
+      this.jump_m = new Array(p.n_axles).fill(0);
+      this.slip_all = 0; this.slip_t0 = -Infinity; this.slip_j = 0.0;
+      this.slip_back = new Set(); this.slip_timeout = [0, -Infinity]; this.slip_ok_t0 = null;
+      this.slip_ret = new Set(); this.n_slip_all = 0; this.notch_last = 0.0;
       this.initialised = false; this.have_meas = false;
       this.t_meas_i = new Array(this.nw).fill(-Infinity);
       this.t_axle = new Array(p.n_axles).fill(-Infinity);
@@ -233,7 +256,7 @@ const TramEst = (() => {
       this.wc[0] = this.wm[0] + (1.0 - alpha * alpha + beta);
     }
     // Диагностика для песочницы (не из ядра): решение фильтра по каждой оси на последней
-    // коррекции (why: ok | agree | spin | skid | jump | forced | held | gate), невязка и причина
+    // коррекции (why: ok | agree | spin | skid | jump | forced | held | gate | slipall), невязка и причина
     // исключения датчика (bad: stuck | dead). Только запись, на числа не влияет (check.sh).
     diag() {
       const na = this.p.n_axles;
@@ -289,6 +312,30 @@ const TramEst = (() => {
       }
       return [out, ok];
     }
+    _noise(a, za, gap) {
+      // оценка шума показаний оси: остаток экстраполяции по двум прошлым, медиана по окну
+      const p = this.p, buf = this.nz_buf[a];
+      if (gap > p.t_valid) this.nz_cnt[a] = 0;
+      if (this.nz_cnt[a] >= 2) {
+        const r = gap / this.gap_prev[a];
+        const e = (za - this.axle_prev[a]) - (this.axle_prev[a] - this.axle_prev2[a]) * r;
+        buf.push(Math.abs(e) / Math.sqrt(1.0 + (1.0 + r) ** 2 + r * r));
+        if (buf.length > p.noise_n) buf.shift();
+      }
+      if (buf.length * 2 >= p.noise_n) {
+        const s = MAD_TO_SIGMA * median(buf);
+        this.nz_sigma[a] = s;
+        this.nz_excess[a] = Math.sqrt(Math.max(0.0, s * s - p.sigma_meas ** 2));
+      }
+      this.axle_prev2[a] = this.axle_prev[a];
+      this.gap_prev[a] = gap;
+      this.nz_cnt[a] += 1;
+    }
+    _dot_tol() {
+      // запас порога производной оси на шум сверх паспортного
+      const p = this.p, al = p.axle_dot_alpha;
+      return this.nz_excess.map((ne, a) => p.noise_k * Math.sqrt(2.0) * ne / this.axle_gap[a] * Math.sqrt(al / (2.0 - al)));
+    }
     _calibrate(z, acc) {
       const p = this.p;
       if (this.mode !== COAST || acc.length < 2 || Math.min(...acc.map(a => z[a])) < p.calib_v_min) return;
@@ -323,11 +370,92 @@ const TramEst = (() => {
     }
     _meas_var(F, v) {
       const p = this.p;
-      return axle_shares(F, p).map(sh => {
+      return axle_shares(F, p).map((sh, i) => {
         let r = p.sigma_meas ** 2 + (v * p.sigma_creep) ** 2 * (sh > 0 ? 1 : 0);
         if (p.sensors_per_axle === 1) r = r + (v * p.curve_ratio_max) ** 2;
-        return r;
+        return r + this.nz_excess[i] ** 2;          // шум показаний выше паспортного
       });
+    }
+    _a_model(u) {
+      // ускорение корпуса по модели в текущем состоянии (как в выходе связки)
+      const p = this.p, v = this.x[IV];
+      const a = (body_force(u, v, this.x[IKT], this.x[IKB], this.mu, p) - resistance(v, p)) / p.M_nom + this.x[ID];
+      return v <= 0.0 && a < 0.0 ? 0.0 : a;
+    }
+    _live() {
+      // оси с датчиками, показания которых не старше slip_pair_s
+      const p = this.p, out = [];
+      for (let a = 0; a < p.n_axles; a++) if (this.slots[a].length && this.t - this.t_axle[a] <= p.slip_pair_s) out.push(a);
+      return out;
+    }
+    _slip_all_update(z, ok, u, hbar, v0) {
+      // СРЫВ ВСЕХ ОСЕЙ (юз или буксование обеих тележек): начало и конец — см. докстроку ядра
+      const p = this.p, live = this._live();
+      const maxLive = arr => Math.max(...live.map(a => arr[a])), minLive = arr => Math.min(...live.map(a => arr[a]));
+      if (this.slip_all) {
+        const s = this.slip_all;
+        for (const a of live) if (this.jump_t[a] > this.slip_t0 && this.jump_s[a] === -s) this.slip_back.add(a);
+        if (p.slip_ret_a > 0) this._slip_all_return(s, u, z, ok, hbar, live);
+        const fresh = []; for (let a = 0; a < p.n_axles; a++) if (ok[a]) fresh.push(a);
+        const zeros = v0 > p.v_dead_ref && fresh.length > 0 && fresh.every(a => z[a] < p.v_standstill);
+        const noisy = live.length > 0 && (p.slip_jump + p.noise_k * Math.sqrt(2.0) * maxLive(this.nz_excess) >= this.slip_j);
+        const back = live.length > 0 && live.every(a => this.slip_back.has(a));
+        const agree = p.slip_ok_s > 0 && this.slip_ok_t0 !== null && this.t - this.slip_ok_t0 >= p.slip_ok_s;
+        const timeout = this.t - this.slip_t0 > p.slip_t_max;
+        if (timeout || zeros || noisy || back || agree) {
+          this._slip_all_end(u, zeros);
+          if (timeout) this.slip_timeout = [s, this.t];
+        }
+        return;
+      }
+      if (!p.slip_all_on || this.amb || v0 <= p.v_adapt_min) return;
+      if (live.length < 2 || live.some(a => this.t - this.jump_t[a] > p.slip_pair_s)) return;
+      const s = this.jump_s[live[0]];
+      const zl = live.map(a => ok[a] ? z[a] : this.axle_prev[a]);
+      const [s_to, t_to] = this.slip_timeout;
+      if (s_to === -s && this.t - t_to <= p.slip_t_max) return;
+      const nl = this.notch_last;
+      if ((s > 0 && nl < 0) || (s < 0 && nl > 0)) return;
+      if (live.some(a => this.jump_s[a] !== s) || minLive(this.jump_m) < p.slip_rel * v0
+          || live.some((a, k) => s * (zl[k] - hbar[a]) <= 0) || zl.every(zb => zb < p.v_standstill)) return;
+      this.slip_all = s > 0 ? 1 : s < 0 ? -1 : 0;   // int(s): s = ±1
+      this.slip_t0 = this.t;
+      this.slip_j = minLive(this.jump_m);
+      this.slip_back = new Set(); this.slip_ok_t0 = null; this.slip_ret = new Set();
+      this.n_slip_all += 1;
+      // дальше скорость ведёт модель: σ возмущения — ошибка разомкнутого прогноза
+      const sd = Math.sqrt(Math.max(this.P[ID][ID], 0.0));
+      if (sd > 0.0) {
+        const f = p.slip_sigma_a / sd;
+        for (let j = 0; j < NX; j++) this.P[ID][j] *= f;
+        for (let i = 0; i < NX; i++) this.P[i][ID] *= f;
+      } else this.P[ID][ID] = p.slip_sigma_a ** 2;
+      const am = this._a_model(u);
+      for (const a of live) this.axle_dot[a] = am;
+    }
+    _slip_all_return(s, u, z, ok, hbar, live) {
+      // плавное возвращение колеса к корпусу: производная колеса против ρ·(ускорение модели)
+      const p = this.p, a_m = this._a_model(u), tol = this._dot_tol();
+      for (const a of live) {
+        if (!ok[a] || this.slip_back.has(a) || hbar[a] <= p.v_adapt_min) continue;
+        const rho = z[a] / hbar[a];
+        const r = -s * (this.axle_dot[a] - rho * a_m);
+        if (r > p.slip_ret_a + tol[a]) this.slip_ret.add(a);
+        else if (this.slip_ret.has(a) && r < 0.5 * p.a_slip_margin) this.slip_back.add(a);
+      }
+    }
+    _slip_all_end(u, keep_jump = false) {
+      // конец срыва всех осей; keep_jump — закончился нулями: скачок и производная шага остаются
+      this.slip_all = 0; this.slip_back = new Set(); this.slip_ret = new Set(); this.slip_ok_t0 = null;
+      if (!keep_jump) { this.axle_dot.fill(this._a_model(u)); this.axle_jump.fill(false); }
+      this.jump_t.fill(-Infinity);
+    }
+    _level_agree(a, z, ok, recent) {
+      // согласие оси с последними показаниями остальных (без проверки производных)
+      const p = this.p, others = [];
+      for (let b = 0; b < p.n_axles; b++) if (b !== a && (recent[b] || ok[b])) others.push(b);
+      const tol = p.agree_tol + p.noise_k * Math.sqrt(2.0) * Math.max(...this.nz_excess);
+      return others.length > 0 && others.every(b => Math.abs(z[a] - (ok[b] ? z[b] : this.axle_prev[b])) <= tol);
     }
     _correct(z, ok, u, mode, handle_ok = true) {
       const p = this.p, axles = [];
@@ -336,7 +464,13 @@ const TramEst = (() => {
       const acc = [], rej = [];
       if (!axles.length) return acc;
       const v0 = this.x[IV], F0 = body_force(u, v0, 1.0, 1.0, this.mu, p);
-      const hbar = h_axles(this.x, u, this.mu, p), var0 = this._meas_var(F0, v0);
+      const hbar = h_axles(this.x, u, this.mu, p);
+      // срыв всех осей: начало и конец (может раздуть σ возмущения — до сигма-точек)
+      const ep_prev = this.slip_all;
+      this._slip_all_update(z, ok, u, hbar, v0);
+      // снят нулями всех новых показаний (юз перешёл в блокировку): нули не принимаются
+      const ended_zero = ep_prev !== 0 && this.slip_all === 0 && v0 > p.v_dead_ref && axles.every(a => z[a] < p.v_standstill);
+      const var0 = this._meas_var(F0, v0);
       const key = a => Math.abs(z[a] - hbar[a]) / Math.sqrt(var0[a] + this.P[IV][IV]);
       const order = axles.slice().sort((a, b) => key(a) - key(b));
       const shares0 = axle_shares(F0, p);
@@ -346,7 +480,8 @@ const TramEst = (() => {
       const moving = this.x[IV] > p.v_adapt_min;
       mask[ID] = (mode === COAST && moving && handle_ok) ? 1 : 0;
       mask[IKT] = 0; mask[IKB] = 0;
-      const spin_all = this.axle_dot.map((d, b) => Math.abs(d) > (d > 0 ? p.a_max_acc : p.a_max_brake) + p.a_slip_margin || this.axle_jump[b]);
+      const dot_tol = this._dot_tol();
+      const spin_all = this.axle_dot.map((d, b) => Math.abs(d) > (d > 0 ? p.a_max_acc : p.a_max_brake) + p.a_slip_margin + dot_tol[b] || this.axle_jump[b]);
       const recent = this.t_axle.map(ta => (this.t - ta) <= p.agree_age);
       const agreed = a => {
         const others = [];
@@ -354,10 +489,12 @@ const TramEst = (() => {
         if (!others.length || [a].concat(others).some(b => spin_all[b])) return false;
         return others.every(b => Math.abs(z[a] - (ok[b] ? z[b] : this.axle_prev[b])) <= p.agree_tol);
       };
+      const ep = this.slip_all, ep_rej = new Set();   // отвергнуты срывом всех осей
+      const dgw = (a, nu, nis, why) => { if (this.dg) { this.dg.t[a] = this.t; this.dg.nu[a] = nu; this.dg.nis[a] = nis; this.dg.why[a] = why; } };
       let pts = this._sigma(), Zall = h_axles_batch(pts, u, this.mu, p);
       for (const a of order) {
         const dot = this.axle_dot[a], lim = dot > 0 ? p.a_max_acc : p.a_max_brake;
-        const spinning = Math.abs(dot) > lim + p.a_slip_margin || this.axle_jump[a];
+        let spinning = Math.abs(dot) > lim + p.a_slip_margin + dot_tol[a] || this.axle_jump[a];
         let Z = Zall.map(r => r[a]);
         let zh = 0; for (let j = 0; j < Z.length; j++) zh += this.wm[j] * Z[j];
         let dz = Z.map(q => q - zh);
@@ -365,12 +502,24 @@ const TramEst = (() => {
         const R = this._meas_var(Fv, this.x[IV])[a];
         let S = 0; for (let j = 0; j < dz.length; j++) S += this.wc[j] * (dz[j] * dz[j]); S += R;
         let nu = z[a] - zh, nis = nu * nu / S;
-        const lock = F0 < 0 && nu < 0 && z[a] < p.lock_ratio * hbar[a];
-        const in_sat_dir = ((F0 > 0 && nu > 0) || lock) && shares0[a] > 0 && fast;
-        const forced = recent_sat && in_sat_dir && nis > 0.25 * p.gate_nis;
-        const held = this.amb && z[a] < p.v_standstill;
+        let forced, held, override;
+        if (ep) {
+          // срыв всех осей: показание в сторону срыва — лишь граница скорости корпуса
+          const returned = this.slip_back.has(a);
+          if (!returned && ep * nu > p.slip_cont_k * Math.sqrt(R)) { rej.push([a, nu, nis, false]); ep_rej.add(a); dgw(a, nu, nis, 'slipall'); continue; }
+          spinning = forced = held = false;
+          override = nis > p.gate_nis && (returned || this._level_agree(a, z, ok, recent));
+          if (nis > p.gate_nis && !override) { rej.push([a, nu, nis, false]); ep_rej.add(a); dgw(a, nu, nis, 'gate'); continue; }
+        } else {
+          const lock = F0 < 0 && nu < 0 && z[a] < p.lock_ratio * hbar[a];
+          const spin_dir = F0 > 0 && nu > 0 && this.t_since_acc <= p.t_valid;
+          const in_sat_dir = (spin_dir || lock) && shares0[a] > 0 && fast;
+          forced = recent_sat && in_sat_dir && nis > 0.25 * p.gate_nis;
+          held = (this.amb || ended_zero) && z[a] < p.v_standstill;
+          override = nis > p.gate_nis && !(spinning || forced || held) && agreed(a);
+        }
         let over = false;
-        if (nis > p.gate_nis && !(spinning || forced || held) && agreed(a)) {
+        if (override) {
           this.P[IV][IV] = Math.max(this.P[IV][IV], nu * nu);
           this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * Math.max(this._a_limit(u, true), this._a_limit(u, false))) ** 2);
           pts = this._sigma(); Zall = h_axles_batch(pts, u, this.mu, p);
@@ -388,7 +537,7 @@ const TramEst = (() => {
           this.dg.why[a] = spinning ? (this.axle_jump[a] ? 'jump' : dot_up ? 'spin' : 'skid') : forced ? 'forced' : held ? 'held'
             : nis > p.gate_nis ? 'gate' : over ? 'agree' : 'ok';
         }
-        if (spinning || forced || held || nis > p.gate_nis) { rej.push([a, nu]); continue; }
+        if (spinning || forced || held || nis > p.gate_nis) { rej.push([a, nu, nis, spinning]); continue; }
         const C = new Array(NX).fill(0);
         for (let j = 0; j < pts.length; j++) for (let i = 0; i < NX; i++) C[i] += (pts[j][i] - this.x[i]) * this.wc[j] * dz[j];
         const K = C.map((c, i) => c / S * mask[i]);
@@ -400,21 +549,33 @@ const TramEst = (() => {
         pts = this._sigma(); Zall = h_axles_batch(pts, u, this.mu, p);
       }
       this.n_acc = acc.length; this.n_rej = rej.length;
+      // срыв всех осей идёт: все новые показания приняты — отсчёт для его снятия
+      if (this.slip_all && acc.length && !rej.length) { if (this.slip_ok_t0 === null) this.slip_ok_t0 = this.t; }
+      else this.slip_ok_t0 = null;
+      // признак насыщения: нагруженная ось отвергнута в сторону срыва, значимо, и срыв подтверждён
+      // не одной моделью (блокировка, скачок/производная за пределом или другая ось читает меньше)
       if (rej.length && fast) {
         const sh = axle_shares(F0, p);
-        for (const [a, nu] of rej) {
+        const tol = p.agree_tol + p.noise_k * Math.sqrt(2.0) * Math.max(...this.nz_excess);
+        for (const [a, nu, nis, spun] of rej) {
+          if (ep_rej.has(a)) continue;
           const lock = F0 < 0 && nu < 0 && z[a] < p.lock_ratio * hbar[a];
-          if (sh[a] > 0 && ((F0 > 0 && nu > 0) || lock)) this.sat = true;
+          if (!(sh[a] > 0 && ((F0 > 0 && nu > 0) || lock) && nis > 0.25 * p.gate_nis)) continue;
+          const sgn = nu > 0 ? 1.0 : -1.0;
+          let apart = false;
+          for (let b = 0; b < p.n_axles; b++) if (b !== a && (recent[b] || ok[b]) && sgn * (z[a] - (ok[b] ? z[b] : this.axle_prev[b])) > tol) { apart = true; break; }
+          if (lock || spun || apart) this.sat = true;
         }
       }
       if (this.sat) this.t_last_sat = this.t;
       recent_sat = (this.t - this.t_last_sat) <= p.t_sat_hold;
       const idle_rejected = rej.some(([a]) => shares0[a] === 0);
-      if (!acc.length && rej.length && (!recent_sat || idle_rejected)) {
+      const explained = ep_rej.size === rej.length;
+      if (!acc.length && rej.length && !explained && (!recent_sat || idle_rejected)) {
         const up = median(rej.map(r => r[1])) > 0;
         this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * this._a_limit(u, up)) ** 2);
       }
-      const entry_ok = this.amb || this.t_since_acc <= p.t_valid;
+      const entry_ok = this.amb || this.t_since_acc <= p.t_valid || ep !== 0 || ep_prev !== 0;
       const all_zero = axles.every(a => z[a] < p.v_standstill) && v0 > p.v_dead_ref;
       if (!acc.length && rej.length && entry_ok && ((this.sat && F0 < 0) || all_zero)) {
         if (!this.amb) this.amb_v = v0;
@@ -426,6 +587,7 @@ const TramEst = (() => {
     step(notch, meas, fresh = true, handle_ok = true) {
       const p = this.p;
       this.t += p.dt;
+      this.notch_last = notch;
       const u = this._drive_model(notch);
       const fm = Array.isArray(fresh) ? fresh.map(Boolean) : new Array(this.nw).fill(Boolean(fresh));
       const anyFresh = fm.some(Boolean);
@@ -443,13 +605,27 @@ const TramEst = (() => {
         this.axle_jump.fill(false);
         for (let a = 0; a < p.n_axles; a++) {
           if (!ok[a]) continue;
-          if (!this.axle_seen[a]) { this.axle_prev[a] = z[a]; this.axle_seen[a] = true; this.t_axle[a] = this.t - p.dt; }
+          if (!this.axle_seen[a]) { this.axle_prev[a] = z[a]; this.axle_seen[a] = true; this.t_axle[a] = this.t - p.dt; this.nz_cnt[a] = 0; }
           const gap = this.t - this.t_axle[a];
           const raw = (z[a] - this.axle_prev[a]) / gap;
+          this._noise(a, z[a], gap);
+          const nz = p.noise_k * Math.sqrt(2.0) * this.nz_excess[a];   // шум сверх паспортного расширяет пороги
+          // скачок против СОБСТВЕННОГО тренда оси — срыв этой оси (все оси одного знака — срыв всех осей)
+          if (this.nz_cnt[a] > 2 && gap <= p.slip_pair_s && (this.t_since_acc <= p.slip_pair_s || this.slip_all)
+              && !(this.amb || this.frozen)) {
+            const dzj = z[a] - this.axle_prev[a];
+            const jr = dzj - this.axle_dot[a] * gap;
+            const thr = p.slip_jump + p.a_slip_margin * gap + nz;
+            const sg = jr > 0 ? 1.0 : -1.0;
+            // отголосок своего скачка: ровное показание после скачка — не скачок обратно
+            const echo = !this.slip_all && sg === -this.jump_s[a] && this.t - this.jump_t[a] <= p.slip_pair_s && Math.abs(dzj) <= thr;
+            if (Math.abs(jr) > thr && !echo) { this.jump_t[a] = this.t; this.jump_s[a] = sg; this.jump_m[a] = Math.abs(jr); }
+          }
           // скачок за один интервал больше физически возможного — срыв или отказ сразу (правка №1 интеграции)
           const dz = z[a] - this.axle_prev[a], lim_j = dz > 0 ? p.a_max_acc : p.a_max_brake;
-          this.axle_jump[a] = Math.abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol;
+          this.axle_jump[a] = Math.abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol + nz;
           this.axle_dot[a] += p.axle_dot_alpha * (raw - this.axle_dot[a]);
+          this.axle_gap[a] = gap;
           this.axle_prev[a] = z[a];
           this.t_axle[a] = this.t;
         }
@@ -469,7 +645,7 @@ const TramEst = (() => {
         // залипли все датчики разом: только прогноз по ручке, неопределённость по ускорению — до предела
         const lim = Math.max(this._a_limit(u, true), this._a_limit(u, false));
         this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * lim) ** 2);
-        this.adapting = false; this.n_acc = this.n_rej = 0; this.sat = false; this.last_acc_n = 0;
+        this.adapting = false; this.n_acc = this.n_rej = 0; this.sat = false; this.slip_all = 0; this.last_acc_n = 0;
         return this._finish(u, z, new Array(p.n_axles).fill(false), [], false);
       }
       let acc = [];
@@ -521,6 +697,7 @@ const TramEst = (() => {
     step_open_loop(notch) {
       const p = this.p;
       this.t += p.dt;
+      this.notch_last = notch;
       const u = this._drive_model(notch);
       this._predict(u);
       this.mode_pre = this._mode(u);
@@ -529,17 +706,14 @@ const TramEst = (() => {
       this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * lim) ** 2);
       this.have_meas = false;
       this.axle_seen.fill(false);
+      this.slip_all = 0;
       this.last_acc_n = 0;
       return this._finish(u, new Array(p.n_axles).fill(0), new Array(p.n_axles).fill(false), [], false);
     }
     _sigma_v_out(sv, u) {
       // публикуемая σ скорости: σ фильтра с множителем, пол, возраст показаний·|a|, масштаб колёс·v
       const p = this.p, v = this.x[IV];
-      let a = 0.0;
-      if (p.sv_age) {
-        a = (body_force(u, v, this.x[IKT], this.x[IKB], this.mu, p) - resistance(v, p)) / p.M_nom + this.x[ID];
-        if (v <= 0.0 && a < 0.0) a = 0.0;
-      }
+      const a = p.sv_age ? this._a_model(u) : 0.0;   // ускорение модели — как в выходе связки
       const floor = this.mode === STANDSTILL ? p.sv_floor_stand : p.sv_floor;
       return Math.sqrt((p.sv_gain * sv) ** 2 + floor * floor + (p.sv_age * a) ** 2 + (p.sv_rel * v) ** 2);
     }
@@ -564,17 +738,19 @@ const TramEst = (() => {
       if (standstill) { this.x[IV] = 0.0; this.x[ID] = 0.0; this.P[IV][IV] = Math.min(this.P[IV][IV], 1e-4); }
       if (fresh) this._calibrate(z, acc);
       this.mode = this.mode_pre;
-      if (this.sat || this.amb) this.mode = SLIP;
+      if (this.sat || this.amb || this.slip_all) this.mode = SLIP;
       if (standstill) this.mode = STANDSTILL;
       const valid = this.have_meas && this.t_since_acc <= p.t_valid && !this.amb && !this.frozen;
-      if (!this.have_meas || (!valid && !this.amb)) this.mode = DEGRADED;
+      // при срыве всех осей скорость ведёт модель: режим — срыв, а не отказ
+      if (!this.have_meas || (!valid && !this.amb && !this.slip_all)) this.mode = DEGRADED;
       const sv_filt = Math.sqrt(Math.max(this.P[IV][IV], 0.0));
       let sv = this._sigma_v_out(sv_filt, u);
       if (this.amb) { sv = Math.max(sv, 0.5 * this.amb_v); this.s_extra += 0.5 * this.amb_v * p.dt; }
       const ss = Math.sqrt(Math.max(this.P[IS][IS], 0.0) + this.s_extra ** 2);
       return {
         v: this.x[IV], s: this.x[IS], d: this.x[ID], k_t: this.x[IKT], k_b: this.x[IKB], mu: this.mu,
-        sigma_v: sv, sigma_s: ss, sigma_v_filt: sv_filt, mode: this.mode, healthy: this.healthy.slice(), slip: this.sat, ambiguous: this.amb, frozen: this.frozen,
+        sigma_v: sv, sigma_s: ss, sigma_v_filt: sv_filt, mode: this.mode, healthy: this.healthy.slice(), slip: Boolean(this.sat || this.slip_all), slip_all: this.slip_all,
+        meas_noise: Math.max(...this.nz_sigma), ambiguous: this.amb, frozen: this.frozen,
         n_accepted: this.n_acc, n_rejected: this.n_rej, odometry_used: acc.length > 0, valid, u
       };
     }

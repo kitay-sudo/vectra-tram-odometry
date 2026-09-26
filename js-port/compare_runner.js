@@ -18,14 +18,15 @@ rec.events.forEach((e, idx) => {
   const exp = want.get(idx) || [];
   if (outs.length !== exp.length) countMis++;
   for (let j = 0; j < Math.min(outs.length, exp.length); j++) {
-    const o = outs[j], [, stamp, v, s, sv, ss, mode, valid, amb, a, stale, hok, nv, ns] = exp[j];
+    const o = outs[j], [, stamp, v, s, sv, ss, mode, valid, amb, a, stale, hok, nv, ns, slip, slip_all] = exp[j];
     n++;
     if (Math.abs(o.stamp - stamp) > 1e-9) stampMis++;
     mv = Math.max(mv, Math.abs(o.v - v)); ms = Math.max(ms, Math.abs(o.s - s)); msv = Math.max(msv, Math.abs(o.sigma_v - sv));
     mss = Math.max(mss, Math.abs(o.sigma_s_core - ss)); ma = Math.max(ma, Math.abs(o.a - a));
     mnv = Math.max(mnv, Math.abs(o.naive_v - nv)); mns = Math.max(mns, Math.abs(o.naive_s - ns));
     if (o.mode !== mode) modeMis++;
-    if (o.valid !== valid || o.ambiguous !== amb || o.wheels_stale !== stale || o.handle_ok !== hok) flagMis++;
+    if (o.valid !== valid || o.ambiguous !== amb || o.wheels_stale !== stale || o.handle_ok !== hok
+        || (slip !== undefined && (o.slip !== slip || (o.slip_all || 0) !== slip_all))) flagMis++;
   }
   k++;
 });

@@ -45,7 +45,8 @@ for tb, kind, i, th, val in X.E.events(b):
     for o, q in zip(outs, outn):
         rows.append([len(events) - 1, o["stamp"], o["v"], o["s"], o["sigma_v"], o["sigma_s"],
                      int(o["mode"]), bool(o["valid"]), bool(o["ambiguous"]), o["a"],
-                     bool(o["wheels_stale"]), bool(o["handle_ok"]), q["v"], q["s"]])
+                     bool(o["wheels_stale"]), bool(o["handle_ok"]), q["v"], q["s"],
+                     bool(o["slip"]), int(o.get("slip_all", 0))])
 robust = dict(resets=r.resets, gaps=r.gaps, core_resets=r.core_resets,
               skipped_steps=r.skipped_steps, rejected_stamps=r.rejected_stamps,
               rejected_values=r.rejected_values)
