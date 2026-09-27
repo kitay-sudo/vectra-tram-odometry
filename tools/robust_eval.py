@@ -1,27 +1,30 @@
 #!/usr/bin/env python3
-"""robust_eval — офлайн-проверка правок устойчивости связки Runner на реальных
-прогонах (WP3, WP4, WP6, WP23; docs/ROBUST.md).
+"""robust_eval — офлайн-проверка защиты входов и времени связки Runner на
+реальных прогонах (docs/ROBUST.md): проверка входов, разрывы времени, сетка,
+кратная dt, приведение показаний к шагу.
 
 Запуск из корня репозитория в образе vectra/tram:dev (numpy есть только там):
 
     git show main:ros2_ws/src/tram_state_estimator/tram_state_estimator/runner.py \
-        > out/robust/runner_main.py                      # связка до правок (на хосте)
+        > out/robust/runner_main.py                      # связка без защиты (на хосте)
     python3 tools/robust_eval.py compare --set holdout --workers 2
     python3 tools/robust_eval.py compare --set train --variants main,same --sheets json
 
 Варианты связки:
-  main    runner.py из ветки main (до правок) — out/robust/runner_main.py;
-  same    новая связка с сеткой как в main (t += dt от первой метки) и без
-          приведения: проверка, что защита входов и времени (WP3, WP4) на
-          реальных данных ничего не меняет;
-  wp23    новая связка, узлы сетки кратны dt, целый счётчик (WP23), без
+  main    связка без защиты входов и времени — out/robust/runner_main.py
+          (выгрузка runner.py из коммита до неё);
+  same    текущая связка с сеткой от первой метки (t += dt) и без
+          приведения: проверка, что защита входов и времени на реальных
+          данных ничего не меняет;
+  wp23    текущая связка, узлы сетки кратны dt, целый счётчик, без
           приведения;
-  wp23_6  новая связка по умолчанию: WP23 + приведение показаний к шагу (WP6).
+  wp23_6  текущая связка по умолчанию: узлы кратны dt + приведение
+          показаний к шагу.
 Листы: json — config/tram_calibration.json (как analysis/evaluate.py; это
 источник листа жюри, A(u,v) подогнана по всем 122 bag — на holdout значимы
-только разности вариантов); evaldraft — снимок листа EVAL потока calib
-(только split train), out/robust/eval_draft_calibration.json;
-json_nocreep — json с c_creep = c_creep_drag = 0 (правка WP5 потока calib).
+только разности вариантов); evaldraft — черновик оценочного листа (только
+split train), out/robust/eval_draft_calibration.json;
+json_nocreep — json с c_creep = c_creep_drag = 0 (крип убран по данным).
 Карта: analysis/cache/track_map_train.npz (только обучающие прогоны). GNSS —
 первые 3 с (analysis/evaluate.events), эталон — |v| GNSS master (и rover).
 Набор holdout — 15 чистых отложенных (tools/split.json: holdout_scored),
@@ -72,9 +75,9 @@ def params(sheet):
     """json — config/tram_calibration.json: источник листа жюри tram.yaml,
     таблица A(u,v) подогнана по ВСЕМ 122 bag, включая отложенные (DATA.md
     §4): абсолютные числа на holdout оптимистичны, значимы разности
-    вариантов. evaldraft — снимок листа EVAL потока calib (калибровка только
-    по split train) в out/robust/eval_draft_calibration.json; ключи, которых
-    нет в Params этой ветки (новое ядро calib), отбрасываются."""
+    вариантов. evaldraft — черновик оценочного листа (калибровка только по
+    split train) в out/robust/eval_draft_calibration.json; ключи, которых
+    нет в Params этой версии ядра, отбрасываются."""
     if sheet.startswith("evaldraft"):
         from dataclasses import fields
         from tram_state_estimator.estimator_core import Params
@@ -208,7 +211,7 @@ def one(job):
 
 def deltas(base, other):
     """Разница выходов двух вариантов: на общих метках (±1 мс), а если сетки
-    сдвинуты (WP23) — линейной интерполяцией другого на метки базы."""
+    сдвинуты (узлы кратны dt) — линейной интерполяцией другого на метки базы."""
     Tb, Vb, Xb = base
     To, Vo, Xo = other
     j = np.clip(np.searchsorted(To, Tb), 1, len(To) - 1)

@@ -1,7 +1,7 @@
 """Тесты положения: геодезия (UTM/MGRS/ENU против PROJ и GeoTrans), выходная
 система MGRS (от квадрата 37UCB непрерывно — по умолчанию, перенос по
 квадратам), точка выхода base_link по tf антенн, GNSS только в окне выставки
-(C2), запасная выставка (нет rover, нет master, старт на ходу), проверка
+(при gnss_correction: false), запасная выставка (нет rover, нет master, старт на ходу), проверка
 точек GNSS, тупики карты, онлайн-масштаб пути, pathgraph организаторов. ROS
 не требуется.
 
@@ -259,7 +259,7 @@ def test_position_follows_map_in_mgrs():
 
 
 def test_whole_run_gnss_does_not_freeze_or_shift_outputs():
-    """C2: GNSS весь прогон (здесь — заведомо ложный, в 500 м) не меняет ни
+    """GNSS весь прогон (здесь — заведомо ложный, в 500 м) не меняет ни
     положение, ни скорость, ни сетку шагов: выход бит-в-бит как при GNSS
     только в окне, и положение не стоит в точке выставки."""
     route = Route()
@@ -305,7 +305,7 @@ def test_invalid_fixes_are_rejected():
     assert r.pos.frame is None and r.pos.n_rejected == 3
     assert r.on_fix(0.4, "master", la, lo, float("nan")) == []
     assert not r.pos.fixed                     # в очереди: ждёт шага сетки
-    r.on_wheel(0, 0.05, 0.0)                   # метка <= 0 отбрасывается (WP3)
+    r.on_wheel(0, 0.05, 0.0)                   # метка <= 0 отбрасывается
     r.on_wheel(0, 0.6, 0.0)                    # сетка прошла метку 0,4
     assert r.pos.fixed and r.pos.frame.lat0 == pytest.approx(la)
     # высота карты (уровень рельса): антенна = карта + 3 м, base_link = карта
@@ -326,7 +326,7 @@ def test_gnss_never_steps_the_grid_and_speed_ignores_it():
         assert [q["stamp"] for q in o] == [q["stamp"] for q in runs[0]]
         assert [q["v"] for q in o] == [q["v"] for q in runs[0]]
     r = Runner(_tram())
-    r.on_wheel(0, 0.05, 0.0)                   # метка <= 0 отбрасывается (WP3)
+    r.on_wheel(0, 0.05, 0.0)                   # метка <= 0 отбрасывается
     la, lo = route.latlon(0.0)
     assert r.on_fix(5.0, "master", la, lo, 150.0) == [] and r.t == pytest.approx(0.05)
 
@@ -396,7 +396,7 @@ def test_mgrs_wrap_vs_fixed_grid_across_boundary():
     for grid in ("", "37UDB", "37UCB"):
         r = Runner(_tram(), track_map=route.track_map(), mgrs_grid=grid, mgrs_guard_m=0.0)
         res[grid] = (r, _feed(r, 0.0, 70.0, v_of_t, route, s_of_t))
-    (ra, a), (rb, b) = res[""], res["37UDB"]
+    (ra, a), (_, b) = res[""], res["37UDB"]
     xc = np.array([o["x"] for o in res["37UCB"][1] if o["pos_valid"]])
     assert xc.min() < 1e5 < xc.max() and np.abs(np.diff(xc)).max() < 1.0
     assert xc == pytest.approx(np.array([o["x"] for o in b if o["pos_valid"]]) + 1e5, abs=1e-6)
@@ -663,7 +663,7 @@ def test_rover_only_window():
 
 
 def test_grid_nodes_are_multiples_of_dt():
-    """WP23: узлы сетки кратны dt (совпадают с метками GNSS, кратными 0,1 с),
+    """Узлы сетки кратны dt (совпадают с метками GNSS, кратными 0,1 с),
     какое бы сообщение ни пришло первым."""
     r = Runner(_tram())
     outs = []
@@ -751,7 +751,7 @@ def test_base_link_offset_math():
 
 @pytest.mark.parametrize("rover", [True, False])
 def test_output_point_master_and_legacy_master_map(rover):
-    """output_point master — выход в антенне (как до 26.09); карта по
+    """output_point master — выход в антенне; карта по
     траектории master (прежние карты, point master) с выходом base_link —
     курсор ведёт master, выход переносится вперёд по курсу карты на 9,873 м
     и вниз на 3 м. Во всех сочетаниях — та же точка вагона."""
@@ -774,7 +774,7 @@ def test_output_point_master_and_legacy_master_map(rover):
 
 
 def test_map_file_point_roundtrip(tmp_path):
-    """Точка карты хранится в .npz; карта без этого поля (до 26.09) — master."""
+    """Точка карты хранится в .npz; старая карта без этого поля — master."""
     tm = Route().track_map()
     assert tm.point == "base_link"
     f = tmp_path / "m.npz"

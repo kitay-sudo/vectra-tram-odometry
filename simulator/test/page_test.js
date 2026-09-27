@@ -300,7 +300,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     // точность показа на странице: MAE 4 знака, дрейф 3, план 2, доля 3; допуск — квантование файла
     const near = (a, b, tol) => isFinite(a) && isFinite(b) && Math.abs(a - b) <= tol;
     // дрейф — допуск и относительный: у базы с отказом датчиков дрейф ~3 %, и
-    // квантование файла даёт 3e-5 (интеграция 26.09, both_zero: 3,06203 / 3,06200)
+    // квантование файла даёт 3e-5 (both_zero: 3,06203 / 3,06200)
     const nearRel = (a, b, tol) => near(a, b, Math.max(tol, tol * Math.abs(b)));
     const ok = near(m.mae, s.v_mae, 2e-5) && near(m.maeN, s.naive_v_mae, 2e-5) && nearRel(m.drift, s.drift_pct, 2e-5) && nearRel(m.driftN, s.naive_drift_pct, 2e-5)
       && near(m.h, s.p2d_mean, 2e-3) && near(m.cov, s.cov2s_v, 1e-6);
@@ -396,7 +396,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
           const lat = LAT, lon = LON0 + DLON * k, [Em, Nm] = utmEN(lat, lon, 37), lonR = lon + 1.2436 * DLON, [Er, Nr] = utmEN(lat, lonR, 37);
           const fb = 9.873 / 12.436, [E, N] = scenario === 'ucb' ? [Em + fb * (Er - Em), Nm + fb * (Nr - Nm)] : [Em, Nm];
           // (а) перенос по точке (Autoware): координаты внутри квадрата 100 км; (б) непрерывно от 37UDB;
-          // (в) судья и pathgraph: непрерывно от 37UCB, точка base_link (нода после потока «кадр»)
+          // (в) судья и pathgraph: непрерывно от 37UCB, точка base_link (как у ноды)
           const x = scenario === 'wrap' ? ((E % 1e5) + 1e5) % 1e5 : scenario === 'ucb' ? E - 300000 : E - 400000, y = scenario === 'wrap' ? N % 1e5 : N - 6100000;
           sent.xmin = Math.min(sent.xmin, x); sent.xmax = Math.max(sent.xmax, x);
           pub('/result/position', { header: hdr, pose: { pose: { position: { x, y, z: 150 }, orientation: { x: 0, y: 0, z: 0, w: 1 } }, covariance: [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } });

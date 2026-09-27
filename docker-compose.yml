@@ -49,7 +49,7 @@ services:
     # restart здесь НЕ ставится: player и probe живут в сетевом, IPC и PID
     # пространствах этого контейнера. Перезапущенный контейнер получает новые
     # пространства, а player/probe остаются в старых (без DDS, probe — Exited).
-    # Упавшую ноду перезапускает сам launch (respawn, поток robust); если упал
+    # Упавшую ноду перезапускает сам launch (respawn); если упал
     # весь контейнер: docker compose up -d --force-recreate
 
   player:

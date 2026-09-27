@@ -4,7 +4,7 @@
 Оценка считается той же связкой, что нода ROS 2 (tram_node.py): Runner из
 ros2_ws/src/tram_state_estimator, лист параметров вагона, карта путей;
 параметры ноды передаются в Runner так же, как их передаёт tram_node.py
-(включая параметры выставки и системы выхода после WP потока «положение»).
+(включая параметры выставки и системы выхода).
 Сообщения подаются в порядке записи bag, GNSS — только первые 3 с
 (analysis/evaluate.events, как tools/eval.py). Рядом считаются:
   * причинная база «только колесо»: тот же Runner (сетка, выставка, карта,
@@ -13,17 +13,17 @@ ros2_ws/src/tram_state_estimator, лист параметров вагона, к
     м/с, путь — интеграл на сетке (как NaiveCore в tools/eval_replay.py);
   * эталон: скорость — |vel| GNSS master (rover vel — справочно); положение —
     та же точка вагона, что на выходе связки: base_link по паре антенн
-    (tools/eval_metrics.reference, после потока «кадр») или fix master (код,
+    (tools/eval_metrics.reference) или fix master (старая версия пакета,
     где выход — антенна master);
   * входы (тележки, км/ч; ручка) и диагностика оценщика: поля
     EstimatorStatus и состояние каждой тележки (принята / нет новых данных /
     отвергнута / исключена / поток прерван).
 
 Варианты с аномалиями строятся здесь же маленькими функциями inject_*
-(та же семантика и выбор окна, что в tools/inject.py потока оценки; если
-tools/inject.py есть — берётся он).
+(та же семантика и выбор окна, что в tools/inject.py; если tools/inject.py
+есть — берётся он).
 
-Честность (решение 7): прогон по умолчанию — отложенный (holdout_scored в
+Честность: прогон по умолчанию — отложенный (holdout_scored в
 tools/split.json); карта — только из обучающих: config/eval/track_map.npz
 пакета, если есть, иначе analysis/cache/track_map_train.npz; лист — по тем же
 правилам, что tools/eval.py --sheet eval: оценочный config/eval/{tram_eval.yaml,
@@ -64,7 +64,7 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PKG = os.path.join(ROOT, "ros2_ws", "src", "tram_state_estimator")
 for p in (os.path.join(ROOT, "analysis"), PKG, os.path.join(ROOT, "tools"),
-          os.path.join(ROOT, "tools", "audit")):
+          os.path.join(ROOT, "tools", "dev")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -81,8 +81,8 @@ KMH = 3.6
 OUT_DIR = os.path.join(ROOT, "simulator", "replays")
 DEFAULT_RUN = "30618_e9a34502"
 CFG = os.path.join(PKG, "config")
-# карта только из обучающих прогонов: пакетная EVAL-карта (поток «положение»,
-# analysis/build_map.py eval), иначе кэш напарника (build_map по train)
+# карта только из обучающих прогонов: пакетная EVAL-карта
+# (analysis/build_map.py eval), иначе кэш analysis/cache (build_map по train)
 MAP_CANDIDATES = (os.path.join(CFG, "eval", "track_map.npz"),
                   os.path.join(ROOT, "analysis", "cache", "track_map_train.npz"))
 # оценочный лист — те же кандидаты и тот же запасной, что tools/eval_replay.py
@@ -97,7 +97,7 @@ T_SKIP = 60.0       # с от начала входов: окно аномали
 AFTER = 120.0       # с после окна должно остаться до конца прогона
 
 # ------------------------------------------------------------------ аномалии
-# Та же семантика, что tools/inject.py (поток оценки): окно по header.stamp,
+# Та же семантика, что tools/inject.py: окно по header.stamp,
 # выбор окна детерминирован и только по входам решения (тележки, ручка).
 KINDS = {
     "clean": dict(ru="Чистый прогон", dur=0.0, where=None),
@@ -182,11 +182,11 @@ def inject(a, kind, t0, dur):
 
 
 def make_variant(a, bag, kind):
-    """(массивы, info). tools/inject.py потока оценки — если он есть."""
+    """(массивы, info). tools/inject.py — если он есть."""
     if kind == "clean":
         return a, dict(kind=kind, ru=KINDS[kind]["ru"], t0=None, dur=0.0, eval=0.0, src="—")
     try:
-        import inject as shared      # tools/inject.py (поток оценки)
+        import inject as shared      # tools/inject.py
         if kind in shared.KINDS:
             t0, dur = shared.choose_window(a, kind)
             if t0 is None:
@@ -234,7 +234,7 @@ def resolve_sheet(spec=None):
     spec = spec or "eval"
     names = {f.name for f in dataclasses.fields(EC.Params)}
     try:
-        import eval_replay as ER                  # tools/eval_replay.py (поток оценки)
+        import eval_replay as ER                  # tools/eval_replay.py
         sh = ER.resolve_sheet(spec)
         corep, node = dict(sh["core"]), dict(sh["node"])
         path, label, leak, src = str(sh["path"]), sh["label"], sh.get("leak"), "tools/eval_replay.py"
@@ -287,7 +287,7 @@ def resolve_sheet(spec=None):
 
 # Параметры ноды -> аргументы Runner так же, как tram_node.py: явные
 # соответствия, остальное — по имени аргумента (x или x_s). Если у Runner есть
-# **kwargs (поток «положение»: они уходят в Position), принимаются и
+# **kwargs (они уходят в Position), принимаются и
 # аргументы Position.__init__ (projection, mgrs_grid, utm_zone, ...).
 NODE_TO_ARG = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeout_s",
                "init_window": "init_window_s"}
@@ -310,7 +310,7 @@ def runner_kwargs(node, tmap):
     kw = dict(track_map=tmap)
     o = tuple(float(node.get(k, float("nan"))) for k in ("origin_lat", "origin_lon", "origin_alt"))
     kw["origin"] = o if all(math.isfinite(x) for x in o) else None
-    # init_window_s: аргумент Runner/Position либо (код до правок) pos.init_window в make_runner
+    # init_window_s: аргумент Runner/Position либо (старая версия) pos.init_window в make_runner
     used = {"origin_lat", "origin_lon", "origin_alt", "map_file", "frame_id", "child_frame_id",
             "init_window_s"}
     for name in runner_arg_names():
@@ -332,8 +332,7 @@ def make_runner(params, node, tmap, cls=Runner):
             V.wheel_scale_hook(r, True)
         except ImportError:
             pass
-    # связка до WP потока «положение»: окно выставки задаётся после __init__
-    # (как tram_node.py до правок)
+    # старая версия связки: окно выставки задаётся после __init__
     if "init_window" not in kw and "init_window_s" in node and hasattr(r, "pos") \
             and hasattr(r.pos, "init_window"):
         r.pos.init_window = float(node["init_window_s"])
@@ -439,10 +438,9 @@ class NaiveRunner(Runner):
     (сетка, выставка по GNSS окна, карта, привязка к остановкам, система
     выхода — без копий, при любом их API), но ядро — _NaiveCore. Ядро
     подменяется при КАЖДОМ присваивании self.core (в __init__, при сбросе
-    связки по разрыву времени и при пересоздании ядра — WP3/WP4 потока
-    robust)."""
+    связки по разрыву времени и при пересоздании ядра)."""
 
-    age_comp = False    # WP6 robust: показания не приводятся по ускорению модели
+    age_comp = False    # показания базы не приводятся по ускорению модели
 
     @property
     def core(self):
@@ -470,13 +468,13 @@ def replay(a, runners):
 # ------------------------------------------------------------------ геодезия
 
 # Геодезия — одна на проект: tram_state_estimator/geodesy.py (нода, оценка,
-# экспорт). Прежние свои формулы экспортёра совпадали с ней лучше 1 мм
-# (docs/audit/INTEGRATION.md) и заменены вызовами пакета.
+# экспорт). Прежние свои формулы экспортёра совпадали с ней лучше 1 мм и
+# заменены вызовами пакета.
 from tram_state_estimator import geodesy as GD  # noqa: E402
 
 
 def proj_equirect(lat, lon, alt, o):
-    """Формула runner.Enu до правок (сфера R = a)."""
+    """Прежняя плоская формула runner.Enu (сфера R = a)."""
     return GD.Equirect(*o).fwd_arr(lat, lon, alt)
 
 
@@ -505,9 +503,9 @@ def unwrap100k(a):
 
 
 def frame_hint(r):
-    """Система выхода по настройкам связки: Position.projection (поток
-    «положение»: mgrs | utm | enu | equirect) и mgrs_grid; без них — формула
-    equirect (код до правок). -> (кандидат detect_frame, projection, grid)."""
+    """Система выхода по настройкам связки: Position.projection (mgrs | utm |
+    enu | equirect) и mgrs_grid; без них — формула equirect (старая версия
+    пакета). -> (кандидат detect_frame, projection, grid)."""
     pos = getattr(r, "pos", None)
     proj = str(getattr(pos, "projection", "") or "equirect").lower()
     grid = str(getattr(pos, "mgrs_grid", "") or "")
@@ -516,9 +514,9 @@ def frame_hint(r):
 
 
 def output_point(r):
-    """Точка вагона на выходе связки: Position.output_point (после потока «кадр»:
-    base_link — ось поворота передней тележки на уровне рельса, как у судьи);
-    в коде без этого параметра выход — антенна master."""
+    """Точка вагона на выходе связки: Position.output_point (base_link — ось
+    поворота передней тележки на уровне рельса, как у судьи); в старой версии
+    без этого параметра выход — антенна master."""
     return str(getattr(getattr(r, "pos", None), "output_point", "") or "master")
 
 
@@ -534,7 +532,7 @@ def reference_fix(a, point):
     import eval_metrics as EMX      # tools/eval_metrics.py
     if not hasattr(EMX, "reference"):
         raise SystemExit(f"выход связки — точка {point}, а tools/eval_metrics.py не строит "
-                         "эталон для неё (нужен eval_metrics.reference после потока «кадр»)")
+                         "эталон для неё (нужен eval_metrics.reference с этой точкой)")
     R = EMX.reference(a, point)
     m = np.c_[R["t"], R["t"], R["lat"], R["lon"], R["alt"]]
     return m, f"{point} по GNSS (пара антенн master и rover, tf организаторов)"
@@ -645,12 +643,12 @@ def selftest(bag):
 # ------------------------------------------------------------------ метрики
 
 def along_cross(ref_xy, idx, est_xy):
-    """Ошибка вдоль/поперёк траектории эталона — алгоритм аудита
-    (tools/audit/core_metrics.py; tools/eval_metrics.py — без изменений)."""
+    """Ошибка вдоль/поперёк траектории эталона — алгоритм независимой
+    реализации метрик (tools/dev/core_metrics.py; в tools/eval_metrics.py — тот же)."""
     try:
         from eval_metrics import along_cross as ac      # tools/eval_metrics.py
     except ImportError:
-        from core_metrics import along_cross as ac      # tools/audit/core_metrics.py
+        from core_metrics import along_cross as ac      # tools/dev/core_metrics.py
     return ac(ref_xy, idx, est_xy)
 
 
@@ -694,7 +692,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         return np.array([o.get(k, np.nan) if o.get(k) is not None else np.nan for o in src], dtype=dtype)
     V, SV, S, SS = O("v"), O("sigma_v"), O("s"), O("sigma_s")
     XYZ = np.c_[O("x"), O("y"), O("z")]
-    # положение есть: выставка прошла и (поток «положение») pos_valid — у края
+    # положение есть: выставка прошла и pos_valid — у края
     # квадрата MGRS при mgrs_guard_m нода /result/position не публикует
     def pos_ok(src):
         return np.array([bool(o.get("pos_ready", True)) and bool(o.get("pos_valid", True))
@@ -749,7 +747,6 @@ def run_variant(a, params, node, map_path, bag, kind, info):
 
     t0 = float(T[0])
     fin = np.isfinite(al)
-    finn = np.isfinite(aln)
     last = lambda x: float(x[np.isfinite(x)][-1]) if np.isfinite(x).any() else float("nan")  # noqa: E731
     end_err = lambda a_, h_: float(abs(a_[-1])) if math.isfinite(a_[-1]) else float(h_[-1])  # noqa: E731
     summ = dict(

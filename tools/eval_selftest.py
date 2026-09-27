@@ -55,7 +55,7 @@ def test_utm_matches_pyproj(ll, E, N, code):
 def test_one_geodesy_and_independent_series():
     """Интеграция: eval_geo — обёртка над геодезией пакета (одна реализация
     на ноду, оценку и экспорт). Независимая проверка — ряд Снайдера
-    (analysis/georef.py, поток «положение») на линии и вокруг: < 1 см."""
+    (analysis/georef.py) на линии и вокруг: < 1 см."""
     sys.path.insert(0, str(ROOT / "analysis"))
     import georef
     from tram_state_estimator import geodesy as GD
@@ -278,10 +278,11 @@ def test_naive_speed_is_mean_of_fresh_bogies():
 
 
 def test_naive_matches_core_metrics_baseline():
-    """База на Runner (eval_replay.make_naive) = NaiveRunner аудита (core_metrics).
-    Только для связки с той же сеткой, что у аудита (до WP23: узлы от первой
-    метки); после WP23 узлы кратны dt — проверяет test_naive_speed_is_mean_of_fresh_bogies."""
-    sys.path.insert(0, str(ROOT / "tools" / "audit"))
+    """База на Runner (eval_replay.make_naive) = NaiveRunner независимой
+    реализации (tools/dev/core_metrics.py). Только для связки с той же сеткой
+    (узлы от первой метки); при узлах, кратных dt, базу проверяет
+    test_naive_speed_is_mean_of_fresh_bogies."""
+    sys.path.insert(0, str(ROOT / "tools" / "dev"))
     import eval_replay as R
     import core_metrics as CM
     a = _synthetic_run()
@@ -300,7 +301,7 @@ def test_naive_matches_core_metrics_baseline():
     Vo = np.array([o["v"] for o in old])
     Xo = np.array([[o["x"], o["y"], o["z"]] for o in old])
     if len(To) != len(o_new["T"]) or To[0] != o_new["T"][0]:
-        pytest.skip("сетка Runner отличается от аудита (WP23: узлы кратны dt)")
+        pytest.skip("сетка Runner отличается от core_metrics (узлы кратны dt)")
     assert np.array_equal(To, o_new["T"])
     assert np.array_equal(Vo, o_new["V"])
     assert np.allclose(Xo, o_new["XYZ"], atol=1e-9)
@@ -617,7 +618,7 @@ def test_glue_status_and_start_sorter(monkeypatch):
     import types
     import eval_replay as R
 
-    class Sorter:                      # семантика StartSorter (WP24)
+    class Sorter:                      # семантика StartSorter
         def __init__(self, window):
             self.window, self.done, self._t0, self._buf = window, window <= 0, None, []
 

@@ -49,7 +49,7 @@ import inject as I              # noqa: E402
 SCENARIOS = ("first3", "sparse", "bursts", "nostart", "midstart", "full", "glitchy")
 # Сценарии с теми же первыми 3 с GNSS, что first3: при gnss_correction false
 # точки после окна отбрасываются, поэтому выход плеч «до» у них тот же, что в
-# first3 (C2; проверено: tools/eval_gnss.py --no-share-before). Плечи «до»
+# first3 (проверено: tools/eval_gnss.py --no-share-before). Плечи «до»
 # считаются один раз — в first3 — и копируются.
 SAME_BEFORE = ("sparse", "bursts", "full", "glitchy")
 KEYS = ("v_mae", "v_bias", "p3d_mean", "p3d_end_mean", "p3d_end_median", "p3d_end_max",

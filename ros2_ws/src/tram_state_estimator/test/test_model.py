@@ -16,7 +16,7 @@ from tram_state_estimator import estimator_core as core
 from tram_state_estimator.estimator_core import (
     Params, DEFAULT, Estimator, body_force, drive_force, creep, resistance,
     shape_tract, shape_brake, f_process, h_axles, axle_load,
-    IS, IV, ID, IKT, IKB, STANDSTILL, DEGRADED)
+    IS, IV, ID, IKT, IKB, STANDSTILL)
 from tram_state_estimator.plant import Plant, Track
 
 PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -635,7 +635,6 @@ def test_table_drive_force_and_resistance():
 
 def _feed(r, t_end, v_of_t, notch_of_t, v_scale=3.6):
     """Синтетический поток как в bag: тележки ~9,4 Гц со сдвигом, ручка 20 Гц."""
-    from tram_state_estimator.runner import Runner  # noqa: F401
     ev = []
     for k in range(int(t_end * 9.4)):
         t = k / 9.4

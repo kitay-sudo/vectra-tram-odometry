@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ros_probe — внешний измеритель ноды tram_estimator (аудит ROS 2 end-to-end).
+"""ros_probe — внешний измеритель ноды tram_estimator (ROS 2 end-to-end).
 
 Отдельная rclpy-нода. Слушает ВХОДЫ ноды (/vehicle/*, GNSS fix) и ВЫХОДЫ
 (/result/velocity, /result/position, /tram/estimator_status), всё best-effort —
@@ -491,27 +491,92 @@ def save_npz(pr, path):
         t_start=np.array([pr.t_start]))
 
 
+def _num(x, nd=1):
+    return "—" if x is None else f"{x:.{nd}f}"
+
+
 def brief(R):
-    o = R["outputs"].get("velocity", {})
-    L = R.get("latency", {})
-    P = R.get("node_process", {})
-    g = lambda d, k: (d or {}).get(k)
-    lines = [
-        f"[probe] outputs /result/velocity: n={o.get('count')} "
-        f"rate_wall={o.get('rate_wall_hz')} Hz rate_stamp={o.get('rate_stamp_hz')} Hz "
-        f"expected={o.get('expected_by_stamp')} gaps>100ms={o.get('wall_gaps_over_100ms')} "
-        f"max_gap={g(o.get('wall_gap_s'), 'max')} s",
-        f"[probe] latency in2out(vehicle) ms: p50={g(L.get('in2out_vehicle_ms'), 'p50')} "
-        f"p95={g(L.get('in2out_vehicle_ms'), 'p95')} p99={g(L.get('in2out_vehicle_ms'), 'p99')} "
-        f"max={g(L.get('in2out_vehicle_ms'), 'max')} unanswered={L.get('in2out_vehicle_unanswered')}; "
-        f"proc p50={g(L.get('proc_ms'), 'p50')} p99={g(L.get('proc_ms'), 'p99')}",
-        f"[probe] node CPU%: mean={g(P.get('cpu_pct_1core'), 'mean')} p95={g(P.get('cpu_pct_1core'), 'p95')} "
-        f"max={g(P.get('cpu_pct_1core'), 'max')}; RSS first/last/max MB={P.get('rss_mb_first_last_max')} "
-        f"slope={P.get('rss_slope_mb_per_min_after_30s')} MB/min",
-        f"[probe] inputs={R.get('inputs')}",
-        f"[probe] frame_ids={R.get('frame_ids')} accuracy={R.get('accuracy_sanity_vs_bag_gnss')}",
+    """Итог пробы таблицей: критерии ТЗ (частота, задержка, CPU, ОЗУ) и
+    санити выхода. «OK» / «НЕТ» — только для критериев с порогом ТЗ."""
+    o = R["outputs"].get("velocity", {}) or {}
+    op = R["outputs"].get("position", {}) or {}
+    L = R.get("latency", {}) or {}
+    P = R.get("node_process", {}) or {}
+    I = R.get("inputs", {}) or {}
+    bad = R.get("nonfinite_or_bad", {}) or {}
+    acc = R.get("accuracy_sanity_vs_bag_gnss", {}) or {}
+    g = lambda d, k: (d or {}).get(k)                               # noqa: E731
+    full, steady = L.get("in2out_vehicle_ms") or {}, L.get("in2out_vehicle_steady_ms") or {}
+    cpu = P.get("cpu_pct_1core") or {}
+    rss = P.get("rss_mb_first_last_max")
+    rss_max = rss[-1] if isinstance(rss, list) and rss else None
+    slope = P.get("rss_slope_mb_per_min_after_30s")
+    rate = o.get("rate_stamp_hz")
+
+    def ok(cond):
+        return "—" if cond is None else ("OK" if cond else "НЕТ")
+
+    rows = [
+        ("частота /result/velocity ≥ 10 Гц",
+         f"{_num(rate)} Гц по меткам, {_num(o.get('rate_wall_hz'))} по стенным; "
+         f"{o.get('count', 0)} из {o.get('expected_by_stamp', '—')} узлов сетки",
+         ok(None if rate is None else rate >= 10.0)),
+        ("/result/position (Odometry)",
+         f"{op.get('count', 0)} выходов, {_num(op.get('rate_stamp_hz'))} Гц; frame_id "
+         f"{','.join((R.get('frame_ids') or {}).get('position', {}) or ['—'])} -> "
+         f"{','.join((R.get('frame_ids') or {}).get('position_child', {}) or ['—'])}", "—"),
+        ("задержка in2out ≤ 100 мс (устан., p99)",
+         f"p50 {_num(steady.get('p50'))} / p99 {_num(steady.get('p99'))} / "
+         f"max {_num(steady.get('max'))} мс (без первых 2 с bag)",
+         ok(None if steady.get("p99") is None else steady["p99"] <= 100.0)),
+        ("пик задержки ≤ 250 мс (весь прогон)",
+         f"in2out(vehicle): p99 {_num(full.get('p99'))}, max {_num(full.get('max'))} мс; "
+         f"> 250 мс: {L.get('in2out_vehicle_over_250ms', '—')} из {full.get('n', '—')}",
+         ok(None if full.get("max") is None else L.get("in2out_vehicle_over_250ms", 1) == 0)),
+        ("CPU ≤ 2 ядра",
+         f"ср. {_num(cpu.get('mean'))} % ядра, макс {_num(cpu.get('max'))} %",
+         ok(None if cpu.get("max") is None else cpu["max"] <= 200.0)),
+        ("ОЗУ ≤ 0,5 ГБ, без утечки",
+         f"RSS макс {_num(rss_max)} МБ, рост {_num(slope, 3)} МБ/мин",
+         ok(None if rss_max is None else rss_max <= 512.0)),
+        ("NaN в выходе, плохие ковариации",
+         f"{bad.get('vel_nonfinite', 0) + bad.get('odo_nonfinite', 0)} / "
+         f"{bad.get('cov_negative', 0) + bad.get('cov_nonfinite', 0)}",
+         ok(not any(bad.get(k) for k in ("vel_nonfinite", "odo_nonfinite", "cov_negative",
+                                         "cov_nonfinite", "quat_bad")))),
     ]
+    if acc.get("v_mae") is not None:
+        rows.append(("скорость против GNSS bag (справочно)",
+                     f"MAE {_num(acc.get('v_mae'), 3)} м/с по {acc.get('v_pairs')} парам", "—"))
+    pp = acc.get("pos_probe_first_fix") or {}
+    if pp.get("mean_m") is not None:
+        rows.append(("положение против антенны master (справочно)",
+                     f"ср. {_num(pp.get('mean_m'), 2)} м ({pp.get('frame')}); около 10 м — плечо "
+                     "антенны до base_link", "—"))
+    w0 = max(len(r[0]) for r in rows)
+    w1 = max(len(r[1]) for r in rows)
+    span = g(R.get("probe"), "wall_span_s")
+    lines = [f"[probe] итог: {R.get('probe', {}).get('tag') or 'проба'}, {_num(span)} с по часам; "
+             f"входы: тележки {I.get('front', 0)} + {I.get('rear', 0)}, ручка {I.get('cmd', 0)}, "
+             f"GNSS {I.get('mfix', 0)} + {I.get('rfix', 0)}"]
+    lines.append(f"[probe] {'критерий':<{w0}} | {'измерено':<{w1}} | итог")
+    lines.append(f"[probe] {'-' * w0}-+-{'-' * w1}-+-----")
+    lines += [f"[probe] {a:<{w0}} | {b:<{w1}} | {c}" for a, b, c in rows]
     return "\n".join(lines)
+
+
+def brief_line(R, elapsed):
+    """Промежуточная сводка одной строкой (--report-every)."""
+    o = R["outputs"].get("velocity", {}) or {}
+    L = R.get("latency", {}) or {}
+    P = R.get("node_process", {}) or {}
+    st = L.get("in2out_vehicle_steady_ms") or {}
+    cpu = P.get("cpu_pct_1core") or {}
+    rss = P.get("rss_mb_first_last_max")
+    return (f"[probe] {elapsed:.0f} с: выходов {o.get('count', 0)}, {_num(o.get('rate_stamp_hz'))} Гц "
+            f"по меткам; in2out устан. p50 {_num(st.get('p50'))} / p99 {_num(st.get('p99'))} мс; "
+            f"CPU ср. {_num(cpu.get('mean'))} % ядра; RSS "
+            f"{_num(rss[-1] if isinstance(rss, list) and rss else None)} МБ")
 
 
 class _Replay:
@@ -583,7 +648,8 @@ def main():
     pr = Probe(a)
     th = threading.Thread(target=proc_sampler, args=(pr, a.proc_match, stop), daemon=True)
     th.start()
-    print(f"[probe] started pid={os.getpid()} domain={os.environ.get('ROS_DOMAIN_ID')}", flush=True)
+    print(f"[probe] запущена: pid {os.getpid()}, ROS_DOMAIN_ID {os.environ.get('ROS_DOMAIN_ID', '0')}; "
+          "слушаю входы и выходы ноды (best-effort, как судья)", flush=True)
     next_report = time.monotonic() + a.report_every if a.report_every > 0 else None
     try:
         while not stop.is_set():
@@ -593,8 +659,7 @@ def main():
                 next_report = now + a.report_every
                 if pr.first_rx is not None:
                     try:
-                        print(f"[probe] --- промежуточно, {now - pr.t_start:.0f} с ---", flush=True)
-                        print(brief(analyse(pr, a)), flush=True)
+                        print(brief_line(analyse(pr, a), now - pr.t_start), flush=True)
                     except Exception as e:      # noqa: BLE001
                         print(f"[probe] промежуточная сводка не удалась: {e!r}", flush=True)
             if a.duration and now - pr.t_start > a.duration:

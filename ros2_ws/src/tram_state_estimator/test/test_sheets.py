@@ -1,4 +1,4 @@
-"""Один источник правды для листов вагона (WP2).
+"""Один источник правды для листов вагона.
 
 Нода читает config/tram.yaml, оценка — config/tram_calibration.json. Прежде
 yaml не перегенерировали после смены q_v, и нода считала другим листом, чем
@@ -99,7 +99,7 @@ def test_node_params_are_in_sheet(which):
             "child_frame_id", "wheel_timeout_s", "handle_timeout_s",
             "init_window_s"} <= node
     assert set(got) - CORE == node
-    # система судьи (pathgraph организаторов, 26.09): MGRS от 37UCB непрерывно,
+    # система судьи (pathgraph организаторов): MGRS от 37UCB непрерывно,
     # точка base_link; положение на каждом шаге (защиты у края квадрата нет)
     assert got["projection"] == "mgrs" and got["mgrs_grid"] == "37UCB" \
         and got["utm_zone"] == 0 and got["mgrs_guard_m"] == 0.0
@@ -134,7 +134,7 @@ def test_eval_sheet_is_fit_on_train_only_and_jury_on_all():
 
 @pytest.mark.parametrize("which", SHEETS)
 def test_creep_stubs_are_removed_by_data(which):
-    """WP5: заглушки крипа (0,02 и 0,002) давали смещение +0,01 м/с и до
+    """Заглушки крипа (0,02 и 0,002) давали смещение +0,01 м/с и до
     +0,05 на торможении. Регрессия по данным (calib_sheet.py) даёт крип около
     нуля: масштаб колёс уже подогнан по GNSS. В листе — ноль."""
     d = _calib(which)
@@ -147,7 +147,7 @@ def test_creep_stubs_are_removed_by_data(which):
 
 @pytest.mark.parametrize("which", SHEETS)
 def test_output_sigma_is_calibrated(which):
-    """WP12: выходная σ подогнана по остаткам подгоночных прогонов."""
+    """Выходная σ подогнана по остаткам подгоночных прогонов."""
     p = Params.from_dict(_calib(which)["params"])
     assert p.sv_age > 0 or p.sv_floor > 0 or p.sv_gain > 1
     assert p.ss_map > 0 and p.ss_rel > 0
@@ -179,8 +179,7 @@ def _node_declared():
 
 @pytest.mark.parametrize("which", SHEETS)
 def test_sheet_carries_every_node_param_with_node_type(which):
-    """Интеграция: в листе — все параметры, которые объявляет нода (поток
-    «положение» и «устойчивость» добавили свои), того же типа, что умолчание
+    """В листе — все параметры, которые объявляет нода, того же типа, что умолчание
     в ноде: ROS 2 отвергает лист, если тип параметра не совпал (20 вместо
     20.0). Значения — как в ноде, кроме карты (у листа оценки карта пустая) и
     масштаба колёс вагонов у листа оценки (подогнан только по train; у листа

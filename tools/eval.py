@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/eval.py — единая оценка точности и устойчивости (WP7). Одна команда.
+"""tools/eval.py — единая оценка точности и устойчивости. Одна команда.
 
 Что делает (всё офлайн, без ROS, в образе vectra/tram:dev):
   1. строит кэш numpy из data/ для нужных прогонов, если его нет
@@ -50,7 +50,6 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "analysis"))
 
 import bagio                    # noqa: E402
-import eval_geo as G            # noqa: E402
 import eval_metrics as M        # noqa: E402
 import eval_pathgraph as PGM    # noqa: E402
 import eval_replay as R         # noqa: E402
@@ -111,8 +110,8 @@ BUILD_MAP = ROOT / "analysis" / "build_map.py"
 
 
 def build_map_cli():
-    """Интерфейс analysis/build_map.py: "argparse" (после WP10: --set/--split/
-    --out/--calib) или "legacy" (код до правок: `build_map.py train <out>`)."""
+    """Интерфейс analysis/build_map.py: "argparse" (--set/--split/--out/--calib)
+    или "legacy" (старая версия: `build_map.py train <out>`)."""
     src = BUILD_MAP.read_text(encoding="utf-8") if BUILD_MAP.exists() else ""
     return "argparse" if '"--set"' in src and '"--calib"' in src else "legacy"
 
@@ -189,7 +188,7 @@ def resolve_map(spec, cache, train_ids, workers, rebuild, log, sheet):
     if spec == "train":
         key = map_key(sheet)
         name = f"track_map_train.{key}.npz"
-        # карта напарника analysis/cache/track_map_train.npz не используется: она собрана
+        # старая карта analysis/cache/track_map_train.npz не используется: она собрана
         # на другой платформе и отличается множителем пути в 16-м знаке (числа — в 6-м)
         cands = [cache / name, MAPS_DIR / name]
         f = next((c for c in cands if c.exists()), None)
@@ -203,7 +202,7 @@ def resolve_map(spec, cache, train_ids, workers, rebuild, log, sheet):
     if spec == "eval":
         f = R.CFG / "eval" / "track_map.npz"
         if not f.exists():
-            sys.exit(f"--map eval: нет {f} (оценочная карта пакета появляется после WP10)")
+            sys.exit(f"--map eval: нет {f} (оценочная карта пакета: analysis/build_map.py eval)")
         # множитель пути карты подогнан к масштабу колёс листа, по которому её
         # строили: при другом meas_scale нужна карта train (строится сама)
         with np.load(f, allow_pickle=False) as z:
@@ -291,7 +290,7 @@ def run_task(task):
     p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]), bag=bag)
     runners, unused = _runners(cfg, p, task.get("naive", True))
     evs = R.events(a, gnss, seed=I.seed_for(bag, f"gnss|{gnss}"))
-    if cfg.get("drop_antenna"):             # выставка без одной антенны (WP14)
+    if cfg.get("drop_antenna"):             # выставка без одной антенны
         evs = [e for e in evs if not (e[1] == 2 and e[2] == cfg["drop_antenna"])]
     outs = R.replay(evs, runners, cfg["sheet"]["node"])
     res = dict(task=task["id"], bag=bag, vehicle=bag.split("_")[0], inject=None, t_first=_t_first(a),
@@ -812,6 +811,41 @@ def evaluate(args, log):
     return dict(summary=report, runs=runs, inject=inj, kinds=kinds), timing, base, res
 
 
+def final_table(S):
+    """Итог прогона для консоли: модель против «только колеса» по всем
+    прогонам и по вагону 30618 (его проверяет жюри)."""
+    T = S.get("totals", {})
+    runs = S.get("meta", {}).get("runs", [])
+
+    def fmt(d, key, nd, sign=False, pct=False):
+        v = (d or {}).get(key)
+        if v is None or (isinstance(v, float) and not math.isfinite(v)):
+            return "—"
+        return f"{100 * v:.1f} %" if pct else (f"{v:+.{nd}f}" if sign else f"{v:.{nd}f}")
+
+    rows = []
+    for grp, title in (("all", f"все {len(runs)}"), ("30618", "вагон 30618")):
+        m, n = (T.get(grp) or {}).get("model"), (T.get(grp) or {}).get("naive")
+        if not m:
+            continue
+        rows += [(f"{title}: скорость MAE, м/с", fmt(m, "v_mae", 4), fmt(n, "v_mae", 4)),
+                 (f"{title}: скорость RMSE, м/с", fmt(m, "v_rmse", 4), fmt(n, "v_rmse", 4)),
+                 (f"{title}: смещение скорости, м/с", fmt(m, "v_bias", 4, sign=True),
+                  fmt(n, "v_bias", 4, sign=True)),
+                 (f"{title}: истина внутри ±2σ", fmt(m, "cov2s_v", 1, pct=True), "—"),
+                 (f"{title}: положение 3D ср., м", fmt(m, "p3d_mean", 2), fmt(n, "p3d_mean", 2)),
+                 (f"{title}: конец прогона 3D ср., м", fmt(m, "p3d_end_mean", 2),
+                  fmt(n, "p3d_end_mean", 2))]
+    w0 = max([len(r[0]) for r in rows] + [7])
+    w1 = max([len(r[1]) for r in rows] + [6])
+    out = [f"итог на {len(runs)} прогонах (эталон — GNSS; полные таблицы — EVAL.md):",
+           f"  {'метрика':<{w0}} | {'модель':>{w1}} | только колесо",
+           f"  {'-' * w0}-+-{'-' * w1}-+--------------"]
+    out += [f"  {a:<{w0}} | {b:>{w1}} | {c}" for a, b, c in rows]
+    out.append(f"  падений связки: {len(S.get('crashes') or {})}")
+    return out
+
+
 def _shown(path):
     """Путь для журнала: от корня дерева, а вне дерева (--out снаружи) —
     как есть. Прежде relative_to падал на последней строке журнала, уже
@@ -845,7 +879,7 @@ def main():
                     help="система эталона для ошибок положения (mgrs — как у судьи)")
     ap.add_argument("--runner-frame", default="auto", choices=R.RUNNER_FRAMES,
                     help="система выхода Runner'а: auto — по параметру листа projection, "
-                         "иначе equirect (код до правок), с проверкой по величине")
+                         "иначе equirect (старая версия пакета), с проверкой по величине")
     ap.add_argument("--runner-grid", default=None,
                     help="как ЧИТАТЬ выход Runner'а в MGRS (\"\" — перенос по точке, 37UDB — "
                          "непрерывно от квадрата); по умолчанию — параметр ноды mgrs_grid. Runner "
@@ -858,8 +892,8 @@ def main():
                     help="точка эталона положения: base_link (по tf антенн, как у судьи) | "
                          "master (антенна, прежний эталон — для сравнения)")
     ap.add_argument("--drop-antenna", default="", choices=("", "master", "rover"),
-                    help="не подавать в связку GNSS этой антенны (выставка по одной антенне, "
-                         "WP14); эталон по-прежнему по обеим")
+                    help="не подавать в связку GNSS этой антенны (выставка по одной "
+                         "антенне); эталон по-прежнему по обеим")
     ap.add_argument("--pathgraph", default="auto",
                     help="pathgraph организаторов для поперечной ошибки и пути вдоль него: "
                          "auto — _incoming/pathgraph, если есть; none; путь (каталог, файл, «;»)")
@@ -881,7 +915,7 @@ def main():
     ap.add_argument("--cache", default="", help="каталог кэша (по умолчанию analysis/cache)")
     ap.add_argument("--data", default="", help="каталог прогонов (по умолчанию data/)")
     ap.add_argument("--out", default="out/eval", help="каталог JSON")
-    ap.add_argument("--label", default="", help="подпись версии в EVAL.md (например «до правок»)")
+    ap.add_argument("--label", default="", help="подпись версии в шапке EVAL.md")
     ap.add_argument("--no-doc", action="store_true", help="не писать docs/EVAL.md и графики")
     ap.add_argument("--doc", default=DOC,
                     help=f"документ (по умолчанию {DOC}; с --quick — <out>/EVAL.md, графики — "
@@ -954,13 +988,8 @@ def main():
     import eval_report
     timing["realtime"] = eval_report.probe_rows(ROOT, args.probe_glob)
     (out / "timing.json").write_text(dumps(timing), encoding="utf-8")
-    s = result["summary"]["totals"]["all"]
-    m, n = s["model"], s["naive"]
-    log(f"модель: v MAE {m['v_mae']:.4f} RMSE {m['v_rmse']:.4f} смещение {m['v_bias']:+.4f} "
-        f"±2σ {m.get('cov2s_v', float('nan')):.3f}; 3D ср. {m['p3d_mean']:.2f} м; "
-        f"along RMSE {m.get('along_rmse', float('nan')):.2f} м")
-    log(f"база:   v MAE {n['v_mae']:.4f} RMSE {n['v_rmse']:.4f} смещение {n['v_bias']:+.4f}; "
-        f"3D ср. {n['p3d_mean']:.2f} м")
+    for line in final_table(result["summary"]):
+        log(line)
     if not args.no_doc:
         # документ — из тех же округлённых JSON, что и --render-only: байты совпадают
         shown = dict(summary=json.loads(files["summary.json"]), runs=json.loads(files["runs.json"]),

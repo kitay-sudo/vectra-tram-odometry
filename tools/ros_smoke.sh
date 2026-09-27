@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ros_smoke.sh — ROS-смоук ноды (WP9): ros2 launch + 30 с bag + проба в ОДНОМ
+# ros_smoke.sh — ROS-смоук ноды: ros2 launch + 30 с bag + проба в ОДНОМ
 # контейнере; проверка частоты, задержки, NaN, frame_id, живости и останова.
 #
 # С хоста (Git Bash / Linux), из корня репозитория:
@@ -17,16 +17,16 @@
 #   --ws DIR      готовый workspace (DIR/install/setup.bash)
 #   --tag NAME    каталог результатов out/smoke/NAME (smoke)
 #   --gnss-window S  (только фикстура) GNSS в bag лишь первые S с по header.stamp —
-#                 сценарий жюри «GNSS только в начале» (TODO WP9, риск 16);
+#                 сценарий жюри «GNSS только в начале»;
 #                 тогда обязательна проверка: выставка прошла, ср. 3D < 10 м
 #   --repeat N    повторить N раз (новая нода каждый раз); PASS, только если все
 #   пример: tools/ros_smoke.sh --gnss-window 3 --repeat 10 --tag gnss3s
 # Переменные: IMAGE (vectra/tram:compose), DATA_DIR (<repo>/data).
-# Критерии (TODO WP9, tools/smoke_verdict.py): >= 19 Гц по меткам и по стенным
-# часам; in2out p99 < 100 мс в установившемся режиме (без первых 2 с —
-# стартовый всплеск, риск 15/16); выходов >= 95 % узлов сетки; 0 NaN; frame_id
-# map/base_link; нода жива до конца; останов по SIGINT за 15 с (трассировки —
-# справочно до WP3). Код выхода 0 — всё PASS.
+# Критерии (tools/smoke_verdict.py): >= 19 Гц по меткам и по стенным часам;
+# in2out p99 < 100 мс в установившемся режиме (без первых 2 с — стартовый
+# всплеск bag); выходов >= 95 % узлов сетки; 0 NaN; frame_id map/base_link;
+# нода жива до конца; останов по SIGINT за 15 с (трассировки — справочно).
+# Код выхода 0 — всё PASS.
 
 if [ ! -d /opt/ros/humble ]; then
   # ---------------- хост: запускаем себя в контейнере ----------------
@@ -119,7 +119,13 @@ run_once() {   # $1 — каталог результатов прогона
   NODE=$!
   python3 "$REPO/tools/ros_wait.py" --subscribers /vehicle/front_bogie_velocity:2 \
     --publishers /result/velocity:1 --timeout 60 || log "нода или проба не подписались за 60 с"
-  log "нода: $(grep -m1 -o 'оценщик запущен.*' "$D/node.log" || echo 'НЕТ строки запуска')"
+  for _ in $(seq 1 25); do grep -q "жду входы" "$D/node.log" 2>/dev/null && break; sleep 0.2; done
+  if grep -q "оценщик запущен" "$D/node.log"; then
+    log "нода запущена:"
+    sed -n '/оценщик запущен/,/жду входы/{s/^.*\]: //;p}' "$D/node.log" | sed 's/^/    /'
+  else
+    log "нода: НЕТ строки запуска (см. $D/node.log)"
+  fi
   t0=$(date +%s)
   local TMO=$((${SECONDS_PLAY%.*} + 10))
   [ "$SECONDS_PLAY" = "0" ] && TMO=86400
@@ -137,6 +143,8 @@ run_once() {   # $1 — каталог результатов прогона
     pkill -9 -f lib/tram_state_estimator/tram_estimator 2>/dev/null
   fi
   wait $NODE 2>/dev/null
+  log "итог ноды:"
+  grep -F "[tram_state_estimator] " "$D/node.log" | sed 's/^.*\[tram_state_estimator\] /    /'
   TRACE=$(grep -c -E "Traceback|process has died" "$D/node.log")
   python3 "$REPO/tools/smoke_verdict.py" "$D/summary.json" --raw "$D/raw.npz" \
     --alive "$ALIVE" --shut "$SHUT" --trace "$TRACE" --json "$D/verdict.json" "${VERDICT_ARGS[@]}"

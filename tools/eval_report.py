@@ -25,11 +25,6 @@ C_TEXT2 = "#52514e"
 SURFACE = "#fcfcfb"
 
 PLOT_RUN = "30618_e9a34502"
-SUB15_JSON = dict(v_mae=0.0489, v_bias=0.0130, cov2s_v=0.756, p3d_mean=5.04,
-                  naive_v_mae=0.0483, naive_p3d_mean=3.93)
-# отпечаток кода пакета (tools/eval.src_digest), на котором считал аудит sub15:
-# main 56933cc / e74471f — runner.py, estimator_core.py, track_map.py до правок
-AUDIT_PKG_SHA = "5f634e9a5a63564d"
 # итоги версии «до» для раздела 0 (закоммичены: out/ не в git)
 BASELINE = "docs/data/eval_before/summary.json"
 KIND_SHORT = dict(front_zero="отказ передней (0)", rear_drop="отказ задней (30639)",
@@ -447,20 +442,6 @@ def _tot(S, grp, est):
     return g(S, "totals", grp, est) or {}
 
 
-def wp5_threshold(zt):
-    """Порог WP5 на 15 чистых: порог TODO остаётся, если вариант без крипа его
-    держит; иначе — ближайший сверху, но смещение не мягче +0,005 (TODO)."""
-    if not zt or zt.get("v_mae") is None:
-        return "—"
-    mae, bias, p3 = zt["v_mae"], abs(zt.get("v_bias") or 0.0), zt.get("p3d_mean") or 0.0
-    if mae <= 0.045 and bias <= 0.005 and p3 <= 4.1:
-        return (f"порог TODO сохраняется: MAE ≤ 0,045; смещение ≤ +0,005; 3D ≤ 4,1 м (запас "
-                f"{f(0.045 - mae, 4)} / {f(0.005 - bias, 4)} / {f(4.1 - p3, 2)})")
-    return (f"MAE ≤ {f(max(0.045, math.ceil(mae * 1000 + 0.5) / 1000), 3)}; смещение ≤ +0,005 (как в "
-            f"TODO; сейчас {f(bias, 4)} — не выполнено)" if bias > 0.005 else
-            f"MAE ≤ {f(max(0.045, math.ceil(mae * 1000 + 0.5) / 1000), 3)}; смещение ≤ +0,005") +         f"; 3D ≤ {f(max(4.1, math.ceil(p3 * 10 + 1) / 10), 1)} м"
-
-
 def run_mean(result, ids, est, key):
     """Среднее поля key по прогонам (None, если его нет ни у одного)."""
     x = [result["runs"][b][est][key] for b in ids
@@ -514,7 +495,7 @@ def before_after(S, B, rel):
       + ". «После» — этот прогон (шапка документа). Прогоны "
       + ("те же." if same else "**другие** — сравнение неполное."))
     A("")
-    # эталон положения и соглашение судьи у «до» могут быть другими (до потока «кадр»:
+    # эталон положения и соглашение судьи у «до» могут быть другими (у старых версий —
     # антенна master и перенос по точке) — тогда строки положения сравнивают разное
     rb, ra = bm.get("ref_point") or "master", S["meta"].get("ref_point") or "master"
     jb, ja = bm.get("judge_grid") or "", S["meta"].get("judge_grid") or ""
@@ -654,7 +635,7 @@ def load_gnss_scenarios(root, spec):
 
 def gnss_scenarios(root, args):
     """Раздел 5.1: сценарии доступности GNSS (tools/eval_gnss.py): «main» —
-    код до раунда 3 (коррекции нет), «выкл.» / «вкл.» — этот код с
+    версия без коррекции по GNSS, «выкл.» / «вкл.» — этот код с
     gnss_correction false / true. -> (строки, (итоги, итоги main) | None)."""
     Sa, ra = load_gnss_scenarios(root, getattr(args, "gnss_scenarios", ""))
     if Sa is None:
@@ -672,7 +653,7 @@ def gnss_scenarios(root, args):
       f"«вкл.» — этот код по умолчанию (`gnss_correction: true`; `{ra}`, код пакета sha "
       f"`{ma.get('pkg_src_sha')}`), «выкл.» — он же с `gnss_correction: false` (GNSS только для "
       "выставки)"
-      + (f", «main» — код до раунда 3 (`{rb}`, sha `{Sb['meta'].get('pkg_src_sha')}`; "
+      + (f", «main» — версия до коррекции по GNSS (`{rb}`, sha `{Sb['meta'].get('pkg_src_sha')}`; "
          "коррекции там нет)" if Sb is not None else "") + ".")
     A("")
     ru = ma.get("scenario_ru") or {}
@@ -740,9 +721,7 @@ def render(result, timing, args, pics, root):
         if leak:
             A(f">\n> **{leak}.** Эти числа не отчётные, пока нет оценочного листа.")
     if meta["sheet"].get("kind") == "json":
-        A(">\n> Лист json — не то, что читает нода: боевая нода берёт `config/tram.yaml`"
-          + (" (аудит sub15 на этом коде: на yaml MAE 0,0518 и ±2σ 66,7 %, на json 0,0489 и 75,6 %)."
-             if meta.get("pkg_src_sha") == AUDIT_PKG_SHA else "."))
+        A(">\n> Лист json — не то, что читает нода: боевая нода берёт `config/tram.yaml`.")
     unused = meta.get("node_params_unused") or []
     if unused:
         A(f">\n> **ВНИМАНИЕ: параметры ноды не дошли до Runner: {', '.join(unused)}.** Связка "
@@ -772,11 +751,11 @@ def render(result, timing, args, pics, root):
         A(f"* **Без заглушек крипа** (c_creep = c_creep_drag = 0): MAE {f(zv['totals'].get('v_mae'), 4)}, "
           f"смещение {f(zv['totals'].get('v_bias'), 4, True)}, 3D {f(zv['totals'].get('p3d_mean'))} м.")
     if (tm0.get("judge_raw_3d_mean") or 0) > 1000:
-        A(f"* **Система судьи:** выход Runner сейчас не в MGRS судьи (код до правок — equirect от "
-          f"начала): без перевода средняя 3D у судьи ≈ {f(tm0.get('judge_raw_3d_mean') / 1000, 0)} км.")
+        A(f"* **Система судьи:** выход Runner сейчас не в MGRS судьи (старая версия пакета — "
+          f"equirect от начала): без перевода средняя 3D у судьи ≈ {f(tm0.get('judge_raw_3d_mean') / 1000, 0)} км.")
     bg = meta.get("boundary_grid") or M.BOUNDARY_GRID
     if meta.get("judge_grid"):
-        A(f"* **Система судьи** (pathgraph организаторов, 26.09): MGRS от угла {meta['judge_grid']} "
+        A(f"* **Система судьи** (pathgraph организаторов): MGRS от угла {meta['judge_grid']} "
           f"непрерывно, точка {rp}. Сырые x, y, z выхода против эталона в этой системе: средняя 3D "
           f"{f(tm0.get('judge_raw_3d_mean'), 2)} м, пар с ошибкой > 1 км: {tm0.get('judge_raw_km', 0)}; "
           f"шагов без опубликованного положения после первого опубликованного: "
@@ -864,7 +843,7 @@ def render(result, timing, args, pics, root):
          "GNSS»; без ключа раздела нет"],
         ["`--frame`", "`mgrs`", "система эталона: `mgrs` (судья), `enu`, `equirect`, `utm`"],
         ["`--runner-frame`", "`auto`", "система выхода Runner: `auto` — параметр ноды `projection` "
-         "(объявление в `tram_node.py`, поверх — лист), иначе `equirect` (код до правок), с проверкой "
+         "(объявление в `tram_node.py`, поверх — лист), иначе `equirect` (старая версия пакета), с проверкой "
          "по величине; `mgrs`, `utm`, `enu`, `equirect`"],
         ["`--runner-grid`", "параметр `mgrs_grid`", "как **читать** выход Runner в MGRS (`\"\"` — перенос "
          "по точке, `37UDB`). Runner не настраивает — для этого `--set mgrs_grid=37UDB`"],
@@ -874,8 +853,8 @@ def render(result, timing, args, pics, root):
          "судьи) | `master` (антенна, прежний эталон — для сравнения)"],
         ["`--pathgraph`", "`auto`", "pathgraph организаторов для поперечной ошибки и пути вдоль него: "
          "`auto` — `_incoming/pathgraph`, если есть (в git его нет); `none`; путь"],
-        ["`--variants`", "выкл.", "варианты листа: заглушки крипа / нули (+15 прогонов модели; замер "
-         "26.09, `--cpus 2`, машина почти без соседей: 6,4 мин без ключа, 8,5 мин с ним)"],
+        ["`--variants`", "выкл.", "варианты листа: заглушки крипа / нули (+15 прогонов модели; при "
+         "`--cpus 2` на свободной машине: 6,4 мин без ключа, 8,5 мин с ним)"],
         ["`--gnss-full-runs`", "каждый 3-й", "прогоны проверки «GNSS весь прогон» (первые 5 мин): список "
          "или `all`"],
         ["`--quick`", "—", "CI: 2 прогона по 300 с, 4 инъекции, без вариантов и GNSS-full; документ и "
@@ -888,18 +867,20 @@ def render(result, timing, args, pics, root):
     A("")
     A("Кэш и карта. Кэш прогонов (`analysis/cache/<bag>.npz`) строится из `data/` для нужных "
       "прогонов, если его нет. Карта оценки `track_map_train.<ключ>.npz` строится "
-      "`analysis/build_map.py` только по `tools/split.json:train` (98 прогонов): после WP10 — "
+      "`analysis/build_map.py` только по `tools/split.json:train` (98 прогонов): "
       "`--set train --split tools/split.json --calib <лист оценки>` (множитель пути — с `meas_scale` "
-      "оцениваемого листа), до правок — `build_map.py train`. Ключ — хэш `build_map.py`, "
-      "`drive_model.json`, `split.json`, `track_map.py`, `runner.py`, `geodesy.py`, "
-      "`tram_calibration.json` (после WP10 и листа), поэтому после правок карта пересобирается сама "
-      "(в каталог кэша или `out/maps/`, если кэш только для чтения; нужен кэш 98 train, ~2 мин).")
+      "оцениваемого листа). Ключ — хэш `build_map.py`, `drive_model.json`, `split.json`, "
+      "`track_map.py`, `runner.py`, `geodesy.py`, `tram_calibration.json` и листа, поэтому после "
+      "правок кода карта пересобирается сама (в каталог кэша или `out/maps/`, если кэш только для "
+      "чтения; нужен кэш 98 train, ~2 мин). По умолчанию (`--map eval`) берётся готовая оценочная "
+      "карта пакета `config/eval/track_map.npz`.")
     A("")
-    A("После слияний потоков: `python3 tools/eval.py --label \"после слияний\"`. Лист `eval` "
+    A("После правок кода: `python3 tools/eval.py --label \"<подпись версии>\"`. Лист `eval` "
       "подхватится из `config/eval/`; параметры ноды (`projection`, `mgrs_grid`, …) — из объявлений "
       "`tram_node.py` и листа. Проверки: (1) в шапке нет предупреждения о параметрах, не дошедших "
       "до Runner; (2) «взгляд судьи» в разделе 3.2 равен ошибке в MGRS при своём соглашении (нет "
-      "~100 км); (3) раздел 5: выход с GNSS весь прогон совпадает с GNSS 3 с во всех прогонах.")
+      "~100 км); (3) раздел 5: сетка и скорость с GNSS весь прогон совпадают с GNSS 3 с во всех "
+      "прогонах.")
     A("")
     A(f"Результаты: `{args.out}/summary.json` (итоги), `runs.json` (по прогонам), `inject.json` "
       "(инъекции), `timing.json` (время, sha256 JSON, git, строки реального времени; не "
@@ -908,16 +889,16 @@ def render(result, timing, args, pics, root):
     wall = timing.get("wall_all_s")
     A(f"Этот прогон: {f(wall / 60 if wall else None, 1)} мин без графиков и документа (они ~0,5 мин), "
       f"процессов {timing.get('workers')}{', с --variants' if meta.get('variants_on') else ''} (время "
-      "зависит от загрузки машины: 26.09 при соседних контейнерах, где наш получал ~1,3 ядра, тот же "
+      "зависит от загрузки машины: при соседних контейнерах, где наш получал ~1,3 ядра, тот же "
       "прогон без --variants шёл 18,0 мин вместо 6,4).")
     shas = timing.get("sha256") or {}
     if shas:
         A("sha256 JSON этого прогона: " + ", ".join(f"`{k}` {v[:12]}" for k, v in shas.items()) + ".")
     A("Воспроизводимость: два полных прогона дают побайтно одинаковые `summary.json`, `runs.json`, "
       "`inject.json` (`--check-determinism` проверяет это сам); чистый `git clone` с пустым кэшем "
-      "строит кэш и карту из `data/` и даёт тот же sha256 `runs.json` (проверено 25.09 на коде до "
-      "правок). Карта напарника `analysis/cache/track_map_train.npz` (собрана на Windows) отличается "
-      "от пересобранной множителем пути в 16-м знаке, поэтому не используется.")
+      "строит кэш и карту из `data/` и даёт тот же sha256 `runs.json`. Старая карта "
+      "`analysis/cache/track_map_train.npz` (собрана на Windows) отличается от пересобранной "
+      "множителем пути в 16-м знаке, поэтому не используется.")
     det = timing.get("determinism")
     if det:
         A(f"Детерминизм (`--check-determinism`): JSON двух проходов "
@@ -936,15 +917,15 @@ def render(result, timing, args, pics, root):
       "+ параметры ноды → `Runner(...)`). GNSS в связку — только первые 3 с записи от первой точки "
       "master (как в проверочных bag); `--gnss full` — весь прогон. Статус NavSatFix в `on_fix`: "
       f"{'передаётся' if gl.get('fix_status') else 'нет (Runner его не принимает)'}; сортировка "
-      "стартового всплеска (StartSorter, WP24): "
+      "стартового всплеска (StartSorter): "
       + (f"да, окно {f(gl.get('start_sort_s'), 2)} с по времени записи" if gl.get("start_sort_s") is not None
-         else "нет в этом коде") + ". Пульс ноды (WP16) не эмулируется: он публикует те же узлы "
+         else "нет в этом коде") + ". Пульс ноды не эмулируется: он публикует те же узлы "
       "сетки с теми же значениями, что связка выдаёт при следующем сообщении (прогноз на копии тем "
       "же кодом), кроме ≤ 2 с после последнего входа записи. Исключение в связке считается падением "
-      "ноды: дальше выходов нет (нода после WP4 ловит исключения в колбэках и живёт, но Runner их "
+      "ноды: дальше выходов нет (нода ловит исключения в колбэках и живёт, но Runner их "
       "бросать не должен — это дефект в любом случае).")
     A("* **Пары.** Выход ↔ эталон по ближайшей метке `header.stamp` в пределах 0,05 с (README, 5.1). "
-      "Скорость публикуется на каждом шаге; положение — только при `pos_valid` (нода после WP10 не "
+      "Скорость публикуется на каждом шаге; положение — только при `pos_valid` (нода не "
       "публикует `/result/position` без якоря GNSS или у края квадрата) и конечных x, y, z: фикс "
       "сопоставляется с ближайшим **опубликованным** положением, без него — непарный. Доли пар, NaN "
       "и падения — в «Главном» и разделе 3.")
@@ -971,7 +952,7 @@ def render(result, timing, args, pics, root):
       "эталона. Пары, где эталон дальше 10 м от пути или за концом pathgraph (записи длиннее его: "
       "конечные, развороты), не входят; их доля — «вне pathgraph».")
     A("* **Граница квадратов 100 км.** Линия пересекает E = 400 км: запад (~1,2 км) в **37U CB**, "
-      "остальное в **37U DB**. Соглашение судьи с 26.09 известно (pathgraph: от 37UCB непрерывно, "
+      "остальное в **37U DB**. Соглашение судьи известно (pathgraph: от 37UCB непрерывно, "
       "`--judge-grid 37UCB`); ниже для справки прежний разбор. До pathgraph оно было неизвестно: "
       "(а) «перенос по точке» — координаты внутри квадрата, где лежит точка (Autoware "
       "gnss_poser, lanelet2 MGRSProjector; x скачет на 100 км), или (б) непрерывно от одного "
@@ -981,14 +962,14 @@ def render(result, timing, args, pics, root):
       f"(перенос по точке / непрерывно от `{meta.get('boundary_grid') or M.BOUNDARY_GRID}`) по "
       "непрерывной оценке; и «взгляд судьи» — сырые x, y, z выхода Runner против эталона в "
       "соглашении `--judge-grid`.")
-    A("* **Перевод выхода.** Если выход Runner не в MGRS (код до правок — equirect от своей точки "
+    A("* **Перевод выхода.** Если выход Runner не в MGRS (старая версия пакета — equirect от своей точки "
       "начала), x, y, z переводятся обратно в широту/долготу через его же начало и формулу, затем в "
       "UTM. Так ошибка перевода равна нулю, а «взгляд судьи» показывает, что увидел бы судья без "
       "перевода.")
     A("* **Вдоль/поперёк пути.** Проекция на ломаную эталона (медиана по 5 фиксам, шаг 1 м, окно "
-      "±1 км, то же направление движения; алгоритм `core_metrics.py`). Дрейф — ошибка **в конце "
+      "±1 км, то же направление движения; алгоритм `tools/dev/core_metrics.py`). Дрейф — ошибка **в конце "
       "прогона**, отнесённая к длине пути (PDF, стр. 6): 3D и вдоль пути.")
-    A("* **Итоги.** Средние взвешены числом пар скорости прогона (как `critic_offline.py sub15`): "
+    A("* **Итоги.** Средние взвешены числом пар скорости прогона: "
       "для MAE, смещения и RMSE это пул всех пар; максимумы — по всем прогонам; дрейф — среднее, "
       "медиана и максимум по прогонам. Фазы — пулом всех пар.")
     A("* **База «только колесо»** — причинная: среднее последних показаний тележек (не старше "
@@ -1142,15 +1123,15 @@ def render(result, timing, args, pics, root):
       f"{'с переносом по точке' if not meta['judge_grid'] else 'от ' + meta['judge_grid']}): "
       f"средняя 3D **{f(tm.get('judge_raw_3d_mean'), 1)} м**, максимум {f(tm.get('judge_raw_3d_max'), 1)} м, "
       f"пар с ошибкой > 1 км: {tm.get('judge_raw_km', 0)}"
-      + (" — выход Runner не в MGRS судьи (код до правок — equirect от начала): без перевода судья "
-         "увидел бы ошибку ~100 км. Это закрывает поток «положение» (выход MGRS)."
+      + (" — выход Runner не в MGRS судьи (старая версия пакета — equirect от начала): без "
+         "перевода судья увидел бы ошибку ~100 км."
          if (tm.get("judge_raw_3d_mean") or 0) > 1000 else "."))
     A("")
     A("Чувствительность к системе эталона (тот же выход, другой эталон; 3D ср. / конец ср.):")
     A("")
     rows = [["MGRS (UTM)", f(tm.get("p3d_mean")) + " / " + f(tm.get("p3d_end_mean")),
              f(tn.get("p3d_mean")) + " / " + f(tn.get("p3d_end_mean"))]]
-    for fr, lab in (("enu", "строгий ENU"), ("equirect", "equirect напарника")):
+    for fr, lab in (("enu", "строгий ENU"), ("equirect", "прежний equirect")):
         a_, b_ = g(S, "frame_sensitivity", fr) or {}, g(S, "frame_sensitivity", fr + "_naive") or {}
         if a_:
             rows.append([lab, f(a_.get("p3d_mean")) + " / " + f(a_.get("p3d_end_mean")),
@@ -1236,12 +1217,12 @@ def render(result, timing, args, pics, root):
             A(f"Сетка, pos_valid и скорость совпали (|Δv| ≤ 1e-9): **{gf.get('same_speed_runs')} из {n}** "
               f"прогонов; наибольшее |Δv| {f(gf.get('max_dv'), 3)} м/с; наибольшее |Δ положения| "
               f"{f(gf.get('max_dpos'), 1)} м — это поправки по GNSS. Если сетка или скорость не "
-              "совпали — GNSS влияет на ядро (дефект C2, WP1).")
+              "совпали — GNSS влияет на ядро (это был бы дефект).")
         else:
             A(f"Совпали (та же сетка и pos_valid, |Δv| ≤ 1e-9, |Δxyz| ≤ 1e-6): **{gf.get('identical_runs')} из {n}** "
               f"прогонов; наибольшее |Δv| {f(gf.get('max_dv'), 3)} м/с, наибольшее |Δ положения| "
               f"{f(gf.get('max_dpos'), 1)} м. Если не совпали — GNSS после окна влияет на выход "
-              "(дефект C2, WP1).")
+              "(это был бы дефект).")
         A("")
         rows = [[b, "да" if r["same_grid"] else f"нет ({r['n_out_full']} / {r['n_out_3s']})",
                  f(r.get("max_dv"), 3), f(r.get("max_dpos"), 1), f(r.get("p3d_mean_full"), 1),
@@ -1333,99 +1314,23 @@ def render(result, timing, args, pics, root):
         A("")
         A(table(["замер", "выходов", "Гц", "in2out p50, мс", "p99", "макс", "CPU ср., %", "CPU макс",
                  "RSS, МБ", "рост RSS, МБ/мин"], pr))
-        if any(str(r[0]).startswith("audit25_") for r in pr):
-            A("")
-            A("Строки `audit25_*` — замеры аудита ROS2_E2E 25.09 на коде до правок, bag ~4,5 мин, "
-              "соседние контейнеры: предварительно. Отчётный замер (полный bag ≥ 20 мин, "
-              "`--cpus 2 --memory 512m`, машина без соседей) делает поток infra (WP8).")
+        A("")
+        A("Отчётный замер — `tools/measure_realtime.sh` (полный bag ≥ 20 мин, "
+          "`--cpus 2 --memory 512m`, машина без соседей); порядок и таблица критериев ТЗ — "
+          "`docs/JURY.md` §6.")
     else:
-        A("**Заглушка.** Сводок `tools/ros_probe.py` не найдено (`--probe-glob "
-          f"{args.probe_glob}`). Замер делает поток infra (`tools/measure_realtime.sh`, WP8): "
-          "полный bag ≥ 20 мин, `--cpus 2 --memory 512m`, машина без соседей. После замера "
-          "перезапустить `tools/eval.py` — таблица подставится сюда.")
+        A("Сводок `tools/ros_probe.py` не найдено (`--probe-glob "
+          f"{args.probe_glob}`). Замер — `tools/measure_realtime.sh`: полный bag ≥ 20 мин, "
+          "`--cpus 2 --memory 512m`, машина без соседей. После замера перезапустить "
+          "`tools/eval.py` — таблица подставится сюда.")
     A("")
     A(f"Офлайн-скорость связки в этом прогоне (не замер ноды): {timing.get('events_per_s', '—')} "
       "входных сообщений в секунду на процесс вместе с базой — предварительно, при соседних "
       "контейнерах.")
     A("")
-
-    # ---------------- сверка
-    A("## 8. Сверка с аудитом (critic_offline.py sub15)")
+    A("## 8. Открытые вопросы")
     A("")
-    same_code = meta.get("pkg_src_sha") == AUDIT_PKG_SHA
-    same_setup = (same_code and meta["sheet"]["path"].endswith("config/tram_calibration.json")
-                  and not meta["overrides"] and meta["map"]["label"].startswith("оценочная")
-                  and meta["gnss"] == "3" and not meta["quick"] and len(ids) == 15)
-    eq = g(S, "frame_sensitivity", "equirect") or {}
-    eqn = g(S, "frame_sensitivity", "equirect_naive") or {}
-    rows = [
-        ["MAE модели, м/с", f(SUB15_JSON["v_mae"], 4), f(tm.get("v_mae"), 4)],
-        ["смещение модели, м/с", f(SUB15_JSON["v_bias"], 4, True), f(tm.get("v_bias"), 4, True)],
-        ["±2σ модели", f(SUB15_JSON["cov2s_v"], 3), f(tm.get("cov2s_v"), 3)],
-        ["3D ср. модели (equirect), м", f(SUB15_JSON["p3d_mean"]), f(eq.get("p3d_mean"))],
-        ["MAE базы, м/с", f(SUB15_JSON["naive_v_mae"], 4), f(tn.get("v_mae"), 4)],
-        ["3D ср. базы (equirect), м", f(SUB15_JSON["naive_p3d_mean"]), f(eqn.get("p3d_mean"))],
-    ]
-    A(("Настройка совпадает с аудитом (код пакета тот же — sha `" + AUDIT_PKG_SHA + "`, json-лист, "
-       "train-карта, GNSS 3 с, 15 прогонов, эталон equirect для 3D): числа должны совпасть до "
-       "округления." if same_setup else
-       "**Настройка отличается от аудита** (" + ("код пакета другой: sha `" + str(meta.get("pkg_src_sha"))
-                                                 + "` против `" + AUDIT_PKG_SHA + "` у аудита; "
-                                                 if not same_code else "") +
-       "лист, карта или набор прогонов) — расхождение ожидаемо, таблица для справки."))
-    A("")
-    A(table(["метрика", "sub15 (аудит 25.09, json_train)", "этот прогон"], rows))
-    A("")
-    A("Откуда расхождения, если они есть: (1) аудит считал 3D, путь и вдоль/поперёк в equirect "
-      "напарника, а здесь основная система — MGRS/UTM: длина пути в UTM на ~0,2 % больше "
-      "(equirect короче по востоку на 0,23 %), средняя 3D по прогону меняется до ~0,2 %; для "
-      "сверки выше взята та же equirect; (2) аудит хранил ряды в float32, поэтому доля «±2σ» на "
-      "границе (стоянка, σ_v на полу) может отличаться на ~0,1 п. п.; (3) sub15 печатает 3 "
-      "значащие цифры; (4) «вдоль, конец» там, где оценка в конце прогона на соседнем пути "
-      "(30618_0652866c: 3D 131 м, поперёк ~55–60 м), зависит от выбора основания перпендикуляра "
-      "среди почти равноудалённых (правило «ближайший ± 5 м»): последний фикс с проекцией тот же, "
-      "но в equirect −35,13 м (как в аудите), в MGRS −34,08 м — UTM против equirect отличается "
-      "масштабом (0,23 %) и поворотом на сближение меридианов (~1,3°). Скорость по прогонам "
-      "совпадает с `out/core/runs_val_json_train.csv` аудита до 5-й значащей цифры (проверено 25.09 "
-      "на коде до правок).")
-    A("")
-
-    # ---------------- пороги
-    A("## 9. Пороги приёмок, пересчитанные на 15 чистых (WP7 (г))")
-    A("")
-    zero = next((v for v in S.get("variants", []) if v["name"] == "zero"), None)
-    no_creep = not meta["params"].get("c_creep") and not meta["params"].get("c_creep_drag")
-    zt = (zero or {}).get("totals") or (tm if no_creep or (zero or {}).get("same_as_base") else {})
-    rn = result["runs"]
-    ends = {b: g(rn, b, "model", "p3d_end") for b in ("30618_0652866c", "30618_49fe4c54", "30618_8158f0b0")}
-    others = [g(rn, b, "model", "p3d_end") for b in ids if b not in ends]
-    r92 = g(rn, "30639_92226df0", "model", "p3d_mean")
-    rows = [
-        ["WP5 крип", "MAE ≤ 0,045; смещение ≤ +0,005; 3D ≤ 4,1 м (17 прогонов, equirect)",
-         f"без крипа: MAE {f(zt.get('v_mae'), 4)}, смещение {f(zt.get('v_bias'), 4, True)}, "
-         f"3D {f(zt.get('p3d_mean'))} м (MGRS)" if zt else "не считалось (нужен --variants)",
-         wp5_threshold(zt)],
-        ["WP11 конечные", "конец у 0652866c / 49fe4c54 / 8158f0b0 < 40 м (было 131 / 55 / 54)",
-         " / ".join(f(v, 1) for v in ends.values()) + " м (MGRS)",
-         "< 40 м у трёх; остальные не хуже > 0,5 м (сейчас макс конца у остальных "
-         f"{f(max([x for x in others if x is not None], default=None), 1)} м)"],
-        ["WP13 масштаб колёс", "3D ≤ 3,9 м; 92226df0 ≤ 6 м; 30618 не хуже > 1 м",
-         f"3D ср. {f(tm.get('p3d_mean'))} м; 92226df0 {f(r92)} м (MGRS)",
-         (f"−15 % к 3D на момент приёмки (так выведен порог 3,9 из 4,65): сейчас "
-          f"{f(math.floor(tm.get('p3d_mean', 0) * 0.85 * 10) / 10, 1)} м"
-          + (f", после WP5 (без крипа, {f(zt.get('p3d_mean'))} м) — "
-             f"{f(math.floor(zt['p3d_mean'] * 0.85 * 10) / 10, 1)} м" if zt and zt.get("p3d_mean") else "")
-          + "; 92226df0 ≤ 6 м; ни один 30618 не хуже > 1 м") if tm.get("p3d_mean") else "—"],
-    ]
-    A(table(["пакет", "порог в TODO (на 17)", "база на 15 чистых", "предлагаемый порог"], rows))
-    A("")
-    A("Пороги предлагаются от чисел этого прогона; если лист или карта меняются, пересчитать."
-      + (" **Здесь лист с утечкой (json по всем данным): на оценочном листе пороги пересчитать; "
-         "порог смещения WP5 +0,005 не ослаблять.**" if meta["sheet"].get("leak") else ""))
-    A("")
-    A("## 10. Открытые вопросы")
-    A("")
-    A("* Соглашение судьи на границе квадратов снято pathgraph организаторов (26.09): от 37UCB "
+    A("* Соглашение судьи на границе квадратов снято pathgraph организаторов: от 37UCB "
       "непрерывно; точка — base_link по tf антенн. Как именно судья строит свой эталон base_link "
       "(по двум антеннам или по одной с курсом), не сказано; на прямой способы совпадают, "
       "расходиться могут только на кривых.")

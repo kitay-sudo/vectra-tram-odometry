@@ -1,5 +1,5 @@
 """Калибровка по данным вагона: окно адаптации, выходная σ, залипание всех
-датчиков (WP15a, WP12, WP15). ROS не требуется."""
+датчиков. ROS не требуется."""
 
 import os
 from dataclasses import fields, replace
@@ -43,7 +43,7 @@ def _feed(r, t_end, v_of_t, notch_of_t, wheel=None, t0=0.0):
     return outs
 
 
-# ------------------------------------------------------------ WP15a
+# ------------------------------------------------------------ окно адаптации
 
 def _drive_slow_sensors(params, t_end=40.0):
     """Имитатор: показания приходят раз в два шага фильтра (как тележки
@@ -94,7 +94,7 @@ def test_adapt_on_accepts_yaml_booleans():
         Params.from_dict({"adapt_on": "yes"})
 
 
-# ------------------------------------------------------------ WP12
+# ------------------------------------------------------------ выходная σ
 
 def _run_pair(p0, p1):
     from tram_state_estimator.runner import Runner
@@ -177,7 +177,7 @@ def test_runner_position_sigma_resets_at_stop_anchor():
     assert after[0]["sigma_s"] < 0.5 * before[-1]["sigma_s"]
 
 
-# ------------------------------------------------------------ WP15
+# ------------------------------------------------------------ залипание датчиков
 
 def _frozen_run(freeze, t_end=60.0, notch=lambda t: 5 if t < 30 else -6,
                 v_true=lambda t: 0.6 * t if t < 30 else max(0.0, 18.0 - (t - 30))):

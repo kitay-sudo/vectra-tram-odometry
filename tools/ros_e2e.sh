@@ -10,7 +10,7 @@
 #   tools/ros_e2e.sh --bag X --late 30                           # нода через 30 с после bag
 #   tools/ros_e2e.sh --bag X --topics "/vehicle/front_bogie_velocity /vehicle/rear_bogie_velocity"
 #   tools/ros_e2e.sh --bag X --pause 60:5                        # пауза плеера на 5 с на 60-й с
-#   tools/ros_e2e.sh --bag X --inject "zero_stamp_first"         # tools/audit/ros_inject.py
+#   tools/ros_e2e.sh --bag X --inject "zero_stamp_first"         # tools/ros_inject.py
 # Опции:
 #   --bag ID        прогон из data/ (можно несколько — подряд в одну ноду)
 #   --rate R        скорость ros2 bag play (1.0)
@@ -20,7 +20,7 @@
 #   --pause AT:FOR  пауза плеера (сервис /rosbag2_player/pause) на AT-й с на FOR с
 #   --gap S         пауза между bag при последовательном проигрывании (2)
 #   --start-offset S  начать проигрывание bag с S-й секунды
-#   --inject SPEC   параллельно запустить tools/audit/ros_inject.py SPEC
+#   --inject SPEC   параллельно запустить tools/ros_inject.py SPEC
 #   --tag NAME      каталог результатов out/ros_e2e/NAME
 #   --mem LIMIT     ограничение памяти контейнера (docker --memory), напр. 2g
 #   --cpus N        ограничение CPU контейнера (docker --cpus), напр. 2
@@ -100,6 +100,9 @@ mkdir -p "$OUT"
 exec > >(tee "$OUT/run.log") 2>&1
 ts() { date +%H:%M:%S.%3N; }
 log() { echo "[$(ts)] $*"; }
+# блок настроек ноды при запуске и её итог при останове (из node.log)
+node_banner() { sed -n '/оценщик запущен/,/жду входы/{s/^.*\]: //;p}' "$1" | sed 's/^/    /'; }
+node_summary() { grep -F "[tram_state_estimator] " "$1" | sed 's/^.*\[tram_state_estimator\] /    /'; }
 
 source /opt/ros/humble/setup.bash
 if [ $BUILD -eq 0 ] && diff -r -q -x __pycache__ /ws/src /repo/ros2_ws/src >/dev/null 2>&1; then
@@ -136,10 +139,11 @@ start_node() {
   fi
   NODE=$!
   for _ in $(seq 1 150); do
-    grep -q "оценщик запущен" "$OUT/node.log" 2>/dev/null && break
+    grep -q "жду входы" "$OUT/node.log" 2>/dev/null && break
     sleep 0.2
   done
-  log "нода: $(grep -m1 'оценщик запущен' "$OUT/node.log" || echo 'НЕТ строки запуска')"
+  if grep -q "оценщик запущен" "$OUT/node.log"; then log "нода запущена:"; node_banner "$OUT/node.log"
+  else log "нода: НЕТ строки запуска (см. node.log)"; fi
 }
 
 [ "$LATE" = "0" ] && start_node && sleep 1
@@ -147,7 +151,7 @@ sleep 1
 
 INJ=""
 if [ -n "$INJECT" ]; then
-  python3 /repo/tools/audit/ros_inject.py $INJECT >"$OUT/inject.log" 2>&1 &
+  python3 /repo/tools/ros_inject.py $INJECT >"$OUT/inject.log" 2>&1 &
   INJ=$!
   sleep 1
 fi
@@ -214,6 +218,7 @@ if [ $SHUT -eq 1 ] && [ -n "$NODE" ]; then
   fi
   wait $NODE 2>/dev/null; rc=$?
   log "launch завершился: код $rc за $(awk "BEGIN{printf \"%.2f\", $(date +%s.%N) - $t0}") с"
+  log "итог ноды:"; node_summary "$OUT/node.log"
   if grep -n -E "Traceback|Error|exception|died|exit code" "$OUT/node.log" >/dev/null; then
     log "в node.log есть ошибки/трассировки:"; grep -n -E -A3 "Traceback|Error|exception|died|exit code" "$OUT/node.log" | tail -30
   else

@@ -7,10 +7,13 @@
 """
 
 import json
+import os
+import sys
 
 import numpy as np
 
-import bagio
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "analysis"))
+import bagio  # noqa: E402
 
 R = 6378137.0
 LAT0, LON0 = 55.80484, 37.42050
