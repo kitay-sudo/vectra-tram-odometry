@@ -65,7 +65,11 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 
 from tram_msgs.msg import EstimatorStatus
-from tram_vehicle_msgs.msg import DriverControllerCommand, VelocitySensor
+from tram_vehicle_msgs.msg import VelocitySensor
+try:
+    from tram_vehicle_msgs.msg import DriverControllerCommand
+except ImportError:  # в пакете сообщений проверки организаторов только VelocitySensor
+    DriverControllerCommand = None
 
 from .estimator_core import Params
 from .estimator_node import declare_core_params
@@ -342,8 +346,15 @@ class TramEstimatorNode(Node):
             lambda m: (0, to_sec(m.header.stamp), m.velocity))
         sub(VelocitySensor, "/vehicle/rear_bogie_velocity", "on_wheel",
             lambda m: (1, to_sec(m.header.stamp), m.velocity))
-        sub(DriverControllerCommand, "/vehicle/driver_position_cmd", "on_handle",
-            lambda m: (to_sec(m.header.stamp), m.position))
+        if DriverControllerCommand is not None:
+            sub(DriverControllerCommand, "/vehicle/driver_position_cmd", "on_handle",
+                lambda m: (to_sec(m.header.stamp), m.position))
+        else:
+            # без типа ручки нода работает по тележкам: модель привода не знает команду,
+            # колёса ведут скорость, прогноз пульса идёт с запасом для сетки 10 Гц
+            self.get_logger().warning(
+                "Внимание: в tram_vehicle_msgs нет DriverControllerCommand, ручка не "
+                "используется; соберите пакет tram_vehicle_msgs из этого репозитория")
         for ant in ("master", "rover"):
             sub(NavSatFix, f"/sensing/gnss/{ant}/fix", "on_fix",
                 lambda m, a=ant: (to_sec(m.header.stamp), a, m.latitude,
