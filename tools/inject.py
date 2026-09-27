@@ -5,7 +5,8 @@
 front / rear / cmd — строки (tb, th, значение), где tb — время записи в bag,
 th — header.stamp. Инъекция возвращает КОПИЮ массивов; порядок проигрывания
 остаётся по tb (как ros2 bag play), меняются значения, метки th или
-пропадают сообщения. GNSS не трогается.
+пропадают сообщения. GNSS аномалии входов не трогают; сценарии доступности
+и сбоев GNSS — отдельно (gnss_scenario, cut_start; раздел «GNSS» ниже).
 
 Окно аномалии выбирается детерминированно и только по входам решения
 (скорость тележек и ручка), поэтому модуль годится и для bag без GNSS
@@ -203,6 +204,152 @@ def apply(a, kind, t0, dur=None, seed=0, sigma_meas=NOISE_SIGMA_MS):
     info = dict(kind=kind, ru=k["ru"], t0=float(t0), dur=dur, t1=float(t1),
                 eval_s=eval_window(kind), touched=touched)
     return b, info
+
+
+# ------------------------------------------------------------ GNSS: сценарии доступности
+
+# Сценарии подачи GNSS в связку (tools/eval.py --gnss <имя>, tools/eval_gnss.py).
+# Эталон оценки не меняется: он строится по всем точкам GNSS прогона. Окна —
+# по времени записи в bag (tb), как ros2 bag play; всё с зерном прогона.
+GNSS_SCENARIOS = {
+    "first3": "GNSS только первые 3 с от первой точки master (как в проверочных bag)",
+    "sparse": "первые 3 с + пачки по 5–10 с каждые 2–3 мин",
+    "bursts": "первые 3 с + короткие пачки по 1–4 с, в среднем раз в минуту",
+    "nostart": "в начале GNSS нет; первая пачка через 1–3 мин, дальше как sparse "
+               "(выставка по GNSS посреди прогона)",
+    "midstart": "запись с середины маршрута: входы и эталон с 3–8 мин, GNSS первые 3 с "
+                "после этого (старт на ходу)",
+    "full": "GNSS весь прогон",
+    "glitchy": "sparse + сбои GNSS: скачки 15–80 м на 1–5 эпох, метки ±1 с на 2–4 с, "
+               "пачка без RTK со сдвигом 5–15 м, пачка без rover, точки (0, 0), NaN и "
+               "статус −1",
+    "none": "GNSS нет вовсе",
+}
+GNSS_FIRST_S = 3.0
+M_PER_DEG = 111320.0
+
+
+def _fix_rows(a):
+    """Точки GNSS прогона: список [tb, антенна, th, lat, lon, alt, status]."""
+    out = []
+    for key, ant in (("mfix", "master"), ("rfix", "rover")):
+        x = np.asarray(a.get(key, np.zeros((0, 6))), float)
+        if x.ndim != 2 or x.shape[1] < 5:
+            continue
+        for row in x:
+            st = int(row[5]) if len(row) > 5 and np.isfinite(row[5]) else 0
+            out.append([float(row[0]), ant, float(row[1]), float(row[2]), float(row[3]),
+                        float(row[4]), st])
+    return out
+
+
+def _windows(rng, t0, t1, kind):
+    """Окна пачек GNSS после первых 3 с: список (начало, конец) по tb."""
+    wins = []
+    if kind in ("sparse", "glitchy", "nostart"):
+        t = t0 + (rng.uniform(60.0, 180.0) if kind == "nostart" else rng.uniform(120.0, 180.0))
+        while t < t1:
+            wins.append((t, t + rng.uniform(5.0, 10.0)))
+            t += rng.uniform(120.0, 180.0)
+    elif kind == "bursts":
+        t = t0 + max(10.0, rng.exponential(60.0))
+        while t < t1:
+            wins.append((t, t + rng.uniform(1.0, 4.0)))
+            t += max(10.0, rng.exponential(60.0))
+    return wins
+
+
+def _offset(row, dE, dN):
+    lat = row[3]
+    row[3] = lat + dN / M_PER_DEG
+    row[4] = row[4] + dE / (M_PER_DEG * np.cos(np.radians(lat)))
+
+
+def gnss_scenario(a, kind, seed):
+    """GNSS для подачи в связку по сценарию kind (GNSS_SCENARIOS, кроме
+    midstart — для него cut_start). Возвращает (rows, info): rows — список
+    [tb, антенна, th, lat, lon, alt, status] по возрастанию tb; info — окна
+    и сбои (для отчёта)."""
+    if kind not in GNSS_SCENARIOS or kind == "midstart":
+        raise ValueError(f"сценарий GNSS {kind!r}: {sorted(GNSS_SCENARIOS)}")
+    rows = _fix_rows(a)
+    info = dict(kind=kind, windows=[], glitches=[])
+    m = [r for r in rows if r[1] == "master"]
+    if not m or kind == "none":
+        return [], info
+    t0 = min(r[0] for r in m)
+    t1 = max(r[0] for r in rows)
+    if kind == "full":
+        return sorted(rows, key=lambda r: r[0]), info
+    rng = np.random.default_rng(seed)
+    wins = [] if kind == "nostart" else [(-np.inf, t0 + GNSS_FIRST_S)]
+    burst = _windows(rng, t0, t1, kind)
+    wins += burst
+    info["windows"] = [(float(a_ - t0), float(b_ - t0)) for a_, b_ in burst]
+    out = [list(r) for r in rows if any(lo <= r[0] <= hi for lo, hi in wins)]
+    if kind == "glitchy":
+        out = _glitch(out, burst, rng, info, t0)
+    return sorted(out, key=lambda r: r[0]), info
+
+
+def _glitch(rows, burst, rng, info, t0):
+    """Сбои GNSS в пачках (не в первых 3 с): скачок, сдвиг метки, пачка без
+    RTK со сдвигом, пачка без rover, мусорные точки."""
+    out = rows
+    for lo, hi in burst:
+        inb = [r for r in out if lo <= r[0] <= hi]
+        if not inb:
+            continue
+        epochs = sorted({round(r[2], 2) for r in inb if r[1] == "master"})
+        if not epochs:
+            continue
+        rel = float(lo - t0)
+        if rng.random() < 0.5:                  # скачок положения на 1–5 эпох
+            n = int(rng.integers(1, 6))
+            k = int(rng.integers(0, max(1, len(epochs) - n)))
+            sel = set(epochs[k:k + n])
+            d, ang = rng.uniform(15.0, 80.0), rng.uniform(0.0, 2 * np.pi)
+            for r in inb:
+                if round(r[2], 2) in sel:
+                    _offset(r, d * np.sin(ang), d * np.cos(ang))
+            info["glitches"].append(dict(t=rel, kind="jump", epochs=n, m=float(d)))
+        if rng.random() < 0.3:                  # метки ±1 с на 2–4 с (положение то же)
+            a_ = float(rng.uniform(lo, max(lo, hi - 2.0)))
+            b_ = a_ + float(rng.uniform(2.0, 4.0))
+            sh = float(rng.choice([-1.0, 1.0]))
+            for r in inb:
+                if a_ <= r[0] <= b_:
+                    r[2] += sh
+            info["glitches"].append(dict(t=rel, kind="stamp", shift=sh, s=b_ - a_))
+        if rng.random() < 0.25:                 # пачка без RTK со сдвигом 5–15 м
+            d, ang = rng.uniform(5.0, 15.0), rng.uniform(0.0, 2 * np.pi)
+            for r in inb:
+                r[6] = 0
+                _offset(r, d * np.sin(ang), d * np.cos(ang))
+            info["glitches"].append(dict(t=rel, kind="degraded", m=float(d)))
+        if rng.random() < 0.25:                 # пачка без rover
+            drop = {id(r) for r in inb if r[1] == "rover"}
+            out = [r for r in out if id(r) not in drop]
+            info["glitches"].append(dict(t=rel, kind="no_rover"))
+        if rng.random() < 0.3:                  # мусор: (0, 0), NaN, статус −1
+            tb, th = inb[0][0], inb[0][2]
+            out += [[tb + 0.01, "master", th, 0.0, 0.0, 0.0, 0],
+                    [tb + 0.02, "rover", th, float("nan"), inb[0][4], inb[0][5], 2],
+                    [tb + 0.03, "master", th + 0.05, inb[0][3], inb[0][4], inb[0][5], -1]]
+            info["glitches"].append(dict(t=rel, kind="garbage"))
+    return out
+
+
+def cut_start(a, seed, lo=180.0, hi=480.0):
+    """Запись с середины маршрута: все топики с tb не раньше t_cut (от
+    первого входа + U(lo, hi) с). Возвращает (массивы, секунды отрезано)."""
+    ts = [float(a[k][0, 0]) for k in ("front", "rear", "cmd") if len(a[k])]
+    t_a = min(ts)
+    t_end = max(float(a[k][-1, 0]) for k in ("front", "rear", "cmd") if len(a[k]))
+    cut = float(np.random.default_rng(seed).uniform(lo, hi))
+    cut = min(cut, max(0.0, 0.5 * (t_end - t_a)))
+    t_cut = t_a + cut
+    return {k: (v[v[:, 0] >= t_cut] if len(v) else v) for k, v in a.items()}, cut
 
 
 def main():

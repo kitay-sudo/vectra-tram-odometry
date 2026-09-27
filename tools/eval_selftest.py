@@ -151,6 +151,70 @@ def test_inject_values():
     assert np.isnan(b["front"][:, 2]).sum() == 1
 
 
+
+# ------------------------------------------------------------ сценарии GNSS (коррекция, 26.09)
+
+def _fake_gnss_run(T=900.0):
+    """Прогон с GNSS обеих антенн 10 Гц весь прогон (статус 2)."""
+    a = _fake_run(T)
+    t = np.arange(0.0, T, 0.1)
+    lat = 55.80 + 1e-6 * t
+    rows = lambda dt: np.c_[t + 0.03 + dt, t + dt, lat, np.full_like(t, 37.5),
+                             np.full_like(t, 150.0), np.full_like(t, 2.0)]
+    a["mfix"], a["rfix"] = rows(0.0), rows(0.001)
+    return a
+
+
+@pytest.mark.parametrize("kind", sorted(set(inject.GNSS_SCENARIOS) - {"midstart"}))
+def test_gnss_scenario_deterministic(kind):
+    a = _fake_gnss_run()
+    r1, i1 = inject.gnss_scenario(a, kind, inject.seed_for("x", "gnss|" + kind))
+    r2, i2 = inject.gnss_scenario(a, kind, inject.seed_for("x", "gnss|" + kind))
+    assert r1 == r2 or all(str(x) == str(y) for x, y in zip(r1, r2))
+    assert i1 == i2
+    assert np.array_equal(a["mfix"], _fake_gnss_run()["mfix"])          # оригинал не тронут
+    tb = [r[0] for r in r1]
+    assert tb == sorted(tb)
+    if kind == "none":
+        assert r1 == []
+    if kind == "full":
+        assert len(r1) == len(a["mfix"]) + len(a["rfix"])
+
+
+def test_gnss_scenarios_windows():
+    import eval_replay as R
+    a = _fake_gnss_run()
+    t0 = float(a["mfix"][0, 0])
+    first = [e for e in R.events(a, "3") if e[1] == 2]
+    assert [e for e in R.events(a, "first3", seed=5) if e[1] == 2] == first
+    assert max(e[0] for e in first) <= t0 + 3.0
+    for kind in ("sparse", "bursts", "glitchy"):
+        rows, info = inject.gnss_scenario(a, kind, 7)
+        assert any(r[0] <= t0 + 3.0 for r in rows)          # выставка как в проверке
+        assert info["windows"] and all(b > a_ for a_, b in info["windows"])
+        later = [r for r in rows if r[0] > t0 + 3.0]
+        assert later and len(later) < 0.5 * len(a["mfix"])
+    rows, info = inject.gnss_scenario(a, "sparse", 7)
+    for lo, hi in info["windows"]:
+        assert 5.0 <= hi - lo <= 10.0
+    rows, _ = inject.gnss_scenario(a, "nostart", 7)
+    assert min(r[0] for r in rows) >= t0 + 60.0
+    rows, info = inject.gnss_scenario(a, "glitchy", 3)
+    bad = [r for r in rows if not (np.isfinite(r[3]) and np.isfinite(r[4])) or r[6] < 0
+           or (r[3] == 0.0 and r[4] == 0.0)]
+    kinds = {g["kind"] for g in info["glitches"]}
+    assert kinds and (not bad) == ("garbage" not in kinds)
+
+
+def test_cut_start_drops_everything_before():
+    a = _fake_gnss_run()
+    b, cut = inject.cut_start(a, inject.seed_for("x", "gnss|midstart"))
+    assert 180.0 <= cut <= 480.0
+    t_cut = float(a["front"][0, 0]) + cut
+    for k, v in b.items():
+        assert len(v) == 0 or v[:, 0].min() >= t_cut
+    assert len(b["mfix"]) > 0 and len(b["front"]) < len(a["front"])
+
 # ------------------------------------------------------------ метрики
 
 def test_nearest_pairs_tolerance():

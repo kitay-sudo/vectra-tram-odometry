@@ -52,6 +52,24 @@ def pct(x, nd=1):
     return "—" if x is None or not math.isfinite(x) else f(100.0 * x, nd) + " %"
 
 
+def gnss_label(meta):
+    """Подача GNSS в связку и коррекция по GNSS (параметр ноды gnss_correction)."""
+    gn = str(meta.get("gnss", "3"))
+    try:
+        base = f"первые {float(gn):g} с"
+    except ValueError:
+        base = "весь прогон" if gn == "full" else f"сценарий {gn} (tools/inject.py)"
+    corr = (meta.get("node_params") or {}).get("gnss_correction")
+    if corr is None:
+        return base
+    return base + ("; коррекция по GNSS после окна включена" if corr else
+                   "; коррекция по GNSS выключена (только выставка)")
+
+
+def gnss_corr(meta):
+    return bool((meta.get("node_params") or {}).get("gnss_correction"))
+
+
 def g(d, *keys, default=None):
     for k in keys:
         if d is None:
@@ -561,7 +579,10 @@ def before_after(S, B, rel):
     if gb or ga:
         A(f"GNSS весь прогон (первые 5 мин): выход совпал с «GNSS 3 с» до — "
           f"{gb.get('identical_runs', '—')} из {len(gb.get('runs', {}))}, после — "
-          f"{ga.get('identical_runs', '—')} из {len(ga.get('runs', {}))}.")
+          f"{ga.get('identical_runs', '—')} из {len(ga.get('runs', {}))}"
+          + (f"; сетка и скорость совпали после — {ga.get('same_speed_runs', '—')} из "
+             f"{len(ga.get('runs', {}))} (с коррекцией по GNSS положение и должно "
+             "отличаться)" if gnss_corr(S.get("meta", {})) else "") + ".")
         A("")
     A("База «только колесо» — тот же Runner (выставка, карта, привязки) со средним свежих показаний "
       "тележек вместо ядра; «до» и «после» у неё различаются только кодом связки и картой.")
@@ -584,7 +605,7 @@ def render(result, timing, args, pics, root):
       f"Лист: {meta['sheet']['label']} (sha `{meta['sheet']['sha']}`). "
       f"Карта: {meta['map']['label']}"
       f"{' (sha `' + meta['map']['sha'] + '`)' if meta['map']['sha'] else ''}. "
-      f"GNSS в связку: {'весь прогон' if meta['gnss'] == 'full' else 'первые ' + meta['gnss'] + ' с'}. "
+      f"GNSS в связку: {gnss_label(meta)}. "
       f"Прогонов: {len(ids)}{' (--quick, первые 300 с)' if meta['quick'] else ''}.")
     for leak in (meta["sheet"].get("leak"), meta["map"].get("leak")):
         if leak:
@@ -647,9 +668,15 @@ def render(result, timing, args, pics, root):
           f"(перенос × перенос: {tm0.get('sq_mismatch', 0)}; раздел 3.2).")
     gf0 = S.get("gnss_full")
     if gf0:
-        A(f"* **GNSS весь прогон:** выход совпал с режимом «GNSS 3 с» в {gf0.get('identical_runs')} из "
-          f"{len(gf0.get('runs', {}))} прогонов; 3D ср. {f(g(gf0, 'full', 'p3d_mean'), 1)} м против "
-          f"{f(g(gf0, 'gnss3', 'p3d_mean'), 1)} м (первые {f(gf0['span_s'] / 60, 0)} мин).")
+        if gnss_corr(meta):
+            A(f"* **GNSS весь прогон (коррекция по GNSS):** сетка и скорость совпали с режимом "
+              f"«GNSS 3 с» в {gf0.get('same_speed_runs')} из {len(gf0.get('runs', {}))} прогонов; "
+              f"3D ср. {f(g(gf0, 'full', 'p3d_mean'), 2)} м против "
+              f"{f(g(gf0, 'gnss3', 'p3d_mean'), 2)} м (первые {f(gf0['span_s'] / 60, 0)} мин).")
+        else:
+            A(f"* **GNSS весь прогон:** выход совпал с режимом «GNSS 3 с» в {gf0.get('identical_runs')} из "
+              f"{len(gf0.get('runs', {}))} прогонов; 3D ср. {f(g(gf0, 'full', 'p3d_mean'), 1)} м против "
+              f"{f(g(gf0, 'gnss3', 'p3d_mean'), 1)} м (первые {f(gf0['span_s'] / 60, 0)} мин).")
     summ0 = inject_summary(result["inject"], result["kinds"])
     if summ0:
         bad = [f"{r['kind']} — {verdict(r)}" for r in summ0 if verdict(r) not in OK_VERDICTS]
@@ -689,7 +716,9 @@ def render(result, timing, args, pics, root):
          "`jury` — боевая; `none` — без карты; путь"],
         ["`--baseline`", "`docs/data/eval_before/summary.json`", "итоги прежней версии для раздела 0 "
          "«До и после»; `none` — без раздела"],
-        ["`--gnss`", "`3`", "секунд GNSS в связку от первой записи master; `full` — весь прогон"],
+        ["`--gnss`", "`3`", "секунд GNSS в связку от первой записи master; `full` — весь прогон; "
+         "сценарии доступности `sparse`, `bursts`, `nostart`, `midstart`, `glitchy`, `none` "
+         "(`tools/inject.py`; до/после коррекции по GNSS по всем сценариям — `tools/eval_gnss.py`)"],
         ["`--frame`", "`mgrs`", "система эталона: `mgrs` (судья), `enu`, `equirect`, `utm`"],
         ["`--runner-frame`", "`auto`", "система выхода Runner: `auto` — параметр ноды `projection` "
          "(объявление в `tram_node.py`, поверх — лист), иначе `equirect` (код до правок), с проверкой "
@@ -1047,18 +1076,29 @@ def render(result, timing, args, pics, root):
         n = len(gf.get("runs", {}))
         A(f"Первые {f(gf['span_s'] / 60, 0)} мин записи {n} прогонов "
           f"({', '.join(sorted(gf.get('runs', {})))}; `--gnss-full-runs all` — все), только модель "
-          "(база идёт через тот же Runner). README разрешает GNSS только для начальной выставки, "
-          "значит выход с GNSS весь прогон должен совпасть с выходом при GNSS 3 с: те же метки сетки, "
-          "те же скорость, положение и признак публикации положения.")
+          "(база идёт через тот же Runner). "
+          + ("С коррекцией по GNSS (`gnss_correction: true`, организаторы 26.09 18:05) положение "
+             "после окна идёт за GNSS, а метки сетки, скорость и признак публикации положения "
+             "должны совпасть с выходом при GNSS 3 с: GNSS не двигает сетку и не влияет на скорость."
+             if gnss_corr(meta) else
+             "Без коррекции (`gnss_correction: false`) GNSS только для начальной выставки, "
+             "значит выход с GNSS весь прогон должен совпасть с выходом при GNSS 3 с: те же метки "
+             "сетки, те же скорость, положение и признак публикации положения."))
         A("")
         A(table(["GNSS в связку", "MAE, м/с", "3D ср., м"], [
             ["весь прогон", f(a_.get("v_mae"), 4), f(a_.get("p3d_mean"), 1)],
             ["первые 3 с", f(b_.get("v_mae"), 4), f(b_.get("p3d_mean"), 1)]]))
         A("")
-        A(f"Совпали (та же сетка и pos_valid, |Δv| ≤ 1e-9, |Δxyz| ≤ 1e-6): **{gf.get('identical_runs')} из {n}** "
-          f"прогонов; наибольшее |Δv| {f(gf.get('max_dv'), 3)} м/с, наибольшее |Δ положения| "
-          f"{f(gf.get('max_dpos'), 1)} м. Если не совпали — GNSS после окна влияет на выход "
-          "(дефект C2, WP1).")
+        if gnss_corr(meta):
+            A(f"Сетка, pos_valid и скорость совпали (|Δv| ≤ 1e-9): **{gf.get('same_speed_runs')} из {n}** "
+              f"прогонов; наибольшее |Δv| {f(gf.get('max_dv'), 3)} м/с; наибольшее |Δ положения| "
+              f"{f(gf.get('max_dpos'), 1)} м — это поправки по GNSS. Если сетка или скорость не "
+              "совпали — GNSS влияет на ядро (дефект C2, WP1).")
+        else:
+            A(f"Совпали (та же сетка и pos_valid, |Δv| ≤ 1e-9, |Δxyz| ≤ 1e-6): **{gf.get('identical_runs')} из {n}** "
+              f"прогонов; наибольшее |Δv| {f(gf.get('max_dv'), 3)} м/с, наибольшее |Δ положения| "
+              f"{f(gf.get('max_dpos'), 1)} м. Если не совпали — GNSS после окна влияет на выход "
+              "(дефект C2, WP1).")
         A("")
         rows = [[b, "да" if r["same_grid"] else f"нет ({r['n_out_full']} / {r['n_out_3s']})",
                  f(r.get("max_dv"), 3), f(r.get("max_dpos"), 1), f(r.get("p3d_mean_full"), 1),

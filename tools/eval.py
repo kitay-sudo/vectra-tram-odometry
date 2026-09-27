@@ -285,9 +285,12 @@ def run_task(task):
     a = _load_run(bag, cfg["quick_s"])
     if task.get("limit_s"):
         a = R.truncate(a, task["limit_s"])
+    gnss = task.get("gnss", cfg["gnss"])
+    if gnss == "midstart":                  # запись с середины: входы и эталон обрезаны
+        a, _ = I.cut_start(a, I.seed_for(bag, "gnss|midstart"))
     p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
     runners, unused = _runners(cfg, p, task.get("naive", True))
-    evs = R.events(a, task.get("gnss", cfg["gnss"]))
+    evs = R.events(a, gnss, seed=I.seed_for(bag, f"gnss|{gnss}"))
     if cfg.get("drop_antenna"):             # выставка без одной антенны (WP14)
         evs = [e for e in evs if not (e[1] == 2 and e[2] == cfg["drop_antenna"])]
     outs = R.replay(evs, runners, cfg["sheet"]["node"])
@@ -329,7 +332,8 @@ def run_inject_bag(task):
             continue
         plan.append((t0 - BEFORE_S - SNAP_MARGIN_S, kind, t0, dur))
     plan.sort(key=lambda x: (x[0], task["kinds"].index(x[1])))
-    clean = R.events(a, gnss)
+    gseed = I.seed_for(bag, f"gnss|{gnss}")
+    clean = R.events(a, gnss, seed=gseed)
     runners, unused = _runners(cfg, p, True)
     rp = R.Replay(runners, cfg["sheet"]["node"])
     pos = 0
@@ -339,7 +343,7 @@ def run_inject_bag(task):
         b, info = I.apply(a, kind, t0, dur, seed=I.seed_for(bag, kind))
         # дальше конца окна + TAIL_S не считаем: остаток прогона только стоит времени
         b = R.cut_stamp(b, t0 + I.eval_window(kind) + TAIL_S)
-        evs = R.events(b, gnss)
+        evs = R.events(b, gnss, seed=gseed)
         while pos < len(clean) and clean[pos][0] < t_snap:
             rp.feed(clean[pos:pos + 1])
             pos += 1
@@ -570,6 +574,9 @@ def gnss_full_compare(res, base, ids):
                 identical_runs=int(sum(1 for r in per.values()
                                        if r["same_grid"] and (r["max_dv"] or 0) <= 1e-9
                                        and (r["max_dpos"] or 0) <= 1e-6)),
+                # сетка и скорость: GNSS не должен их трогать и с коррекцией
+                same_speed_runs=int(sum(1 for r in per.values()
+                                        if r["same_grid"] and (r["max_dv"] or 0) <= 1e-9)),
                 max_dv=max((r["max_dv"] or 0 for r in per.values()), default=None),
                 max_dpos=max((r["max_dpos"] or 0 for r in per.values()), default=None))
 
@@ -831,7 +838,9 @@ def main():
     ap.add_argument("--baseline", default=None,
                     help="итоги прежней версии (summary.json) для раздела «До и после»; по "
                          "умолчанию docs/data/eval_before/summary.json, если есть; none — без него")
-    ap.add_argument("--gnss", default="3", help="секунд GNSS в связку (3) или full")
+    ap.add_argument("--gnss", default="3",
+                    help="секунд GNSS в связку (3), full или сценарий доступности tools/inject.py "
+                         "(sparse, bursts, nostart, midstart, glitchy, none)")
     ap.add_argument("--frame", default="mgrs", choices=M.FRAMES,
                     help="система эталона для ошибок положения (mgrs — как у судьи)")
     ap.add_argument("--runner-frame", default="auto", choices=R.RUNNER_FRAMES,

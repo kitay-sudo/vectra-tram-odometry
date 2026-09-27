@@ -210,10 +210,14 @@ def test_map_free_fallback_line(fx, run_map):
 def test_map_free_fallback_default(fx, run_map):
     """map_file: "" с режимом по умолчанию. У потока position это "hold":
     после окна выставки положение стоит в якоре. Проверка: выходы конечны,
-    20 Гц, положение публикуется, после окна не меняется, якорь — у GNSS окна."""
+    20 Гц, положение публикуется, после окна не меняется, якорь — у GNSS окна.
+    GNSS только для выставки (gnss_correction: false): у фикстуры часть точек
+    первых 3 с по времени записи имеет метку после окна, и коррекция по ним
+    сдвигает якорь на миллиметры (ниже — отдельно)."""
     if not E.runner_accepts("nomap_mode"):
         pytest.skip("режима nomap_mode нет (без потока position): проверен test_map_free_fallback_line")
-    outs = E.replay(fx, use_map=False, gnss="window")
+    kw = {"gnss_correction": False} if E.runner_accepts("gnss_correction") else {}
+    outs = E.replay(fx, use_map=False, gnss="window", **kw)
     m = E.metrics(outs, fx)
     _, node = E.sheet()
     assert m["nonfinite"] == 0
@@ -228,6 +232,10 @@ def test_map_free_fallback_default(fx, run_map):
     t_ref, fr = E.reference(fx)                      # base_link по парам антенн
     w = t_ref <= t_end                               # окно выставки
     assert np.linalg.norm(fr[m["p_frame"]][w] - X[-1], axis=1).min() < 5.0, m
+    if kw:                                           # с коррекцией: те же выходы ± см
+        on = E.replay(fx, use_map=False, gnss="window")
+        assert [o["stamp"] for o in on] == [o["stamp"] for o in outs]
+        assert max(abs(p["x"] - q["x"]) + abs(p["y"] - q["y"]) for p, q in zip(on, outs)) < 0.1
 
 
 def test_output_point_is_base_link(fx, run_map):
@@ -254,10 +262,13 @@ def test_output_point_is_base_link(fx, run_map):
                           "(WP1): с ним маркер не действует, тест обязан пройти",
                    strict=True)
 def test_gnss_whole_slice_does_not_change_position(fx, run_map):
-    """GNSS идёт весь кусок (как в демо и, возможно, у жюри): после окна
-    выставки он не должен влиять ни на что."""
-    outs = E.replay(fx, use_map=True, gnss="all")
+    """GNSS идёт весь кусок (как в демо и, возможно, у жюри): при
+    gnss_correction: false после окна выставки он не влияет ни на что. С
+    коррекцией (по умолчанию с 26.09) — test_gnss_correction.py: сетка и
+    скорость те же, положение ближе к GNSS."""
+    outs = E.replay(fx, use_map=True, gnss="all", gnss_correction=False)
     m = E.metrics(outs, fx)
     assert m["v_mae"] < MAE_MAX
     assert m["p_mean3d"] < MEAN3D_MAX, m
-    assert E.digest(outs) == E.digest(run_map[0])
+    assert E.digest(outs) == E.digest(E.replay(fx, use_map=True, gnss="window",
+                                               gnss_correction=False))

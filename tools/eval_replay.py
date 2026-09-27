@@ -338,21 +338,43 @@ def _rows(x, ncol):
     return x
 
 
-def events(a, gnss="3"):
+def gnss_spec(gnss):
+    """Имя сценария GNSS: число секунд -> "first<N>" для отчёта; full и
+    сценарии inject.GNSS_SCENARIOS — как есть."""
+    g = str(gnss)
+    try:
+        return f"first{float(g):g}"
+    except ValueError:
+        return g
+
+
+def events(a, gnss="3", seed=0):
     """События в порядке записи в bag: (tb, вид, индекс, th, значение).
-    gnss: число секунд от первой записи master fix (как evaluate.events при 3)
-    или "full". Значение GNSS — (lat, lon, alt, status)."""
+    gnss: число секунд от первой записи master fix (как evaluate.events при 3),
+    "full" или сценарий доступности inject.GNSS_SCENARIOS (sparse, bursts,
+    nostart, glitchy, none; first3 — то же, что 3; midstart — обрезка записи
+    inject.cut_start, затем 3). seed — зерно сценария (inject.seed_for).
+    Значение GNSS — (lat, lon, alt, status)."""
     ev = []
     for i, key in enumerate(("front", "rear")):
         for tb, th, v in _rows(a[key], 3)[:, :3]:
             ev.append((tb, 0, i, th, v))
     for tb, th, n in _rows(a["cmd"], 3)[:, :3]:
         ev.append((tb, 1, 0, th, n))
+    g = str(gnss)
+    if g in ("first3", "midstart"):
+        g = "3"
+    if g not in ("full",) and not _is_number(g):
+        import inject as I
+        for tb, ant, th, lat, lon, alt, st in I.gnss_scenario(a, g, seed)[0]:
+            ev.append((tb, 2, ant, th, (lat, lon, alt, st)))
+        ev.sort(key=lambda e: e[0])
+        return ev
     mfix = _rows(a["mfix"], 5)
-    if gnss == "full":
+    if g == "full":
         t_end = math.inf
     else:
-        t_end = mfix[0, 0] + float(gnss) if len(mfix) else -1
+        t_end = mfix[0, 0] + float(g) if len(mfix) else -1
     for key, ant in (("mfix", "master"), ("rfix", "rover")):
         x = _rows(a[key], 5)
         for row in x:
@@ -361,6 +383,14 @@ def events(a, gnss="3"):
                 ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4], st)))
     ev.sort(key=lambda e: e[0])
     return ev
+
+
+def _is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 
 def truncate(a, seconds):
