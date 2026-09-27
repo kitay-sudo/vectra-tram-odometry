@@ -203,7 +203,7 @@ def use_package_sheet(node):
         how = (f"под параметрами запуска: из листа {n} ключей, "
                f"параметров ядра из запуска {len(given)}")
     else:
-        how = f"все ключи листа заданы при запуске (--params-file / -p), параметров ядра {len(given)}"
+        how = f"все ключи листа заданы при запуске через --params-file или -p, параметров ядра {len(given)}"
     return f"{path} [{sect}] ({how})"
 
 
@@ -569,7 +569,9 @@ class TramEstimatorNode(Node):
             if self.t_first is None:
                 self.t_first = self._st_t0 = t
                 self._st_next = t + STATUS_EVERY_S
-                self.get_logger().info(f"входы пошли: первый выход на метке {t:.2f}")
+                self.get_logger().info(
+                    f"входы пошли: первый выход на метке {t:.2f}; это t+0, "
+                    "дальше время bag — от неё")
             self.t_last = t
             self._st_n += 1
             self._st_pulse += int(pulse)
@@ -580,7 +582,8 @@ class TramEstimatorNode(Node):
                        else f"выставка по GNSS: точек {pos.n_used}, курс "
                             f"{'есть' if pos.ready else 'ещё нет'}")
                 self.get_logger().info(
-                    f"положение есть с метки {t:.2f} ({how}): x {float(o['x']):.1f}, "
+                    f"положение есть с метки {t:.2f}, t+{t - self.t_first:.1f} с ({how}): "
+                    f"x {float(o['x']):.1f}, "
                     f"y {float(o['y']):.1f}, z {float(o['z']):.1f}")
             elif (not self._pos_seen and not self._no_pos_warned
                   and t - self.t_first > self.runner.pos.init_window + NO_POS_WARN_S):
@@ -612,9 +615,7 @@ class TramEstimatorNode(Node):
             flags.append("стоим или скользим?")
         if not o.get("valid", True):
             flags.append("недостоверно")
-        if not o.get("pos_valid", True):
-            flags.append("нет положения")
-        elif o.get("pos_fallback"):
+        if o.get("pos_valid", True) and o.get("pos_fallback"):
             flags.append("запасная выставка")
         if self._st_pulse:
             flags.append(f"прогноз пульса {self._st_pulse}")
@@ -622,12 +623,12 @@ class TramEstimatorNode(Node):
         pos = (f"x {float(o['x']):.1f} y {float(o['y']):.1f} z {float(o['z']):.1f} "
                f"±{float(o['sigma_s']):.1f} м" if o.get("pos_valid", True)
                else "положения нет")
-        # режим тяги и торможения ядро берёт по знаку ручки; ручка рядом, потому
-        # что в части записей вагон разгоняется при «тормозной» позиции
-        mode_s = MODE_RU[mode] if 0 <= mode < len(MODE_RU) else str(mode)
+        # режим ядра (тяга или торможение) идёт от знака ручки, поэтому ручка
+        # впереди: в части записей вагон разгоняется при «тормозной» позиции
+        mode_s = "режим ядра: " + (MODE_RU[mode] if 0 <= mode < len(MODE_RU) else str(mode))
         notch = getattr(self.runner, "notch", None)
         if isinstance(notch, (int, float)) and math.isfinite(notch):
-            mode_s += f" (ручка {notch:+.0f})"
+            mode_s = f"ручка {notch:+.0f}, {mode_s}"
         return (f"t+{t - self.t_first:.0f} с | {self._st_n / span:.1f} Гц | "
                 f"{mode_s} | "
                 f"v {v:.2f} м/с ({v * 3.6:.1f} км/ч) ±{float(o['sigma_v']):.2f} | "
