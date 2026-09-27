@@ -43,7 +43,7 @@ git clone <репозиторий> vectra && cd vectra
 cp .env.example .env
 #   DATA_DIR=/srv/tram/data        папка с прогонами
 #   BAG=30618_e9a34502  PLAY_LOOP=1
-#   PUBLIC_HOST=demo.example.org   домен сервера
+#   PUBLIC_HOST=odometry.ecopus.tech   домен сервера
 docker compose --profile server up -d --build
 docker compose logs -f proxy estimator player
 ```
