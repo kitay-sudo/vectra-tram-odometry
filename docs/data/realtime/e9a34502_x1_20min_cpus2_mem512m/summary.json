@@ -2,7 +2,7 @@
  "probe": {
   "rate_arg": 1.0,
   "tag": "realtime",
-  "wall_span_s": 1221.1
+  "wall_span_s": 1219.2
  },
  "inputs": {
   "front": 11065,
@@ -17,123 +17,123 @@
  },
  "outputs": {
   "velocity": {
-   "count": 24117,
+   "count": 24081,
    "rate_wall_hz": 20.04,
    "rate_stamp_hz": 20.0,
    "stamp_step_median_s": 0.05,
-   "expected_by_stamp": 24117,
-   "unique_stamps": 24117,
+   "expected_by_stamp": 24081,
+   "unique_stamps": 24081,
    "stamp_zero": 0,
    "stamp_backward": 0,
    "stamp_duplicate": 0,
    "stamp_step_not_dt": 0,
    "stamp_max_forward_jump_s": 0.05,
-   "stamp_minus_wallclock_days": -31.9,
+   "stamp_minus_wallclock_days": -32.2,
    "wall_gap_s": {
-    "n": 24116,
+    "n": 24080,
     "mean": 0.0499,
     "p50": 0.05,
-    "p95": 0.052,
-    "p99": 0.053,
-    "max": 0.1302
+    "p95": 0.0521,
+    "p99": 0.0531,
+    "max": 0.1311
    },
    "wall_gaps_over_100ms": 1,
    "wall_gaps_over_250ms": 0,
    "wall_gap_top5_s": [
-    0.13,
+    0.131,
+    0.065,
     0.061,
-    0.059,
-    0.059,
+    0.06,
     0.059
    ],
    "min_msgs_in_1s_window": 19,
-   "burst_size_max": 18,
-   "bursts_ge3": 4,
-   "stamps_outside_input_range": 20
+   "burst_size_max": 20,
+   "bursts_ge3": 3,
+   "stamps_outside_input_range": 0
   },
   "position": {
-   "count": 24117,
+   "count": 24081,
    "rate_wall_hz": 20.04,
    "rate_stamp_hz": 20.0,
    "stamp_step_median_s": 0.05,
-   "expected_by_stamp": 24117,
-   "unique_stamps": 24117,
+   "expected_by_stamp": 24081,
+   "unique_stamps": 24081,
    "stamp_zero": 0,
    "stamp_backward": 0,
    "stamp_duplicate": 0,
    "stamp_step_not_dt": 0,
    "stamp_max_forward_jump_s": 0.05,
-   "stamp_minus_wallclock_days": -31.9,
+   "stamp_minus_wallclock_days": -32.2,
    "wall_gap_s": {
-    "n": 24116,
+    "n": 24080,
     "mean": 0.0499,
     "p50": 0.05,
-    "p95": 0.0521,
-    "p99": 0.053,
-    "max": 0.1303
+    "p95": 0.0522,
+    "p99": 0.0532,
+    "max": 0.131
    },
    "wall_gaps_over_100ms": 1,
    "wall_gaps_over_250ms": 0,
    "wall_gap_top5_s": [
-    0.13,
+    0.131,
+    0.065,
     0.061,
-    0.059,
-    0.059,
-    0.059
+    0.06,
+    0.06
    ],
    "min_msgs_in_1s_window": 19,
-   "burst_size_max": 18,
-   "bursts_ge3": 4,
-   "stamps_outside_input_range": 20
+   "burst_size_max": 19,
+   "bursts_ge3": 3,
+   "stamps_outside_input_range": 0
   },
   "status": {
-   "count": 24117,
+   "count": 24081,
    "rate_wall_hz": 20.04,
    "rate_stamp_hz": 20.0,
    "stamp_step_median_s": 0.05,
-   "expected_by_stamp": 24117,
-   "unique_stamps": 24117,
+   "expected_by_stamp": 24081,
+   "unique_stamps": 24081,
    "stamp_zero": 0,
    "stamp_backward": 0,
    "stamp_duplicate": 0,
    "stamp_step_not_dt": 0,
    "stamp_max_forward_jump_s": 0.05,
-   "stamp_minus_wallclock_days": -31.9,
+   "stamp_minus_wallclock_days": -32.2,
    "wall_gap_s": {
-    "n": 24116,
+    "n": 24080,
     "mean": 0.0499,
     "p50": 0.05,
-    "p95": 0.0521,
-    "p99": 0.053,
-    "max": 0.1304
+    "p95": 0.0522,
+    "p99": 0.0532,
+    "max": 0.131
    },
    "wall_gaps_over_100ms": 1,
    "wall_gaps_over_250ms": 0,
    "wall_gap_top5_s": [
-    0.13,
+    0.131,
+    0.064,
     0.061,
-    0.059,
-    0.059,
-    0.059
+    0.06,
+    0.06
    ],
    "min_msgs_in_1s_window": 19,
-   "burst_size_max": 18,
-   "bursts_ge3": 5,
-   "stamps_outside_input_range": 20
+   "burst_size_max": 19,
+   "bursts_ge3": 3,
+   "stamps_outside_input_range": 0
   }
  },
  "frame_ids": {
   "velocity": {
-   "base_link": 24117
+   "base_link": 24081
   },
   "position": {
-   "map": 24117
+   "map": 24081
   },
   "position_child": {
-   "base_link": 24117
+   "base_link": 24081
   },
   "status": {
-   "base_link": 24117
+   "base_link": 24081
   }
  },
  "velocity_vs_odom_twist_maxdiff": 0.0,
@@ -155,22 +155,22 @@
    35
   ],
   "pose_var_x": {
-   "n": 24117,
-   "mean": 1.344,
+   "n": 24081,
+   "mean": 1.346,
    "p50": 0.064,
    "p95": 6.714,
    "p99": 6.908,
    "max": 7.253
   },
   "twist_var_vx": {
-   "n": 24117,
-   "mean": 0.00308,
+   "n": 24081,
+   "mean": 0.00283,
    "p50": 0.00219,
-   "p95": 0.007,
-   "p99": 0.0139,
+   "p95": 0.00698,
+   "p99": 0.01369,
    "max": 1.00032
   },
-  "pose_var_z_nonzero": 24117
+  "pose_var_z_nonzero": 24081
  },
  "position_shape": {
   "frac_y_zero": 0.0,
@@ -178,11 +178,11 @@
   "frac_orientation_set": 1.0,
   "x_range": [
    99016.9,
-   103631.57
+   103628.99
   ],
   "y_range": [
    84861.1,
-   86047.47
+   86042.64
   ],
   "z_range": [
    144.77,
@@ -194,9 +194,9 @@
    170.55
   ],
   "last_xyz": [
-   103631.57,
-   86047.47,
-   166.14
+   103628.99,
+   86042.64,
+   166.02
   ]
  },
  "nonfinite_or_bad": {
@@ -209,44 +209,44 @@
  "status": {
   "frame_count_first_last": [
    1,
-   24117
+   24081
   ],
   "lost_at_probe_by_frame_count": 0,
-  "valid_frac": 0.999,
+  "valid_frac": 1.0,
   "slip_frac": 0.0,
   "mode_hist": {
    "0": 2166,
-   "1": 7607,
+   "1": 7592,
    "2": 6179,
    "3": 616,
-   "5": 7526,
-   "6": 23
+   "5": 7527,
+   "6": 1
   },
   "step_time_us_field": {
-   "n": 24117,
-   "mean": 1392.8,
-   "p50": 1387.7,
-   "p95": 2151.3,
-   "p99": 2485.3,
-   "max": 6150.0
+   "n": 24081,
+   "mean": 1398.9,
+   "p50": 1388.8,
+   "p95": 2194.7,
+   "p99": 2510.4,
+   "max": 9699.0
   },
   "sigma_v": {
-   "n": 24117,
-   "mean": 0.0479,
+   "n": 24081,
+   "mean": 0.0475,
    "p50": 0.0468,
-   "p95": 0.0837,
-   "p99": 0.1179,
+   "p95": 0.0835,
+   "p99": 0.117,
    "max": 1.0002
   }
  },
  "latency": {
   "in2out_vehicle_ms": {
    "n": 46186,
-   "mean": 38.7,
+   "mean": 38.8,
    "p50": 51.2,
-   "p95": 53.2,
-   "p99": 54.1,
-   "max": 165.0
+   "p95": 53.3,
+   "p99": 54.2,
+   "max": 169.4
   },
   "in2out_vehicle_unanswered": 0,
   "in2out_vehicle_unanswered_before_last_output": 0,
@@ -254,21 +254,21 @@
   "in2out_vehicle_over_250ms": 0,
   "in2out_vehicle_steady_ms": {
    "n": 46023,
-   "mean": 38.7,
+   "mean": 38.8,
    "p50": 51.2,
-   "p95": 53.2,
-   "p99": 54.1,
-   "max": 132.0
+   "p95": 53.3,
+   "p99": 54.2,
+   "max": 133.7
   },
   "in2out_vehicle_steady_over_100ms": 1,
   "in2out_vehicle_steady_over_250ms": 0,
   "in2out_all_ms": {
    "n": 70062,
-   "mean": 37.6,
+   "mean": 37.7,
    "p50": 48.7,
-   "p95": 52.9,
-   "p99": 53.9,
-   "max": 165.0
+   "p95": 53.0,
+   "p99": 54.0,
+   "max": 169.4
   },
   "in2out_all_unanswered": 0,
   "in2out_all_unanswered_before_last_output": 0,
@@ -277,58 +277,58 @@
   "in2out_all_steady_ms": {
    "n": 69807,
    "mean": 37.6,
-   "p50": 48.7,
-   "p95": 52.9,
-   "p99": 53.8,
-   "max": 132.0
+   "p50": 48.8,
+   "p95": 53.0,
+   "p99": 53.9,
+   "max": 133.7
   },
   "in2out_all_steady_over_100ms": 2,
   "in2out_all_steady_over_250ms": 0,
   "proc_ms": {
-   "n": 24117,
-   "mean": 3.26,
-   "p50": 1.49,
-   "p95": 2.55,
-   "p99": 3.02,
-   "max": 2062.38
+   "n": 24081,
+   "mean": 1.51,
+   "p50": 1.53,
+   "p95": 2.64,
+   "p99": 3.1,
+   "max": 262.32
   },
   "age_ms": {
-   "n": 24114,
-   "mean": 46.3,
+   "n": 24077,
+   "mean": 44.6,
    "p50": 51.2,
-   "p95": 52.9,
+   "p95": 53.0,
    "p99": 53.9,
-   "max": 2077.4
+   "max": 277.2
   }
  },
  "node_process": {
   "pids": [
-   33
+   34
   ],
   "cmdline": "/usr/bin/python3 /ws/install/tram_state_estimator/lib/tram_state_estimator/tram_estimator --ros-args -r __node:=tram_state_estimator --params-file /ws/install/tram_state_estimator/share/tram_state_estimator/config/tram.yaml",
   "cpu_times_user_sys": [
-   124.49,
-   4.35
+   122.34,
+   3.46
   ],
-  "samples": 1221,
+  "samples": 1219,
   "cpu_pct_1core": {
-   "n": 1221,
-   "mean": 10.5,
-   "p50": 11.0,
+   "n": 1219,
+   "mean": 10.3,
+   "p50": 10.0,
    "p95": 12.0,
-   "p99": 12.0,
-   "max": 17.0
+   "p99": 13.0,
+   "max": 16.0
   },
   "rss_mb_first_last_max": [
-   64.3,
-   69.6,
-   69.6
+   65.0,
+   70.1,
+   70.1
   ],
   "threads_max": 23,
   "rss_slope_mb_per_min_after_30s": 0.001,
   "rss_mean_first_half_vs_second_half_mb": [
-   69.3,
-   69.3
+   70.0,
+   70.0
   ]
  },
  "publisher_qos": {
