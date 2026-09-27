@@ -170,8 +170,9 @@ MAIN_CFG = dict(vehicle="auto", wheel_scale_online=False)
 
 def test_flag_off_is_bit_identical_to_main():
     """gnss_correction: false - выход как у версии без коррекции: GNSS весь
-    кусок = GNSS в окне, и (в окружении записи, без карты) sha256 равен
-    записанному выходу той версии."""
+    кусок = GNSS в окне. На эталонной машине (TRAM_PIN_DIGEST=1, без карты)
+    sha256 сверяется и с записанным выходом той версии: на другом процессоре
+    numpy может дать другие последние биты, поэтому по умолчанию сверки нет."""
     fx = E.load_fixture()
     for use_map in (True, False):
         a = E.digest(E.replay(fx, use_map=use_map, gnss="all", gnss_correction=False,
@@ -179,7 +180,7 @@ def test_flag_off_is_bit_identical_to_main():
         b = E.digest(E.replay(fx, use_map=use_map, gnss="window", gnss_correction=False,
                               **MAIN_CFG))
         assert a == b
-        if np.__version__ == MAIN_NUMPY and not use_map:
+        if os.environ.get("TRAM_PIN_DIGEST") == "1" and np.__version__ == MAIN_NUMPY and not use_map:
             assert a == MAIN_DIGEST[use_map]
 
 
