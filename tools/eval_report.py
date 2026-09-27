@@ -575,6 +575,7 @@ def before_after(S, B, rel):
     row("вдоль pathgraph ср. |ошибка|, м", "pg_along_mean", 2)
     A(table(["метрика (15 holdout_scored)", "модель до", "модель после", "база до", "база после"], rows))
     A("")
+    L += vehicle_before_after(S, B, "30618")
     gb, ga = B.get("gnss_full") or {}, S.get("gnss_full") or {}
     if gb or ga:
         A(f"GNSS весь прогон (первые 5 мин): выход совпал с «GNSS 3 с» до — "
@@ -588,6 +589,134 @@ def before_after(S, B, rel):
       "тележек вместо ядра; «до» и «после» у неё различаются только кодом связки и картой.")
     A("")
     return L
+
+
+VEH_KEYS = (("скорость MAE, м/с", "v_mae", 4, False, False),
+            ("скорость RMSE, м/с", "v_rmse", 4, False, False),
+            ("скорость смещение, м/с", "v_bias", 4, True, False),
+            ("±2σ скорости", "cov2s_v", 1, False, True),
+            ("положение ср. 3D, м", "p3d_mean", 2, False, False),
+            ("положение 3D RMSE, м", "p3d_rmse", 2, False, False),
+            ("положение 3D макс, м", "p3d_max", 1, False, False),
+            ("конец 3D ср., м", "p3d_end_mean", 2, False, False),
+            ("конец 3D медиана, м", "p3d_end_median", 2, False, False),
+            ("конец 3D макс, м", "p3d_end_max", 1, False, False),
+            ("дрейф 3D по концу, % медиана", "drift_pct_3d_median", 3, False, False),
+            ("дрейф 3D по концу, % макс", "drift_pct_3d_max", 3, False, False),
+            ("вдоль пути RMSE, м", "along_rmse", 2, False, False),
+            ("поперёк ср., м", "cross_mean", 2, False, False),
+            ("|вдоль| ≤ 2σ_s", "cov2s_along", 1, False, True),
+            ("|z| ср., м", "pz_mean", 2, False, False),
+            ("поперёк pathgraph ср., м", "pg_cross_mean", 3, False, False))
+
+
+def vehicle_before_after(S, B, veh):
+    """«До / после» по одному вагону (жюри проверяет только 30618)."""
+    mb, ma = _tot(B, veh, "model"), _tot(S, veh, "model")
+    if not (mb or ma):
+        return []
+    L = []
+    A = L.append
+    A(f"**Только вагон {veh}** ({ma.get('runs', mb.get('runs', '—'))} прогонов"
+      + ("; проверка жюри — только на нём, организаторы 26.09" if veh == "30618" else "") + "):")
+    A("")
+    rows = []
+    for name, key, nd, sg, pc in VEH_KEYS:
+        if mb.get(key) is None and ma.get(key) is None:
+            continue
+        rows.append([name] + [pct(T.get(key)) if pc else f(T.get(key), nd, sg) for T in (mb, ma)])
+    A(table(["метрика", "модель до", "модель после"], rows))
+    A("")
+    return L
+
+
+GNSS_SC_ORDER = ("first3", "sparse", "bursts", "nostart", "midstart", "full", "glitchy")
+
+
+def load_gnss_scenarios(root, spec):
+    """Итоги tools/eval_gnss.py (summary.json или каталог с ним) -> (dict, путь) | (None, None)."""
+    if not spec or spec == "none":
+        return None, None
+    path = Path(spec)
+    if not path.is_absolute():
+        path = Path(root) / path
+    if path.is_dir():
+        path = path / "summary.json"
+    if not path.exists():
+        return None, None
+    import json
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        rel = str(path)
+    return json.loads(path.read_text(encoding="utf-8")), rel
+
+
+def gnss_scenarios(root, args):
+    """Раздел 5.1: сценарии доступности GNSS (tools/eval_gnss.py): «main» —
+    код до раунда 3 (коррекции нет), «выкл.» / «вкл.» — этот код с
+    gnss_correction false / true. -> (строки, (итоги, итоги main) | None)."""
+    Sa, ra = load_gnss_scenarios(root, getattr(args, "gnss_scenarios", ""))
+    if Sa is None:
+        return [], None
+    Sb, rb = load_gnss_scenarios(root, getattr(args, "gnss_scenarios_before", ""))
+    L = []
+    A = L.append
+    ma = Sa["meta"]
+    scen = ([s for s in GNSS_SC_ORDER if s in ma["scenarios"]]
+            + [s for s in ma["scenarios"] if s not in GNSS_SC_ORDER])
+    A("### 5.1. Сценарии доступности GNSS (`tools/eval_gnss.py`)")
+    A("")
+    A(f"Те же {len(ma['runs'])} отложенных, лист и карта ОЦЕНКИ; GNSS подаётся по сценарию "
+      "(`tools/inject.py`, зерно — от прогона); эталон — base_link по всем точкам GNSS прогона. "
+      f"«вкл.» — этот код по умолчанию (`gnss_correction: true`; `{ra}`, код пакета sha "
+      f"`{ma.get('pkg_src_sha')}`), «выкл.» — он же с `gnss_correction: false` (GNSS только для "
+      "выставки)"
+      + (f", «main» — код до раунда 3 (`{rb}`, sha `{Sb['meta'].get('pkg_src_sha')}`; "
+         "коррекции там нет)" if Sb is not None else "") + ".")
+    A("")
+    ru = ma.get("scenario_ru") or {}
+    A(table(["сценарий", "что подаётся"], [[f"`{s}`", ru.get(s, s)] for s in scen]))
+    A("")
+    for grp, title in (("30618", "Вагон 30618 (проверка жюри — только он)"), ("all", "Все 15")):
+        T = {s: g(Sa, "totals", s, grp) or {} for s in scen}
+        if not any(T.values()):
+            continue
+        Tb = {s: (g(Sb, "totals", s, grp) or {}) if Sb is not None else {} for s in scen}
+        n = next((x.get("after", {}).get("runs") for x in T.values() if x.get("after")), "—")
+        A(f"**{title}** ({n} прогонов):")
+        A("")
+        rows = []
+        for s in scen:
+            b0 = Tb[s].get("before") or {}
+            b1 = T[s].get("before") or {}
+            a1 = T[s].get("after") or {}
+            rows.append([f"`{s}`",
+                         f(b0.get("p3d_mean"), 2), f(b1.get("p3d_mean"), 2), f(a1.get("p3d_mean"), 2),
+                         f(b0.get("p3d_end_mean"), 2), f(b1.get("p3d_end_mean"), 2),
+                         f(a1.get("p3d_end_mean"), 2), f(a1.get("p3d_end_max"), 1),
+                         f(b0.get("v_mae"), 4), f(a1.get("v_mae"), 4),
+                         str(a1.get("n_corr", "—"))])
+        A(table(["сценарий", "3D ср. main", "3D ср. выкл.", "3D ср. вкл.", "конец ср. main",
+                 "конец ср. выкл.", "конец ср. вкл.", "конец макс вкл.", "MAE скорости main",
+                 "MAE скорости вкл.", "поправок GNSS"], rows))
+        A("")
+    # скорость: в сценариях с теми же первыми 3 с GNSS она та же, что в first3
+    same = []
+    for s in ("sparse", "bursts", "full", "glitchy"):
+        if s in scen and "first3" in scen:
+            a = g(Sa, "totals", s, "all", "after", "v_mae")
+            b = g(Sa, "totals", "first3", "all", "after", "v_mae")
+            same.append((s, a is not None and a == b))
+    if same:
+        A("Скорость: в сценариях с теми же первыми 3 с GNSS (" + ", ".join(f"`{s}`" for s, _ in same)
+          + ") MAE «вкл.» " + ("равна MAE `first3` во всех" if all(v for _, v in same) else
+                               "**отличается** от `first3` в " + ", ".join(s for s, v in same if not v))
+          + ": GNSS после окна двигает только положение. В `nostart` и `midstart` выставка другая "
+          "(позже или с середины записи), поэтому другой и онлайн-масштаб колёс по остановкам: он "
+          "начинается с выставки.")
+        A("")
+    return L, (Sa, Sb)
 
 
 def render(result, timing, args, pics, root):
@@ -677,6 +806,17 @@ def render(result, timing, args, pics, root):
             A(f"* **GNSS весь прогон:** выход совпал с режимом «GNSS 3 с» в {gf0.get('identical_runs')} из "
               f"{len(gf0.get('runs', {}))} прогонов; 3D ср. {f(g(gf0, 'full', 'p3d_mean'), 1)} м против "
               f"{f(g(gf0, 'gnss3', 'p3d_mean'), 1)} м (первые {f(gf0['span_s'] / 60, 0)} мин).")
+    gsd = gnss_scenarios(root, args)[1]
+    if gsd is not None:
+        ga = {s: g(gsd[0], "totals", s, "30618") or {} for s in ("first3", "sparse", "full")}
+        if all(ga.values()):
+            def _p(s, arm):
+                return f(g(ga[s], arm, "p3d_mean"), 2)
+            A("* **GNSS посреди маршрута** (раздел 5.1, вагон 30618, 3D ср. без коррекции → с ней): "
+              f"GNSS 3 с {_p('first3', 'before')} → {_p('first3', 'after')} м, редкие пачки "
+              f"{_p('sparse', 'before')} → {_p('sparse', 'after')} м, весь прогон "
+              f"{_p('full', 'before')} → {_p('full', 'after')} м; скорость от GNSS после окна не "
+              "зависит.")
     summ0 = inject_summary(result["inject"], result["kinds"])
     if summ0:
         bad = [f"{r['kind']} — {verdict(r)}" for r in summ0 if verdict(r) not in OK_VERDICTS]
@@ -719,6 +859,9 @@ def render(result, timing, args, pics, root):
         ["`--gnss`", "`3`", "секунд GNSS в связку от первой записи master; `full` — весь прогон; "
          "сценарии доступности `sparse`, `bursts`, `nostart`, `midstart`, `glitchy`, `none` "
          "(`tools/inject.py`; до/после коррекции по GNSS по всем сценариям — `tools/eval_gnss.py`)"],
+        ["`--gnss-scenarios`, `--gnss-scenarios-before`", "—", "итоги `tools/eval_gnss.py` "
+         "(`summary.json` или каталог) этой и прежней версии — раздел 5.1 «Сценарии доступности "
+         "GNSS»; без ключа раздела нет"],
         ["`--frame`", "`mgrs`", "система эталона: `mgrs` (судья), `enu`, `equirect`, `utm`"],
         ["`--runner-frame`", "`auto`", "система выхода Runner: `auto` — параметр ноды `projection` "
          "(объявление в `tram_node.py`, поверх — лист), иначе `equirect` (код до правок), с проверкой "
@@ -1108,6 +1251,7 @@ def render(result, timing, args, pics, root):
     else:
         A("Не считалось (`--gnss full` уже основной режим, `--no-gnss-full` или `--quick`).")
     A("")
+    L += gnss_scenarios(root, args)[0]
 
     # ---------------- инъекции
     A("## 6. Инъекции аномалий")

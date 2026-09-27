@@ -892,6 +892,11 @@ def main():
     ap.add_argument("--render-only", action="store_true",
                     help="только пересобрать docs/EVAL.md и графики из готовых out/eval/*.json "
                          "и plotdata.npz (без прогонов)")
+    ap.add_argument("--gnss-scenarios", default="",
+                    help="итоги tools/eval_gnss.py (summary.json или каталог) для раздела 5.1 "
+                         "«Сценарии доступности GNSS»; пусто — без раздела")
+    ap.add_argument("--gnss-scenarios-before", default="",
+                    help="те же итоги прежней версии (столбцы «main» раздела 5.1)")
     ap.add_argument("--check-determinism", action="store_true",
                     help="прогнать всё второй раз и сравнить JSON побайтно")
     args = ap.parse_args()
