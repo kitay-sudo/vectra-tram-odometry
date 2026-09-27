@@ -31,6 +31,11 @@ rosbridge_websocket:
     topics_sub_glob: "$SUB_GLOB"
     topics_pub_glob: "[]"
     services_glob: "[]"
+    # значения по умолчанию будущих версий rosbridge (Jazzy); с прежними мост
+    # пишет при старте три WARN. Страница сервисов и действий не вызывает.
+    default_call_service_timeout: 5.0
+    call_services_in_new_thread: true
+    send_action_goals_in_new_thread: true
 rosapi:
   ros__parameters:
     topics_sub_glob: "$SUB_GLOB"
