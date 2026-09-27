@@ -4,7 +4,8 @@
 и из контракта судьи в [DATASET_README.md](DATASET_README.md) §5. Числа — из
 [EVAL.md](EVAL.md) (15 чистых отложенных записей, лист и карта только по обучающим)
 и из замера реального времени (`tools/measure_realtime.sh`, сводка — в EVAL.md §7 и
-[JURY.md](JURY.md) §6). Пути к коду — от корня репозитория; `pkg/` — это
+[JURY.md](JURY.md) §6). Числа запуска «как у жюри» — из проверки с чистого клона
+(раздел 10). Пути к коду — от корня репозитория; `pkg/` — это
 `ros2_ws/src/tram_state_estimator/`.
 
 Как запускать проверки:
@@ -23,6 +24,8 @@
 | Входы: `/vehicle/front_bogie_velocity`, `/vehicle/rear_bogie_velocity` (`VelocitySensor`, км/ч), `/vehicle/driver_position_cmd` (`DriverControllerCommand`, −15…+15) | подписка best-effort, глубина 50; км/ч → м/с по листу (`meas_units: km_h`); ручка вне ±15 ограничивается | `pkg/tram_state_estimator/tram_node.py` (подписки в `TramEstimatorNode.__init__`), `runner.py` (`Runner.on_wheel`, `Runner.on_handle`, `HANDLE_LIMIT`), `config/tram.yaml` | `ros2 node info /tram_state_estimator` | подписки на 3 входа и 2 топика GNSS fix; топики `/sensing/gnss/*/vel` не используются |
 | Выход скорости: `/result/velocity`, `tram_vehicle_msgs/VelocitySensor`, поле `velocity`, м/с | публикуется на каждом шаге сетки 50 мс | `tram_node.py` (`_publish`) | `ros2 topic echo /result/velocity` | EVAL §3.1: пар скорости 99,99 % меток GNSS, NaN 0 |
 | Выход положения: `/result/position`, `nav_msgs/Odometry`, `pose.pose.position` x/y/z, м | точка `base_link`, плоские MGRS от угла квадрата 37UCB непрерывно, z — уровень рельса (ответ организаторов, [ORGANIZER_ANSWERS.md](ORGANIZER_ANSWERS.md)); публикуется после выставки по GNSS | `tram_node.py` (`_publish`), `runner.py` (`Position`), `geodesy.py`, `body.py` | `ros2 topic echo /result/position --once`; `docker compose run --rm test` (`test_e2e_real.py::test_output_frame_is_mgrs_by_default`, `test_output_point_is_base_link`) | EVAL «Главное»: сырые x, y, z против эталона судьи — средняя 3D 3,81 м, пар с ошибкой > 1 км: 0; шагов без положения после первого опубликованного: 0 |
+| Представление положения и начальная позиция (PDF «Образ решения»; README: локальная метрическая система, согласованная с эталоном, сравнение по x, y, z и 3D) | система судьи по ответу организаторов: плоские MGRS от угла квадрата 37UCB непрерывно, точка `base_link`, z — уровень рельса. Начальная позиция — выставка по GNSS в первые 3 с bag (якорь, высота, курс по паре антенн). Другие системы — параметром `projection` (`utm`, `enu` от первой точки master, `equirect`) | `geodesy.py` (`Frame`), `runner.py` (`Position`), параметры `projection`, `mgrs_grid`, `output_point` в `config/tram.yaml` | `ros2 param get /tram_state_estimator projection`; `test_e2e_real.py::test_output_frame_is_mgrs_by_default` | чистый клон: положение с метки +1,0 с от первого выхода (выставка по 5 точкам GNSS), x 99 052,3, y 84 985,5, z 171,6 (раздел 10) |
+| Карта pathgraph организаторов; режим без карты | карта пакета `config/track_map.npz` — pathgraph плюс карта из GNSS обучающих записей за его концами (конечные, ветки); курсор идёт по оси пути с привязкой к остановкам. Без карты (`map_file: ""`) положение идёт по пути колёс от выставки (`nomap_mode`: `hold` или `line`) | `track_map.py` (`TrackMap.load`, `TrackMap.from_pathgraph`), `analysis/build_map.py` | `test_position.py::test_no_map_fallback_modes`; строка «карта есть» в логе запуска | EVAL §0: поперёк pathgraph организаторов ср. 0,011 м; при запуске: точек осей 17554, остановок 51, конечных 4, веток у конечных 3 (раздел 10) |
 | `header.stamp` = время входа (время bag), не часы ноды; пары с эталоном по ближайшей метке ±0,05 с | ядро шагает по сетке, построенной по меткам входов; узлы кратны 50 мс и совпадают с метками GNSS (кратны 0,1 с); выход получает метку своего узла | `runner.py` (`Runner`, `_start`, `tick`), `tram_node.py` (`to_msg`) | `test_runner_robust.py::test_grid_nodes_are_multiples_of_dt_without_drift`, `test_gnss_stamps_fall_on_grid_nodes`; `ros2 topic echo /result/velocity --field header.stamp` | EVAL §3.2: доля пар положения 100,00 % меток GNSS fix |
 | `frame_id` заполнен | `/result/position`: `frame_id` `map` (система MGRS 37UCB), `child_frame_id` `base_link`; `/result/velocity` — `base_link` | параметры `frame_id`, `child_frame_id` (`tram_node.py`) | `tools/ros_probe.py` печатает frame_id; `tools/ros_smoke.sh` | смоук: `frame_id: map / base_link` — PASS |
 | Корректность Odometry (критерий 2): ковариации, продольная скорость | ни одной нулевой диагонали: x, y — σ пути, z — высота карты, крен, тангаж, курс; `twist.linear.x` = скорость | `tram_node.py` (`_publish`, константы `ROLL_SD`…`R_CURVE_MIN`) | `test_node_robust.py::test_odometry_covariances_have_no_zero_diagonal` | EVAL §3.2: \|вдоль\| ≤ 2σ_s в 92,8 % времени; EVAL §3.1: скорость внутри ±2σ 96,0 % |
@@ -53,7 +56,7 @@
 | Без утечек на долгом прогоне | те же ограниченные очереди; память не растёт с длиной прогона | `runner.py`, `plant.py` (кольцевые буферы) | `test_runner_robust.py::test_long_run_memory_is_bounded`; `tools/measure_realtime.sh` (наклон RSS) | EVAL §7: рост RSS 0,00 МБ/мин |
 | Без гонок | подписки и таймер пульса выполняются в одном потоке исполнителя; прогноз пульса считается на копии связки | `tram_node.py` (`_extrapolate`, `Runner.fork`) | `test_node_robust.py` (пульс, повторы, темп проигрывания); `test_determinism.py` | офлайн-оценка детерминирована: два прогона дают побайтно одинаковые JSON (EVAL §1) |
 | Работа без вмешательства | нода сама переживает паузы, второй bag, `--loop`, скачки меток; launch перезапускает её при падении (`respawn`) | `runner.py` (`Runner.reset`, запасная выставка), `launch/tram.launch.py` | `tools/ros_e2e.sh --bag 30618_bab2fe58 --bag 30618_98161270 --build` (два bag подряд) | 20-минутный прогон: нода жива до конца, останов по SIGINT с кодом 0 (JURY §6) |
-| `colcon build` без интернета | зависимости — только пакеты базового образа ROS 2 Humble (`rclpy`, стандартные сообщения, numpy, yaml) | `ros2_ws/src/*/package.xml` | `docker compose run --rm test` (сервис без сети, `network_mode: none`) или `docker run --network none ros:humble-ros-base` + `colcon build` | чистый `ros:humble-ros-base`, `--network none`: 3 пакета за 5,2 с (раздел 10) |
+| `colcon build` без интернета | зависимости — только пакеты базового образа ROS 2 Humble (`rclpy`, стандартные сообщения, numpy, yaml) | `ros2_ws/src/*/package.xml` | `docker compose run --rm test` (сервис без сети, `network_mode: none`) или `docker run --network none ros:humble-ros-base` + `colcon build` | чистый `ros:humble-ros-base`, `--network none`: 3 пакета за 5,4 с, строк warning и error 0 (раздел 10) |
 
 ## 4. Устойчивость (критерий 3)
 
@@ -98,6 +101,8 @@
 | 3. Устойчивость (20) | снижение доверия при проскальзывании; пропуски и выбросы; нет расходимости; нода не падает | §6: 12 видов аномалий на 3 записях — 36 прогонов, падений связки 0 (`out/eval/inject.json`; раздел 4 выше) |
 | 4. Реальное время (15) | ≤ 100 мс (пик ≤ 250 мс), ≥ 10 Гц, ≤ 2 ядра, ≤ 0,5 ГБ, без утечек, без вмешательства, `colcon build` без сети | §7: 20,0 Гц; p99 54,1 мс; максимум 165,0 мс; 10,5 % ядра; 70 МБ; рост 0,00 МБ/мин (раздел 3 выше) |
 
+Питч (30 баллов) — вне кода: выступление, живая демонстрация (`docker compose up --build`, страница http://localhost:8080 и песочница симулятора) и презентация команды (`materials/presentation/`).
+
 ## 8. Обязательные артефакты
 
 | Артефакт | Где |
@@ -119,7 +124,7 @@
   точка `base_link`, `frame_id`), правило GNSS, шаг сетки и частота, входные топики;
   первая строка блока — `оценщик запущен`;
 - во время работы — «входы пошли», «положение есть» после выставки по GNSS и строка
-  состояния раз в 10 с времени bag: частота, режим, скорость, x/y/z и σ, сколько
+  состояния раз в 10 с времени bag: частота, режим и позиция ручки, скорость, x/y/z и σ, сколько
   тележек принято, флаги (срыв, «стоим или скользим», недостоверно, прогноз пульса);
   предупреждения — только об отклонениях (сброс связки, разрыв меток, нет выставки
   по GNSS), с ограничением частоты;
@@ -129,17 +134,18 @@
 ## 10. Проверка с чистого клона (как у жюри)
 
 `git clone` ветки во временный каталог, данные только для чтения, прогон
-`30618_bab2fe58` (59 с записи).
+`30618_bab2fe58` (59 с записи). Чистый ROS 2 Humble — образ `ros:humble-ros-base`
+без наших добавок, `docker run --network none`.
 
 | Проверка | Команда | Результат |
 |---|---|---|
-| сборка в чистом ROS 2 Humble без сети | `docker run --network none ros:humble-ros-base`: `cp -r ros2_ws/src/* ~/vectra_ws/src/`, `colcon build` | 3 пакета за 5,2 с, без ошибок и предупреждений |
-| запуск по инструкции жюри | `ros2 launch tram_state_estimator tram.launch.py`, затем `ros2 bag play <прогон> -d 3` | блок настроек при запуске, `код sha 4e3487ac54a25453` — тот же, что в шапке EVAL.md; положение с метки 1,0 с после первого выхода (выставка по 5 точкам GNSS) |
-| выходы | `ros2 topic echo --once /result/position`, `/result/velocity`; `ros2 topic hz /result/velocity` | `frame_id` `map`, `child_frame_id` `base_link`, x 99 052,3, y 84 985,5, z 171,6 (MGRS 37UCB); ковариации заполнены; `ros2 topic hz` — 19,86 Гц по стенным часам |
-| проба как у судьи | `python3 tools/ros_probe.py --out /tmp/probe.json --idle 8` | 1180 выходов из 1180 узлов, 20,0 Гц по меткам; in2out p50 50,3 / p99 53,4 мс, максимум 124,8 мс (без первых 2 с bag); вместе со стартом bag — максимум 192,1 мс, больше 250 мс — 0 из 2247; CPU в среднем 9,8 % ядра; RSS 67,6 МБ; NaN 0 |
-| останов | Ctrl+C (SIGINT) группе `ros2 launch` | итог ноды: выходов 1180, отброшено меток 0 и значений 0, сбросов 0, ошибок 0; `process has finished cleanly`, код 0, трассировок 0 |
-| Docker: демо | `docker compose up --build` (`BAG=30618_bab2fe58`) | нода, плеер, проба, мост и страница поднялись; проба: 1180 из 1180, p99 54,1 мс, максимум 126,8 мс; страница отвечает HTTP 200 |
-| Docker: тесты | `docker compose run --rm test` | colcon без сети; 357 passed, 1 skipped (pathgraph организаторов не в git), 1 deselected (timing); ИТОГ: PASS за 628 с |
-| Docker: оценка | `docker compose run --rm eval --quick` | кэш строится из `data/`, 2 прогона и 4 инъекции за 34 с, падений 0; итоговая таблица модели и «только колеса» в консоли |
-| Полная оценка | `tools/eval.py --variants` (лист и карта оценки, 15 прогонов) | `runs.json` и `inject.json` побайтно равны прежним (sha256 5acafcf96479 и 135b854d078f); числа EVAL.md не изменились |
-
+| сборка без сети | `cp -r ros2_ws/src/* ~/vectra_ws/src/`, `colcon build` | 3 пакета за 5,4 с, код 0, строк warning и error 0 |
+| запуск по инструкции жюри | `ros2 launch tram_state_estimator tram.launch.py`, затем `ros2 bag play <прогон> -d 3` | блок настроек при запуске; `код sha 53dc8513c66ce269` — тот же, что в шапке EVAL.md; положение с метки +1,0 с от первого выхода (выставка по 5 точкам GNSS); строка состояния раз в 10 с, например `t+20 с \| 20.0 Гц \| торможение (ручка -8) \| v 1.99 м/с (7.2 км/ч) ±0.05 \| x 99064.2 y 84996.9 z 171.5 ±0.3 м \| тележки 2/2 \| норма` |
+| выходы | `ros2 topic echo --once --qos-reliability best_effort /result/position` (и `/result/velocity`); `ros2 topic hz /result/velocity` | `frame_id` `map`, `child_frame_id` `base_link`, x 99 052,3, y 84 985,5, z 171,6 (MGRS 37UCB); диагонали ковариации не нулевые; `/result/velocity` с `frame_id` `base_link`; `ros2 topic hz` — 19,86 Гц по стенным часам |
+| QoS | `ros2 topic info -v /result/velocity` (и `/result/position`) | издатель RELIABLE, подписчик пробы BEST_EFFORT — сообщения доходят |
+| проба как у судьи | `python3 tools/ros_probe.py --out /tmp/probe.json --idle 8` | 1180 выходов из 1180 узлов сетки, 20,0 Гц по меткам; in2out p50 50,2 / p99 53,4 мс, максимум 123,6 мс (без первых 2 с bag); вместе со стартом bag — максимум 199,1 мс, больше 250 мс — 0 из 2247; CPU в среднем 10,1 % ядра, максимум 23,0 %; RSS 67,5 МБ; NaN 0 |
+| останов | Ctrl+C (SIGINT) группе `ros2 launch` | итог ноды: выходов 1180, входов тележек 1106, ручки 1141, GNSS 1123; отброшено меток 0 и значений 0; сбросов 0; ошибок 0; время шага связки в среднем 1,34 мс, максимум 8,98 мс; `process has finished cleanly`, код 0, трассировок 0 |
+| Docker: демо | `docker compose up --build` (`BAG=30618_bab2fe58`) | все 5 сервисов поднялись; проба: 1180 из 1180, p99 53,7 мс, максимум 118,6 мс; страница — HTTP 200; через мост (`tools/ws_check.py`) `/result/velocity` 20,0 Гц, `/result/position` 19,6 Гц; предупреждений моста 0; после `stop` нода вышла с кодом 0 |
+| Docker: тесты | `docker compose run --rm test` | colcon без сети: 3 пакета за 5 с; 357 passed, 1 skipped (pathgraph организаторов не в git), 1 deselected (проверки времени по стенным часам, маркер timing); ИТОГ: PASS за 742 с |
+| Docker: оценка | `docker compose run --rm eval --quick` | кэш строится из `data/`, 2 прогона и 4 инъекции за 34 с, падений связки 0; итоговая таблица модели и «только колеса» в консоли; `git status` после оценки чистый |
+| полная оценка | `tools/eval.py --variants` (лист и карта оценки, 15 прогонов) | `runs.json` и `inject.json` побайтно равны прежним (sha256 5acafcf96479 и 135b854d078f); в `summary.json` отличаются только подпись версии и отпечаток кода; числа EVAL.md не изменились |
