@@ -12,7 +12,6 @@
 
 | Скрипт | Что делает |
 |---|---|
-| `critic_offline.py`, `critic_probe.py`, `critic_ros.sh` | проверки полноты: фазы движения, стартовый всплеск bag, `ros2 run` против `ros2 launch`, глубина очереди входов |
 | `fuzz_runner.py` | связка `Runner` на синтетических и испорченных входах |
 | `position_study.py` | исследование положения: проекции, онлайн-масштаб пути по остановкам |
 | `ros_e2e_suite.sh`, `ros_e2e_table.py`, `ros_vs_offline.py` | серия прогонов ROS 2 end-to-end и сверка нода = офлайн |

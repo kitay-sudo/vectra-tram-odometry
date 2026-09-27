@@ -20,8 +20,6 @@
             приведения;
   grid_age  текущая связка по умолчанию: узлы кратны dt + приведение
             показаний к шагу.
-  Прежние имена wp23 и wp23_6 (так они подписаны в docs/internal/ROBUST_WORKLOG.md)
-  принимаются как синонимы grid и grid_age.
 Листы: json - config/tram_calibration.json (как analysis/evaluate.py; это
 источник листа жюри, A(u,v) подогнана по всем 122 bag - на holdout значимы
 только разности вариантов); evaldraft - черновик оценочного листа (только
@@ -125,7 +123,7 @@ class LegacyGrid(Runner):
         return outs
 
 
-ALIASES = {"wp23": "grid", "wp23_6": "grid_age"}
+ALIASES = {}
 
 
 def canon(variant):

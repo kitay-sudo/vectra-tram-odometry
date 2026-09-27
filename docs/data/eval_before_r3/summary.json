@@ -1,6 +1,6 @@
 {
  "meta": {
-  "label": "main 56da11b (до раунда 3)",
+  "label": "main 56da11b (до доработки положения и скорости)",
   "sheet": {
    "label": "оценочный (ros2_ws/src/tram_state_estimator/config/eval/tram.yaml, только train)",
    "path": "ros2_ws/src/tram_state_estimator/config/eval/tram.yaml",
