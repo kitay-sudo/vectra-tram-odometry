@@ -1,4 +1,4 @@
-"""Таблица «заглушки против подогнанных» на holdout_scored для питча.
+"""Таблица «заглушки против подогнанных» на holdout_scored.
 
 Собирает готовые прогоны calib_eval.py (out/calib/speed_<tag>.json и
 full_<tag>.json) в одну таблицу и пишет analysis/calib_holdout_table.json.

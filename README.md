@@ -70,7 +70,6 @@
 - **Живой режим ROS 2 (локально).** Страница показывает поток работающей ноды через
   rosbridge: `docker compose up --build` из корня репозитория, затем
   http://localhost:8080/?mode=live.
-- **Сценарий показа** на 6-7 минут - [docs/DEMO.md](docs/DEMO.md).
 
 ## С чего начать
 
@@ -155,7 +154,6 @@ docker compose up --build
 | [docs/VEHICLES.md](docs/VEHICLES.md) | различия вагонов 30618 и 30639, параметры `vehicle` и `wheel_scale_online` |
 | [docs/DATA.md](docs/DATA.md) | разбор датасета: топики, единицы, метки времени, дубли, аномалии |
 | [docs/SANDBOX.md](docs/SANDBOX.md) | песочница: что в ней настоящее, таблица сценариев, слабые места |
-| [docs/DEMO.md](docs/DEMO.md) | сценарий показа: 9 пунктов, у каждого команда или экран |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | демо на ноутбуке и на публичном сервере |
 | [docs/TZ_REQUIREMENTS.md](docs/TZ_REQUIREMENTS.md) | выжимка ТЗ: входы, выходы, критерии, обязательные артефакты |
 | [docs/ORGANIZER_ANSWERS.md](docs/ORGANIZER_ANSWERS.md) | ответы организаторов и что из них следует для решения |
@@ -884,7 +882,7 @@ p99 без первых 2 с bag - 53,3 мс; с GNSS только в первы
 | 2. Точность положения (35): дрейф в % пути, вдоль пути MEAN / MAX / RMSE, поперёк при привязке к pathgraph, корректность Odometry | [EVAL §3.2](docs/EVAL.md#32-положение-mgrs-от-37ucb-точка-base_link-ошибки-в-непрерывных-координатах); [POSITION_FRAME.md](docs/POSITION_FRAME.md); [track_map.py](ros2_ws/src/tram_state_estimator/tram_state_estimator/track_map.py), [geodesy.py](ros2_ws/src/tram_state_estimator/tram_state_estimator/geodesy.py), [body.py](ros2_ws/src/tram_state_estimator/tram_state_estimator/body.py); ковариации Odometry - [ROBUST.md §4](docs/ROBUST.md); [test_position.py](ros2_ws/src/tram_state_estimator/test/test_position.py), [test_organizer_example.py](ros2_ws/src/tram_state_estimator/test/test_organizer_example.py) |
 | 3. Устойчивость (20): снижение доверия при проскальзывании, пропуски и выбросы, нет расходимости, нода не падает; флаг проскальзывания, оценка сцепления | [EVAL §6](docs/EVAL.md#6-инъекции-аномалий); [MODEL.md §7](MODEL.md#7-срывы-и-отказы-датчиков); [ROBUST.md](docs/ROBUST.md); аномалии [tools/inject.py](tools/inject.py); `slip`, `slip_all`, `mu`, `ambiguous`, `valid` в [EstimatorStatus.msg](ros2_ws/src/tram_msgs/msg/EstimatorStatus.msg); [test_slip.py](ros2_ws/src/tram_state_estimator/test/test_slip.py), [test_runner_robust.py](ros2_ws/src/tram_state_estimator/test/test_runner_robust.py), [test_node_robust.py](ros2_ws/src/tram_state_estimator/test/test_node_robust.py) |
 | 4. Реальное время (15): задержка, частота, CPU и ОЗУ, утечки, работа без вмешательства, `colcon build` без интернета | [JURY §6](docs/JURY.md#6-логи-частота-задержка-cpu-и-ram), [EVAL §7](docs/EVAL.md#7-реальное-время); [tools/measure_realtime.sh](tools/measure_realtime.sh), [tools/ros_probe.py](tools/ros_probe.py); [docker/Dockerfile](docker/Dockerfile), [CI](.github/workflows/ci.yml) |
-| Питч (30) | [docs/DEMO.md](docs/DEMO.md), [симулятор](simulator/README.md) |
+| Питч (30) | [симулятор](simulator/README.md), [docs/SANDBOX.md](docs/SANDBOX.md) |
 
 | Обязательный артефакт ТЗ | Где |
 |---|---|
