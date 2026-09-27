@@ -6,7 +6,7 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1
 ROOT="$(cd "$(dirname "$0")/../.." && (pwd -W 2>/dev/null || pwd))"
 export DATA_DIR="${DATA_DIR:-$ROOT/data}" DOMAIN=":80" HTTP_PORT="${HTTP_PORT:-18080}" HTTPS_PORT="${HTTPS_PORT:-18443}"
-OUT="${OUT:-$ROOT/out/sim_wp17/demo}"
+OUT="${OUT:-$ROOT/out/sim/demo}"
 P="tvdemo$RANDOM"
 mkdir -p "$OUT"
 trap 'docker compose -p "$P" -f "$ROOT/simulator/deploy/compose.demo.yml" down -v >/dev/null 2>&1 || true' EXIT
