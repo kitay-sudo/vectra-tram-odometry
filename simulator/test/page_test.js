@@ -3,22 +3,22 @@
 //   docker run --rm --network none -v <репозиторий>/simulator:/sim:ro -v <out>:/out \
 //     vectra/tram:sim node /sim/test/page_test.js [/sim/index.html] [/out]
 //
-// Образ vectra/tram:sim — node:22-alpine + chromium + puppeteer-core (Dockerfile
+// Образ vectra/tram:sim - node:22-alpine + chromium + puppeteer-core (Dockerfile
 // рядом: simulator/test/Dockerfile). Страница открывается с file://, сеть
-// контейнера выключена: любая внешняя загрузка (CDN, шрифты) — ошибка теста.
-// Проверяется: 0 JS-исключений и ошибок консоли во всех режимах; песочница (исходный вид
-// страницы 110a5e0 на ядре пакета): лист жюри и линия загружены, метрики каждого сценария =
+// контейнера выключена: любая внешняя загрузка (CDN, шрифты) - ошибка теста.
+// Проверяется: 0 JS-исключений и ошибок консоли во всех режимах; песочница (сцена, табло
+// и панели на ядре пакета): лист жюри и линия загружены, метрики каждого сценария =
 // отчёт sandbox_report.js, панель «Что сейчас думает модель» объясняет событие сценария,
 // свободная поездка по умолчанию, сцена и карта, переключатели меняют имитатор, окна за
 // значками шапки (модель, пакет ROS 2, метрики, показ 60 с, запись), ручное управление; свободная
-// поездка как в исходной («Стоп» тормозит вагон, время идёт; погода и застройка — в 100 м впереди;
-// в сценариях — «Пауза»), раскладка ноутбука 1366×768 и 1280×720 (карта открыта, график высокий),
+// поездка («Стоп» тормозит вагон, время идёт; погода и застройка - в 100 м впереди;
+// в сценариях - «Пауза»), раскладка ноутбука 1366×768 и 1280×720 (карта открыта, график высокий),
 // справка, телефон без горизонтальной прокрутки; каждый экспортированный прогон грузится, проигрывается, и метрики
 // страницы в конце прогона совпадают с итогом экспортёра; подпись JS-порта
 // следует отпечатку ядра прогонов; живой режим с имитатором rosbridge (ws в этом
 // же контейнере): правка поля адреса при подключении не останавливает страницу,
-// переход границы квадратов MGRS 37U CB | DB — без скачка в обоих соглашениях;
-// без моста — «нет связи». Скриншоты — в <out>.
+// переход границы квадратов MGRS 37U CB | DB - без скачка в обоих соглашениях;
+// без моста - «нет связи». Скриншоты - в <out>.
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
@@ -35,7 +35,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     headless: 'new', args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--font-render-hinting=none'],
   });
   const report = { page: PAGE, errors: [], external_requests: [], checks: [], shots: [] };
-  const check = (name, ok, info) => { report.checks.push({ name, ok: !!ok, info }); console.log(`${ok ? 'OK  ' : 'FAIL'} ${name}${info !== undefined ? ' — ' + JSON.stringify(info) : ''}`); };
+  const check = (name, ok, info) => { report.checks.push({ name, ok: !!ok, info }); console.log(`${ok ? 'OK  ' : 'FAIL'} ${name}${info !== undefined ? ' - ' + JSON.stringify(info) : ''}`); };
   async function open(query, vp = { width: 1440, height: 900 }) {
     const page = await browser.newPage();
     await page.setViewport(vp);
@@ -73,13 +73,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       ['leaves', 'x.bogies.some(b => ["spin", "skid", "forced", "gate", "jump"].includes(b.code))', /отброшен/],
       ['front_fail', 'x.bogies[0].code === "dead"', /Передняя тележка исключена/],
       ['both_fail', 't > 30 && (x.amb || x.bogies.every(b => ["spin", "skid", "forced", "gate", "jump", "held"].includes(b.code)))', /Стоим или скользим|Обе тележки отброшены/],
-      // слабые места: при трогании нули приняты за стоянку; при торможении к остановке — за юз
+      // слабые места: при трогании нули приняты за стоянку; при торможении к остановке - за юз
       ['both_fail_start', 't > 10 && x.mode === "STANDSTILL"', /Вагон стоит/],
       ['both_fail_stop', 't > 152 && x.amb', /Стоим или скользим/],
       ['stuck', 'x.bogies[0].code === "frozen"', /залипли разом/],
       ['dropout', 't > 20 && x.bogies[0].code === "stale"', /нет дольше 1 с/],
       ['noise', 't > 30 && x.bogies.some(b => b.code === "gate")', /отброшен/],
-      ['urban', 't > 25 && /сигнала нет/.test(x.lines.join(" "))', /сигнала нет/],
+      ['urban', 't > 25 && /сигнала нет/.test(x.lines.map(l => l.parts.join(" ")).join(" "))', /сигнала нет/],
     ];
     for (const [k, cond, re] of cases) {
       const x = await page.evaluate((k, cond) => {
@@ -93,7 +93,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const panel = await page.evaluate(() => window.__tvSandbox.think(true));
       check(`песочница ${k}: событие наступило, панель объясняет`, x.found && re.test(panel), { t: +x.t.toFixed(1), bogies: x.bog, head: x.head.slice(0, 140) });
     }
-    // линия, панель объяснения, метрики и условия — отдельными снимками (ниже первого экрана)
+    // линия, панель объяснения, метрики и условия - отдельными снимками (ниже первого экрана)
     await page.evaluate(() => { const S = window.__tvSandbox; S.load('ice_skid'); S.play(false); S.run(58, true); S.render(); });
     for (const id of ['sbThink', 'map', 'ctrl']) { const el = await page.$('#' + id); await el.scrollIntoView(); await sleep(250); await el.screenshot({ path: path.join(OUT, `sandbox_ice_${id}.png`) }); report.shots.push(`sandbox_ice_${id}.png`); }
     await page.evaluate(() => window.__tvSandbox.openInfo('metrics')); await sleep(400);
@@ -109,7 +109,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       check('песочница: ручное управление (кнопка тяги и клавиши)', r.summary.path > 20 && h === '+13', { path_m: +r.summary.path.toFixed(1), handle: h });
     }
     // справка «Как читать экран»
-    await page.evaluate(() => window.__tvSandbox.think(true)); await page.click('#sbHelpBtn'); await sleep(400);   // ссылка в «подробнее» панели модели
+    await page.click('#helpBtn'); await sleep(400);
     const help = await page.evaluate(() => ({ open: !document.getElementById('sbHelpModal').hidden, text: document.getElementById('sbHelpModal').innerText.length }));
     await shot(page, 'sandbox_help.png');
     await page.keyboard.press('Escape'); await sleep(200);
@@ -131,7 +131,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await page.close();
   }
 
-  // ---------------- исходный вид песочницы: свободная поездка, сцена, карта, переключатели, окна шапки
+  // ---------------- вид песочницы: свободная поездка, сцена, карта, переключатели, окна шапки
   {
     const page = await open('?mode=sandbox');
     await page.evaluate(() => { try { localStorage.removeItem('tv.preset'); } catch (_) {} });
@@ -153,7 +153,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       S.play(false);
       q('[data-sbwx="rain"]').click(); q('[data-sens="both"]').click(); document.getElementById('swRush').click(); document.getElementById('swUrban').click();
       S.run(0.5, true);
-      const a = { wx: E.cond.weatherB.join(','), f: E.cond.faults.map(f => f && f.kind).join(','), mass: E.cond.mass, gnss: E.gnssOff, kindShown: !document.getElementById('kindRow').hidden };
+      const a = { wx: E.cond.weatherB.join(','), f: E.cond.faults.map(f => f && f.kind).join(','), mass: E.cond.mass, urban_ahead_m: E.gnssZones.length === 1 ? Math.round(E.gnssZones[0].a - E.plant.s) : null, kindShown: !document.getElementById('kindRow').hidden };
       document.getElementById('wxLbl').click(); document.getElementById('snLbl').click(); document.getElementById('swRush').click(); document.getElementById('swUrban').click();
       S.run(0.5, true);
       const b = { wx: E.cond.weatherB.join(','), f: E.cond.faults.map(f => f && f.kind).join(','), mass: E.cond.mass, gnss: E.gnssOff };
@@ -163,17 +163,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       return { a, b, man };
     });
     check('песочница (сценарий «Сухо»): погода, датчики, час пик, застройка и «Авто / Ручное» меняют имитатор; ↺ возвращает сценарий',
-      c.a.wx === 'rain,rain' && c.a.f === 'zero,zero' && c.a.mass === 1.3 && c.a.gnss && c.a.kindShown && c.b.wx === 'dry,dry' && c.b.f === ',' && c.b.mass === 1 && !c.b.gnss && !c.man.driver && c.man.handle && c.man.back, c);
+      c.a.wx === 'rain,rain' && c.a.f === 'zero,zero' && c.a.mass === 1.3 && Math.abs(c.a.urban_ahead_m - 100) <= 2 && c.a.kindShown && c.b.wx === 'dry,dry' && c.b.f === ',' && c.b.mass === 1 && !c.b.gnss && !c.man.driver && c.man.handle && c.man.back, c);
     // список сценариев
     await page.click('#scBtn'); await sleep(300);
     const pop = await page.evaluate(() => ({ open: !document.getElementById('scPop').hidden, n: document.querySelectorAll('#scPop [data-preset]').length }));
     await shot(page, 'sandbox_scenarios.png');
     await page.click('#scPop [data-preset="ice_skid"]'); await sleep(300);
     const picked = await page.evaluate(() => ({ key: window.__tvSandbox.state().key, closed: document.getElementById('scPop').hidden, name: document.getElementById('scName').textContent }));
-    check('песочница: список сценариев открывается, выбор загружает сценарий', pop.open && pop.n >= 16 && picked.key === 'ice_skid' && picked.closed && /наледь/.test(picked.name), { pop, picked });
+    check('песочница: список сценариев открывается, выбор загружает сценарий', pop.open && pop.n >= 15 && picked.key === 'ice_skid' && picked.closed && /наледь/.test(picked.name), { pop, picked });
     // окна за значками шапки
     const views = {};
-    for (const [key, sel, wait, test] of [['model', '[data-open="model"]', 2500, '#typed'], ['ros', '[data-open="ros"]', 3500, '#bMed'], ['metrics', '[data-open="metrics"]', 800, '#sbMetrics'], ['replay', '#recBtn', 800, '#repInfo']]) {
+    for (const [key, sel, wait, test] of [['model', '[data-open="model"]', 800, '#mExtra'], ['metrics', '[data-open="metrics"]', 800, '#sbMetrics']]) {
       await page.click(sel); await sleep(wait);
       const r = await page.evaluate(t => ({ open: document.getElementById('modal').style.display !== 'none', text: (document.querySelector(t) || {}).textContent || '' }), test);
       views[key] = { open: r.open, len: r.text.length, head: r.text.trim().slice(0, 40) };
@@ -181,19 +181,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await page.keyboard.press('Escape'); await sleep(250);
     }
     const closed = await page.evaluate(() => document.getElementById('modal').style.display === 'none');
-    check('песочница: окна «Как устроена модель», «Пакет ROS 2» (схема и время шага ядра), «Метрики», «Запись поездки»',
-      closed && views.model.open && views.model.len > 60 && views.ros.open && /^\d/.test(views.ros.head) && views.metrics.open && views.metrics.len > 300 && views.replay.open && views.replay.len > 30, views);
+    views.hidden = await page.evaluate(() => ['[data-open="ros"]', '#recBtn'].every(q => getComputedStyle(document.querySelector(q)).display === 'none'));
+    check('песочница: окна «Как устроена модель» и «Метрики» открываются, «Пакет ROS 2» и «Запись поездки» скрыты',
+      closed && views.model.open && views.model.len > 300 && /Python/.test(views.model.head + (await page.evaluate(() => document.getElementById('mExtra').textContent))) && views.metrics.open && views.metrics.len > 300 && views.hidden, views);
     await page.click('#presBtn'); await sleep(10500);
     const tour = await page.evaluate(() => ({ shown: document.getElementById('pres').style.display !== 'none', step: document.getElementById('presStep').textContent, key: window.__tvSandbox.state().key, t: +window.__tvSandbox.state().t.toFixed(1) }));
     await shot(page, 'sandbox_tour.png');
     await page.click('#presStop'); await sleep(200);
-    check('песочница: показ 60 с идёт по сценариям (шаг 2 — дождь и полная тяга)', tour.shown && /Шаг 2/.test(tour.step) && tour.key === 'rain_spin' && tour.t > 3, tour);
+    check('песочница: показ 60 с идёт по сценариям (шаг 2 - дождь и полная тяга)', tour.shown && /Шаг 2/.test(tour.step) && tour.key === 'rain_spin' && tour.t > 3, tour);
     await page.close();
   }
 
-  // ---------------- свободная поездка ведёт себя как исходная (110a5e0): страница начинается с неё,
+  // ---------------- свободная поездка: страница начинается с неё,
   // «Стоп» тормозит вагон до остановки (время идёт), погода и застройка начинаются в 100 м впереди;
-  // в сценариях кнопка — «Пауза» (время стоит); на ноутбуке 1366×768 и 1280×720 карта открыта
+  // в сценариях кнопка - «Пауза» (время стоит); на ноутбуке 1366×768 и 1280×720 карта открыта
   {
     const page = await open('?mode=sandbox');
     await page.evaluate(() => { try { localStorage.setItem('tv.preset', 'ice_skid'); } catch (_) {} });
@@ -221,7 +222,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const ur = { off0: E.gnssOff, ahead: txt('aheadTxt') };
       k = 0; while (!E.gnssOff && k++ < 400) S.run(0.25, true);
       Object.assign(ur, { off1: E.gnssOff, after_m: Math.round(E.plant.s - s1) });
-      q('#swUrban').click(); S.run(0.2, true); ur.off2 = E.gnssOff;
+      const s2 = E.plant.s; q('#swUrban').click();
+      k = 0; while (E.gnssOff && k++ < 400) S.run(0.25, true);
+      Object.assign(ur, { off2: E.gnssOff, back_m: Math.round(E.plant.s - s2) });
       S.load('dry'); S.run(3, true);
       const sc = { label: txt('bRunTxt') };
       q('#bRun').click(); sc.paused = !S.state().play; sc.label2 = txt('bRunTxt');
@@ -230,13 +233,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       return { key, stop, wx, ur, sc };
     });
     check('свободная поездка по умолчанию, даже если в памяти браузера другой сценарий', r.key === 'free', { key: r.key });
-    check('свободная поездка: «Стоп» тормозит вагон до остановки, время идёт; «Старт» — едет дальше',
+    check('свободная поездка: «Стоп» тормозит вагон до остановки, время идёт; «Старт» - едет дальше',
       r.stop.v0 > 8 && r.stop.label === 'Старт' && r.stop.v < 0.05 && r.stop.dt > 29 && r.stop.mode === 'STANDSTILL' && r.stop.label2 === 'Старт' && r.stop.resumed > 3, r.stop);
-    check('свободная поездка: «Дождь» — мокрый участок в 100 м впереди, «Впереди: … через N м», доехали — мокро',
+    check('свободная поездка: «Дождь» - мокрый участок в 100 м впереди, «Впереди: … через N м», доехали - мокро',
       r.wx.zone.length === 1 && Math.abs(r.wx.zone[0][0] - 100) <= 1 && r.wx.zone[0][1] === 160 && /мокрые рельсы через \d+ м/.test(r.wx.ahead) && r.wx.now === 'dry' && r.wx.lit === 'true' && r.wx.reached === 'rain' && Math.abs(r.wx.after_m - 100) <= 12, r.wx);
-    check('свободная поездка: «Застройка» — спутники пропадают через 100 м, выключили — вернулись',
-      !r.ur.off0 && /застройка через \d+ м/.test(r.ur.ahead) && r.ur.off1 && Math.abs(r.ur.after_m - 100) <= 12 && !r.ur.off2, r.ur);
-    check('сценарий: кнопка «Пауза» останавливает время, «Дальше» — продолжает', r.sc.label === 'Пауза' && r.sc.paused && r.sc.label2 === 'Дальше' && r.sc.again, r.sc);
+    check('свободная поездка: «Застройка» - спутники пропадают через 100 м, выключили - возвращаются тоже через 100 м',
+      !r.ur.off0 && /застройка через \d+ м/.test(r.ur.ahead) && r.ur.off1 && Math.abs(r.ur.after_m - 100) <= 12 && !r.ur.off2 && Math.abs(r.ur.back_m - 100) <= 12, r.ur);
+    check('сценарий: кнопка «Пауза» останавливает время, «Дальше» - продолжает', r.sc.label === 'Пауза' && r.sc.paused && r.sc.label2 === 'Дальше' && r.sc.again, r.sc);
     const lay = {};
     for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]]) {
       await page.setViewport({ width: w, height: h }); await sleep(900);
@@ -247,9 +250,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       });
     }
     await shot(page, 'sandbox_1440_after_resize.png');
-    // высота графика в исходной (110a5e0): 1366×768 — 249 px, 1280×720 — 217, 1440×900 — 338
-    check('раскладка ноутбука: карта открыта, «Управление» без прокрутки, график почти исходной высоты, строка модели в одну строку',
-      Object.entries(lay).every(([k, x]) => x.map_open && !x.ctrl_scroll && x.think <= 40 && x.chart >= { '1366x768': 225, '1280x720': 195, '1440x900': 310 }[k]), lay);
+    // нижние пороги высоты графика на экранах ноутбука; легенда графика - отдельной строкой
+    // под «Модель думает»
+    check('раскладка ноутбука: карта открыта, «Управление» без прокрутки, график не ниже порога, строка модели в одну строку',
+      Object.entries(lay).every(([k, x]) => x.map_open && !x.ctrl_scroll && x.think <= 40 && x.chart >= { '1366x768': 205, '1280x720': 172, '1440x900': 290 }[k]), lay);
     await page.close();
   }
 
@@ -297,9 +301,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       mae: [m.mae, s.v_mae], mae_naive: [m.maeN, s.naive_v_mae], drift: [m.drift, s.drift_pct], drift_naive: [m.driftN, s.naive_drift_pct],
       p2d: [m.h, s.p2d_mean], cov2s: [m.cov, s.cov2s_v],
     };
-    // точность показа на странице: MAE 4 знака, дрейф 3, план 2, доля 3; допуск — квантование файла
+    // точность показа на странице: MAE 4 знака, дрейф 3, план 2, доля 3; допуск - квантование файла
     const near = (a, b, tol) => isFinite(a) && isFinite(b) && Math.abs(a - b) <= tol;
-    // дрейф — допуск и относительный: у базы с отказом датчиков дрейф ~3 %, и
+    // дрейф - допуск и относительный: у базы с отказом датчиков дрейф ~3 %, и
     // квантование файла даёт 3e-5 (both_zero: 3,06203 / 3,06200)
     const nearRel = (a, b, tol) => near(a, b, Math.max(tol, tol * Math.abs(b)));
     const ok = near(m.mae, s.v_mae, 2e-5) && near(m.maeN, s.naive_v_mae, 2e-5) && nearRel(m.drift, s.drift_pct, 2e-5) && nearRel(m.driftN, s.naive_drift_pct, 2e-5)
@@ -347,7 +351,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const portSha = await page.evaluate(() => window.TV_EST_PORT.core_sha1);
     const sheetSha = await page.evaluate(() => window.TV_SHEET.core_sha1);
     const same = idxSha.every(s => !s || s === portSha) && sheetSha === portSha;
-    check('подпись порта по отпечатку ядра прогонов и листа', same ? /сверен/.test(a.badge) && !/упрощ/.test(a.badge) && /ядро пакета/.test(a.note) : /упрощённое ядро/.test(a.badge), { port: portSha, sheet: sheetSha, replays: [...new Set(idxSha)], ...a });
+    check('подпись порта по отпечатку ядра прогонов и листа', same ? /Одометрия трамвая/.test(a.badge) && !/упрощ/.test(a.badge) && /ядро пакета/.test(a.note) : /упрощённое ядро/.test(a.badge), { port: portSha, sheet: sheetSha, replays: [...new Set(idxSha)], ...a });
     await page.close();
     // подмена отпечатка в списке прогонов (как после правки ядра без переноса порта)
     page = await browser.newPage();
@@ -365,7 +369,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // ---------------- живой ROS 2 с имитатором rosbridge (ws на 127.0.0.1:9090 в этом же контейнере)
   {
     const { WebSocketServer } = require('ws');
-    // UTM (как на странице и в tools/export_replay.py): x — восток, y — север
+    // UTM (как на странице и в tools/export_replay.py): x - восток, y - север
     function utmEN(lat, lon, zone) {
       const a = 6378137, fl = 1 / 298.257223563, n = fl / (2 - fl), A = a / (1 + n) * (1 + n * n / 4 + n ** 4 / 64);
       const al = [n / 2 - 2 * n * n / 3 + 5 * n ** 3 / 16 + 41 * n ** 4 / 180, 13 * n * n / 48 - 3 * n ** 3 / 5 + 557 * n ** 4 / 1440, 61 * n ** 3 / 240 - 103 * n ** 4 / 140, 49561 * n ** 4 / 161280];
@@ -391,7 +395,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         pub('/result/velocity', { header: hdr, velocity: 10 });
         pub('/tram/estimator_status', { header: hdr, mode: 0, v: 10, s: k, d: 0, k_traction: 1, k_brake: 1, mu: 0.2, sigma_v: 0.1, sigma_s: 1, wheel_healthy: [true, true], slip: false, ambiguous: false, n_accepted: 2, n_rejected: 0, valid: true, frame_count: 2 * k, step_time_us: 500 });
         if (scenario !== 'basic') {
-          // вагон едет на восток: master, rover на 12,436 м впереди (tf организаторов), base_link —
+          // вагон едет на восток: master, rover на 12,436 м впереди (tf организаторов), base_link -
           // на 9,873 м впереди master (ось передней тележки)
           const lat = LAT, lon = LON0 + DLON * k, [Em, Nm] = utmEN(lat, lon, 37), lonR = lon + 1.2436 * DLON, [Er, Nr] = utmEN(lat, lonR, 37);
           const fb = 9.873 / 12.436, [E, N] = scenario === 'ucb' ? [Em + fb * (Er - Em), Nm + fb * (Nr - Nm)] : [Em, Nm];
@@ -431,7 +435,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await page.close();
     }
     // переход границы квадратов 37U CB | DB (E = 400 км) в трёх соглашениях MGRS; точка эталона
-    // выбирается по выходу ноды: антенна master (wrap, grid) или base_link (ucb — как у судьи)
+    // выбирается по выходу ноды: антенна master (wrap, grid) или base_link (ucb - как у судьи)
     for (const sc of ['wrap', 'grid', 'ucb']) {
       scenario = sc; sent.xmin = Infinity; sent.xmax = -Infinity;
       const page = await open('?mode=live&ros=ws://127.0.0.1:9090');
@@ -442,7 +446,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const hmax = hs.length ? Math.max(...hs) : NaN, span = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
       const crossed = sc === 'wrap' ? sent.xmax > 99000 && sent.xmin < 1000 : sc === 'ucb' ? sent.xmin < 1e5 && sent.xmax > 1e5 : sent.xmin < 0 && sent.xmax > 0;
       const wantRef = sc === 'ucb' ? 'base_link' : 'master';
-      check(`живой режим: MGRS ${sc === 'wrap' ? 'с переносом по точке' : sc === 'ucb' ? 'от квадрата 37UCB (судья), выход base_link' : 'от квадрата 37UDB'} — переход E = 400 км без скачка, эталон ${wantRef}`, crossed && xs.length > 20 && span > 200 && jump < 50 && hs.length > 20 && hmax < 0.5 && tl.ref === wantRef,
+      check(`живой режим: MGRS ${sc === 'wrap' ? 'с переносом по точке' : sc === 'ucb' ? 'от квадрата 37UCB (судья), выход base_link' : 'от квадрата 37UDB'} - переход E = 400 км без скачка, эталон ${wantRef}`, crossed && xs.length > 20 && span > 200 && jump < 50 && hs.length > 20 && hmax < 0.5 && tl.ref === wantRef,
         { sent_x: [+sent.xmin.toFixed(1), +sent.xmax.toFixed(1)], rows: xs.length, span_m: +span.toFixed(1), max_step_m: +jump.toFixed(2), pairs: hs.length, max_plan_err_m: +hmax.toFixed(3), ref: tl.ref, ref_note: tl.refNote });
       if (sc === 'wrap' || sc === 'ucb') await shot(page, `live_mgrs_${sc}.png`);
       await page.close();

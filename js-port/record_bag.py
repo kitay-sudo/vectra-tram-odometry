@@ -6,7 +6,7 @@ step_open_loop так, как их вызывает Runner (маска свеж�
     docker run --rm -v <repo>:/repo -v <repo>/analysis/cache:/repo/analysis/cache:ro \
       -w /repo/js-port vectra/tram:dev python3 record_bag.py [bag] [variant]
 
-variant — как в tools/export_replay.py (clean, front_zero, both_zero, dropout, skid_brake) или
+variant - как в tools/export_replay.py (clean, front_zero, both_zero, dropout, skid_brake) или
 форма срыва из tools/slip_study.py EDGE (skid_then_lock, lock_ramp03, skid_stagger03, …).
 """
 import dataclasses
@@ -20,8 +20,8 @@ import export_replay as X  # noqa: E402  (тот же лист, та же свя
 
 bag = sys.argv[1] if len(sys.argv) > 1 else X.DEFAULT_RUN
 variant = sys.argv[2] if len(sys.argv) > 2 else "clean"
-# лист вагона (2 тележки, км/ч, табличный привод) — для сверки порта годится любой лист вагона;
-# третий аргумент — другой лист (путь), например оценочный config/eval/tram.yaml
+# лист вагона (2 тележки, км/ч, табличный привод) - для сверки порта годится любой лист вагона;
+# третий аргумент - другой лист (путь), например оценочный config/eval/tram.yaml
 sheet = sys.argv[3] if len(sys.argv) > 3 else os.path.join(X.PKG, "config", "tram.yaml")
 params, node, _ = X.resolve_sheet(sheet)
 a = X.bagio.load(bag)

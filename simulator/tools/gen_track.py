@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Линия для песочницы и вида трассы: simulator/js/track.js.
 
-Источник — pathgraph организаторов (_incoming/pathgraph/*.json, в git не
-лежит): по файлу на направление, точки через 1 м, x, y — плоские MGRS от
+Источник - pathgraph организаторов (_incoming/pathgraph/*.json, в git не
+лежит): по файлу на направление, точки через 1 м, x, y - плоские MGRS от
 квадрата 37U CB без переноса (x = UTM37 E − 300 000, y = UTM N − 6 100 000),
-z — уровень рельса (высота base_link), tang — курс, curv — кривизна 1/м.
+z - уровень рельса (высота base_link), tang - курс, curv - кривизна 1/м.
 
 Пишется прореженная копия (шаг STEP м): метры от первой точки направления A
-(x — восток, y — север), путь s, высота z, кривизна (максимум модуля на шаге),
-и начало направления A в MGRS 37UCB — по нему страница кладёт линию на план
+(x - восток, y - север), путь s, высота z, кривизна (максимум модуля на шаге),
+и начало направления A в MGRS 37UCB - по нему страница кладёт линию на план
 режима «Прогон данных комиссии» (там метры от первой точки GNSS master).
 
-Остановки — точки остановок карты пакета (config/track_map.npz, выучены по
+Остановки - точки остановок карты пакета (config/track_map.npz, выучены по
 стоянкам обучающих прогонов), спроецированные на направление A: ближе
 STOP_R м к оси, курс совпадает (±45°), слиты в пределах STOP_JOIN м.
 
@@ -34,7 +34,7 @@ from tram_state_estimator import geodesy as GD  # noqa: E402
 
 STEP = 5            # м: шаг прореживания
 STOP_R = 8.0        # м: остановка карты не дальше этого от оси направления
-STOP_JOIN = 60.0    # м: остановки ближе — одна
+STOP_JOIN = 60.0    # м: остановки ближе - одна
 GRID_E, GRID_N = 300000.0, 6100000.0      # начало квадрата 37U CB (UTM зона 37)
 DIRS = ("щукинская - таллинская", "таллинская - щукинская")
 
@@ -111,7 +111,7 @@ def main():
     stops = stops_on(PA, sA, a.map)
     doc = dict(
         source="pathgraph организаторов (_incoming/pathgraph), прорежено до %d м" % STEP,
-        frame="метры от первой точки направления A; x — восток, y — север, z — уровень рельса",
+        frame="метры от первой точки направления A; x - восток, y - север, z - уровень рельса",
         origin=dict(mgrs_grid="37UCB", x=round(x0, 3), y=round(y0, 3), z=round(z0, 3),
                     utm_zone=37, utm_e=round(x0 + GRID_E, 3), utm_n=round(y0 + GRID_N, 3)),
         stops_src="config/track_map.npz пакета (остановки, выученные по стоянкам), на направлении A",
@@ -119,7 +119,7 @@ def main():
     )
     body = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
     with open(a.out, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("// Сгенерировано simulator/tools/gen_track.py — не править руками.\n")
+        fh.write("// Сгенерировано simulator/tools/gen_track.py - не править руками.\n")
         fh.write("(function (g) {\n")
         fh.write(f"g.TV_TRACK = {body};\n")
         fh.write("if (typeof module !== 'undefined') module.exports = g.TV_TRACK;\n")

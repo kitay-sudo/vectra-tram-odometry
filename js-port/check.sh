@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Сверка JS-порта с текущим Python-ядром и связкой пакета одной командой — обязательный шаг
+# Сверка JS-порта с текущим Python-ядром и связкой пакета одной командой - обязательный шаг
 # после любых правок estimator_core.py (или runner.py в части шага ядра).
 #   bash js-port/check.sh            (Git Bash / Linux, из корня репозитория)
 # 1) record.py: 15 сценариев prototype/scenarios.py, Params по умолчанию -> compare.js;
@@ -9,11 +9,11 @@
 # 3) record_runner.py: та же запись через Runner (сетка, свежесть, таймауты, приведение
 #    показаний к шагу) и базу «только колесо» -> compare_runner.js (JS-связка runner.js);
 # 4) копии для страницы simulator/js/{est,runner}.js совпадают с js-port/ байт в байт.
-# Код выхода 0 — всё совпало (≤ 1e-6, режимы и флаги на каждом шаге) и отпечаток ядра равен
-# TramEst.PORT.core_sha1; иначе 1 (что делать — печатается).
-# Переменные: IMAGE (vectra/tram:compose — Python с numpy; код пакета берётся из этого
+# Код выхода 0 - всё совпало (≤ 1e-6, режимы и флаги на каждом шаге) и отпечаток ядра равен
+# TramEst.PORT.core_sha1; иначе 1 (что делать - печатается).
+# Переменные: IMAGE (vectra/tram:compose - Python с numpy; код пакета берётся из этого
 # дерева), DATA_DIR (<repo>/data), CACHE_DIR (<repo>/analysis/cache), BAG, QUICK=1 (только clean),
-# EDGEV — формы срыва tools/slip_study.py EDGE для сверки ядра (по умолчанию шесть видов).
+# EDGEV - формы срыва tools/slip_study.py EDGE для сверки ядра (по умолчанию шесть видов).
 set -uo pipefail
 export MSYS_NO_PATHCONV=1
 ROOT="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
@@ -42,5 +42,5 @@ for f in est.js runner.js; do
   if ! cmp -s "$ROOT/js-port/$f" "$ROOT/simulator/js/$f"; then
     echo "simulator/js/$f ≠ js-port/$f: скопируйте (node js-port/sync.js)"; rc=1; fi
 done
-[ $rc = 0 ] && echo "js-port/check: OK — порт и связка совпадают с пакетом" || echo "js-port/check: РАСХОЖДЕНИЕ — см. выше"
+[ $rc = 0 ] && echo "js-port/check: OK - порт и связка совпадают с пакетом" || echo "js-port/check: РАСХОЖДЕНИЕ - см. выше"
 exit $rc

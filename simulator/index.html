@@ -68,6 +68,8 @@
   #presBtn[aria-pressed="true"], .icon-btn[data-open][aria-pressed="true"] { background: var(--fg); color: var(--bg); }
   @media (max-width: 767px) { .mob-hide { display: none !important; } }
   @media (max-width: 1199px) { header .badge-sub { display: none !important; } }
+  /* подпись у логотипа: строчные буквы шрифта сидят низко, текст на 1 px выше - по центру плашки */
+  header .badge-sub { padding-top: 2px; padding-bottom: 4px; }
   .ctrl-grid { display: grid; grid-template-columns: 70px 1fr; gap: 8px 10px; align-items: center; }
   .ctrl-grid .sw-btn { padding-left: 0; }
   .ctrl-l { opacity: .6; }
@@ -81,7 +83,8 @@
   .mode-ico svg { width: 100%; height: 100%; }
   .mode-badge { transition: color .35s ease, border-color .35s ease; min-width: 128px; text-align: center; }
   .facts > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #trackBar { left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 2px); }
+  #trackBar { left: 32px; right: 32px; bottom: calc(env(safe-area-inset-bottom, 0px) + 2px); }
+  @media (max-width: 767px) { #trackBar { left: 20px; right: 20px; } }
   @media (min-width: 900px) { #ctrl.ctrl-side { position: fixed; right: 32px; width: 340px; margin: 0; } }
   @media (max-width: 899px) { .ctrl-grid { grid-template-columns: 70px max-content 70px max-content; column-gap: 14px; } }
   @media (max-width: 767px) { .ctrl-grid { grid-template-columns: 64px 1fr; } .ctrl-mob-hide { display: none !important; } }
@@ -112,6 +115,10 @@
   #modeNav { flex: none; }
   #modeNav button { padding: .3em .95em; }
   #modeNav .sm { display: none; }
+  /* «Живой ROS 2» скрыт, пока мост не подключён: показывается с ?mode=live или ?live=1 */
+  #modeNav button[hidden] { display: none; }
+  /* окна «Пакет ROS 2» и «Запись поездки» пока скрыты: код окон на месте */
+  .icon-btn[hidden] { display: none !important; }
   @media (max-width: 1099px) { #modeNav .lg { display: none; } #modeNav .sm { display: inline; } }
   @media (max-width: 639px) {
     header { flex-wrap: wrap; row-gap: 8px; }
@@ -130,10 +137,63 @@
   @media (max-width: 639px) { #runView { padding-top: calc(env(safe-area-inset-top, 0px) + 112px); } }
   .rv-title { font-family: var(--font-heading); font-weight: 500; font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -.01em; }
   .rv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; font-size: 13px; margin-top: 10px; }
-  .rv-grid { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr); gap: 16px; margin-top: 14px; }
-  @media (max-width: 1099px) { .rv-grid { grid-template-columns: minmax(0, 1fr); } }
+  .rv-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 14px; }
   .rv-col > .rv-card + .rv-card { margin-top: 16px; }
-  .rv-card { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 14px 16px; min-width: 0; }
+  .rv-card { position: relative; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 14px 16px; min-width: 0; }
+  .rv-tools { display: flex; flex-wrap: wrap; align-items: center; column-gap: 24px; }
+  #rvBarReplay, #rvBarLive { flex: 1 1 560px; min-width: 0; }
+  .rv-hr { display: inline-flex; align-items: center; gap: 8px; }
+  /* пояснения карточки: на узком экране под ней, на широком открываются значком i поверх карточки */
+  .rv-info { display: none; width: 22px; height: 22px; padding: 2px; border-radius: 9999px; color: color-mix(in srgb, var(--fg) 60%, transparent); transition: color .2s; }
+  .rv-info:hover, .rv-info[aria-expanded="true"] { color: var(--ok); }
+  .rv-info svg { width: 18px; height: 18px; display: block; }
+  /* описание записи: одной строкой, нажатие разворачивает */
+  .rv-note.rv-clamp { cursor: pointer; }
+  /* от 1100 px экран прогона помещается в окно: графики и план делят высоту, прокрутки нет */
+  @media (min-width: 1100px) {
+    #runView { display: flex; flex-direction: column; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); }
+    .rv-grid { flex: 1 1 auto; min-height: 420px; gap: 12px; }
+    .rv-col > .rv-card + .rv-card { margin-top: 0; }
+    .rv-col > .rv-card { display: flex; flex-direction: column; min-height: 0; padding: 12px 14px; }
+    .rv-cv.h-sp, .rv-cv.h-er, .rv-cv.h-map { height: auto; flex: 1 1 0; min-height: 60px; }
+    .rv-card.rv-plan { min-height: 150px; }
+    .rv-note.rv-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+    .rv-note.rv-clamp.open { -webkit-line-clamp: unset; }
+    .rv-info { display: inline-block; }
+    .rv-pop { display: none; position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 2; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .rv-pop .rv-note { opacity: 1; margin-top: 0; color: color-mix(in srgb, var(--fg) 82%, transparent); }
+    .rv-pop .rv-note + .rv-note:not(:empty) { margin-top: 6px; }
+    .pop-on .rv-pop { display: block; }
+    .rv-bog .big { font-size: 19px; }
+    .rv-mode { font-size: 20px; margin-top: 4px; }
+    .rv-kv { gap: 6px 10px; margin-top: 8px; }
+    .rv-bogies { margin-top: 8px; }
+  }
+  /* от 1100 px три колонки на всю высоту: графики, состояние над метриками, план; ряды выровнены -
+     низ состояния по низу графика скорости, низ метрик по низу графиков ошибок */
+  @media (min-width: 1100px) {
+    .rv-grid { grid-template-columns: minmax(0, 1.6fr) minmax(310px, 1fr) minmax(290px, 1fr);
+      grid-template-rows: minmax(min-content, 1.25fr) minmax(min-content, 1fr); grid-template-areas: "sp st pl" "er me pl"; }
+    .rv-col { display: contents; }
+    .rv-sp { grid-area: sp; } .rv-er { grid-area: er; } #rvStatus { grid-area: st; } #rvMetrics { grid-area: me; } #rvPlan { grid-area: pl; }
+  }
+  /* экран ниже 1000 px: карточки состояния и метрик плотнее */
+  @media (min-width: 1100px) and (max-height: 1000px) {
+    .rv-mode { font-size: 18px; } .rv-bog { padding: 6px 8px; } .rv-bog .big { font-size: 17px; }
+    .rv-kv { font-size: 12px; gap: 4px 8px; } .rv-flags { gap: 4px; margin-top: 6px; } .rv-tbl td, .rv-tbl th { padding: 3px 6px 3px 0; }
+  }
+  /* низкий экран (ноутбук, около 650-820 px в браузере): состояние на всю высоту средней колонки,
+     план над метриками; ряды по-прежнему ровные - график скорости с планом, ошибки с метриками */
+  @media (min-width: 1100px) and (max-height: 820px) {
+    .rv-grid { grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "sp st pl" "er st me"; }
+    #rvStatus { overflow-y: auto; }
+    .rv-flag:not(.on) { display: none; }
+    .rv-kv .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rv-cv.h-er { min-height: 44px; }
+    .rv-tbl td, .rv-tbl th { padding: 2px 6px 2px 0; }
+  }
+  /* совсем низкий экран: без строки заголовка, режим и так виден в шапке */
+  @media (min-width: 1100px) and (max-height: 700px) { #rvHead { display: none; } }
   .rv-h { font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 6px 12px; flex-wrap: wrap; }
   .rv-h b { font-family: var(--font-heading); font-weight: 500; font-size: 14px; }
   .rv-cv { position: relative; width: 100%; margin-top: 8px; }
@@ -175,13 +235,13 @@
   .rv-mode .mode-ico { width: .9em; height: .9em; }
   @media (prefers-reduced-motion: reduce) {
     .cursor { animation: none; }
-    .pills, .sheet, #board, .sc-prog > span, .sc-pill svg, #mapHead svg { transition: none; }
+    .pills, .sheet, #board, .sc-prog > span, .sc-pill svg, #mapHead svg, #scPop { transition: none; }
   }
-  /* ---------- песочница на ядре пакета: новые элементы в стиле исходной страницы (без Tailwind) ---------- */
+  /* ---------- песочница на ядре пакета: элементы в стиле страницы (без Tailwind) ---------- */
   #ctrl { position: relative; }
   #ctrl .ctrl-grid { row-gap: 8px; }
   .ctrl-wide { grid-column: 1 / -1; }
-  /* строка «Сценарий»: имя, время сценария и полоска хода в одной «таблетке», рядом — скорость времени */
+  /* строка «Сценарий»: имя, время сценария и полоска хода в одной «таблетке», рядом - скорость времени */
   .sc-row { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
   .sc-pill { position: relative; overflow: hidden; display: flex; align-items: center; gap: .5rem; flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .3em .75em .3em .95em; font-size: 12px; text-align: left; transition: border-color .2s; }
   .sc-pill:hover, .sc-pill[aria-expanded="true"] { border-color: var(--fg); }
@@ -195,13 +255,22 @@
   .sc-spd:hover { border-color: var(--fg); }
   #scPop { position: fixed; z-index: 30; padding: 12px 14px 14px; overflow-y: auto; overscroll-behavior: contain; background: color-mix(in srgb, var(--bg) 82%, transparent) !important; }
   #scPop[hidden] { display: none; }
-  .sc-g { font-size: 11px; opacity: .6; margin: 10px 0 5px; }
+  /* список сценариев: от 900 px выезжает слева от правой колонки на высоту карты и «Управления» */
+  #scPop { opacity: 0; transform: translateY(-6px); transition: opacity .22s ease, transform .22s ease; }
+  #scPop.side { transform: translateX(14px); }
+  #scPop.in { opacity: 1; transform: none; }
+  .sc-g { font-size: 11px; opacity: .6; margin: 14px 0 7px; }
   .sc-g:first-child { margin-top: 0; }
-  .sc-list { display: flex; flex-wrap: wrap; gap: 5px; }
-  .sc-list button { border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .22em .75em; font-size: 12px; line-height: 1.35; text-align: left; transition: background-color .2s, color .2s, border-color .2s; }
+  .sc-list { display: flex; flex-wrap: wrap; gap: 7px; }
+  .sc-list button { border: 1px solid var(--line); background: var(--pill-bg); color: var(--fg); border-radius: 9999px; padding: .45em 1em; font-size: 12.5px; line-height: 1.35; text-align: left; transition: background-color .2s, color .2s, border-color .2s; }
   .sc-list button:hover { border-color: var(--fg); }
   .sc-list button[aria-checked="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-  .sc-full { font-size: 12px; line-height: 1.5; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  /* настоящая запись: выделена цветом и значком записи */
+  .sc-list button.sc-rec { display: inline-flex; align-items: center; gap: 7px; border-color: color-mix(in srgb, #E8B04C 70%, transparent); color: #E8B04C; background: color-mix(in srgb, #E8B04C 10%, transparent); }
+  .sc-list button.sc-rec:hover { border-color: #E8B04C; }
+  .sc-list button.sc-rec[aria-checked="true"] { background: #E8B04C; color: #14161a; border-color: #E8B04C; }
+  .sc-ico { width: 14px; height: 14px; flex: none; }
+  .sc-full { font-size: 13px; line-height: 1.5; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
   .sc-full p + p { margin-top: .4em; }
   .lbl-btn { text-align: left; white-space: nowrap; cursor: default; }
   .lbl-btn.ovr { cursor: pointer; opacity: 1; color: var(--ok); }
@@ -210,16 +279,25 @@
   #handleRow[hidden], #kindRow[hidden], #kindLbl[hidden] { display: none !important; }
   #sbHandleV { min-width: 2.6em; text-align: right; font-weight: 500; }
   .seg button:disabled { opacity: .35; cursor: default; }
-  /* «Что сейчас думает модель»: одна строка в стекле слева от легенды графика; «подробнее» — поверх графика */
+  /* задано сценарием: выбранное видно, остальное приглушено, нажать нельзя */
+  .seg button:disabled[aria-checked="true"] { opacity: .7; }
+  .sw-btn:disabled, .sw-btn[role="switch"]:disabled:hover { opacity: .45; cursor: default; }
+  .pill-sel:disabled { opacity: .5; cursor: default; }
+  .lbl-btn:disabled { color: inherit; }
+  /* «Что сейчас думает модель»: стекло на всю ширину, легенда графика строкой ниже; «подробнее» - поверх графика */
   #thRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 14px; margin-top: 12px; margin-bottom: 4px; font-size: 12px; position: relative; z-index: 4; flex: none; }
-  #sbThink { position: relative; flex: 1 1 400px; min-width: 0; padding: 5px 6px 5px 14px; }
+  #sbThink { position: relative; flex: 1 1 100%; min-width: 0; padding: 5px 6px 5px 14px; }
   .th-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .th-t { flex: none; }
   .th-head { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
   @media (min-height: 901px) { .th-head { -webkit-line-clamp: 2; } }
   .th-legend { display: flex; flex-wrap: wrap; gap: 12px; padding-right: 10px; margin-left: auto; }
-  .th-link { flex: none; font-size: 12px; opacity: .65; padding: .15em .55em; border-radius: 9999px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); transition: opacity .2s; }
-  .th-link:hover, .th-link[aria-expanded="true"] { opacity: 1; }
+  .th-link { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: color-mix(in srgb, var(--fg) 65%, transparent); padding: .15em .55em; border-radius: 9999px; transition: color .2s; }
+  .th-link:hover, .th-link:focus-visible { color: var(--ok); }
+  .th-link[aria-expanded="true"] { color: var(--fg); }
+  .th-link[aria-expanded="true"]:hover { color: var(--ok); }
+  .th-chev { width: 13px; height: 13px; transition: transform .2s; }
+  .th-link[aria-expanded="true"] .th-chev { transform: rotate(180deg); }
   .th-full { font-size: 14px; line-height: 1.45; margin-top: 4px; }
   .th-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 8px; font-size: 12px; }
   .th-bog { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
@@ -231,8 +309,17 @@
   .th-mode .mode-ico { width: .95em; height: .95em; }
   #sbThinkMore { position: absolute; left: -1px; right: -1px; top: calc(100% + 8px); z-index: 7; padding: 12px 16px 14px; max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; font-size: 13px; line-height: 1.45; }
   #sbThinkMore[hidden] { display: none; }
-  .th-lines { margin: 6px 0 0; padding-left: 18px; list-style: disc; }
-  .th-lines li + li { margin-top: 4px; }
+  /* строки панели: значок, подпись, значение; пояснения тусклее, вместо «;» тонкий разделитель */
+  .th-kv { margin: 8px 0 0; padding: 0; list-style: none; }
+  .th-kv li { display: grid; grid-template-columns: 16px 104px 1fr; column-gap: 10px; align-items: start; }
+  .th-kv li + li { margin-top: 7px; }
+  .th-ico { display: flex; height: 1.45em; align-items: center; opacity: .7; }
+  .th-ico svg { width: 15px; height: 15px; }
+  .th-k { font-size: 12px; line-height: 1.45em; padding-top: 1px; white-space: nowrap; }
+  .th-sub { opacity: .72; }
+  .th-nw { white-space: nowrap; }
+  .th-sep { display: inline-block; width: 6px; height: 13px; margin: 0 7px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; opacity: .35; }
+  @media (max-width: 767px) { .th-kv li { grid-template-columns: 16px 1fr; } .th-v { grid-column: 2; } }
   .th-sec { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
   .th-sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
   .th-sec b.th-title { font-family: var(--font-heading); font-weight: 500; font-size: 14px; }
@@ -248,15 +335,27 @@
   #map.collapsed #mapHead svg { transform: rotate(-90deg); }
   #map.collapsed #mapBody { display: none; }
   #map.collapsed #mapHead { margin-bottom: 0; }
-  /* «Как читать экран» — как окно «Как устроена модель» */
-  #sbHelpModal { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,.38); }
+  /* «Как читать экран» - как окно «Как устроена модель» */
+  #sbHelpModal { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  /* окна справки и значков: стекло без тени и без затемнения страницы */
+  #sbHelpModal > .glass, #mCard { box-shadow: none; }
   #sbHelpModal[hidden] { display: none; }
-  .help-list { margin: 16px 0 0; padding-left: 20px; list-style: disc; font-size: 15px; line-height: 1.55; }
-  .help-list li + li { margin-top: 8px; }
-  .help-list b { font-weight: 500; }
+  /* справка: шаги дорожной картой, номера в кружках на одной линии */
+  .help-steps { margin: 20px 0 0; padding: 0; list-style: none; counter-reset: hs; font-size: 15px; line-height: 1.5; }
+  .help-steps li { position: relative; padding: 2px 0 18px 44px; counter-increment: hs; }
+  .help-steps li:last-child { padding-bottom: 0; }
+  .help-steps li::before { content: counter(hs); position: absolute; left: 0; top: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; border: 1.5px solid color-mix(in srgb, var(--ok) 75%, transparent); color: var(--ok); font-family: var(--font-heading); font-size: 13px; font-weight: 500; }
+  .help-steps li::after { content: ''; position: absolute; left: 13.25px; top: 34px; bottom: 6px; width: 1.5px; border-radius: 9999px; background: color-mix(in srgb, var(--ok) 30%, transparent); }
+  .help-steps li:last-child::after { display: none; }
+  .help-steps b { display: block; margin-bottom: 6px; font-family: var(--font-heading); font-weight: 500; }
+  .help-cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 44px; }
+  .help-cols .help-steps + .help-steps { counter-reset: hs 4; }
+  @media (max-width: 767px) { .help-cols { grid-template-columns: 1fr; } .help-cols .help-steps + .help-steps { margin-top: 18px; } }
+  /* название кнопки страницы в тексте: как маленькая кнопка, без кавычек */
+  .help-ui { display: inline-block; font-size: .86em; line-height: 1.3; padding: 0 .5em; border: 1px solid var(--line); border-radius: 9999px; white-space: nowrap; }
   #helpBtn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
   #tZones > div { position: absolute; top: 50%; height: 3px; margin-top: -1.5px; border-radius: 9999px; }
-  /* правая колонка на 20 px шире исходной: четыре кнопки погоды и датчиков тележек */
+  /* правая колонка 360 px: в строку помещаются четыре кнопки погоды и датчиков тележек */
   #pres, #map { width: 360px; }
   @media (min-width: 900px) { #ctrl.ctrl-side { width: 360px; } }
   @media (min-width: 900px) and (max-width: 1199px) { #dash { width: calc(100% - 64px - 392px); } }
@@ -276,19 +375,19 @@
   <div class="flex items-center gap-4 sm:gap-9 min-w-0">
     <span class="flex items-center gap-3 flex-none">
       <span class="text-[21px] sm:text-[26px] tracking-tight" style="font-family: var(--font-heading); font-weight: 500;">Vectra</span>
-      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Песочница · ядро пакета</span>
+      <span class="badge-sub hidden sm:inline-flex items-center text-[12px] px-2.5 py-[3px] rounded-full border border-[var(--line)] opacity-80 whitespace-nowrap">Одометрия трамвая</span>
     </span>
   </div>
   <span id="modeNav" class="seg" role="radiogroup" aria-label="Режим страницы">
     <button role="radio" aria-checked="true" data-mode="sandbox" title="Песочница: имитатор трамвая и ядро пакета (JS-порт, сверен с Python)">Песочница</button>
     <button role="radio" aria-checked="false" data-mode="replay" title="Прогон данных комиссии: реальная запись, оценку считает пакет ROS 2"><span class="lg">Прогон данных комиссии</span><span class="sm">Прогон</span></button>
-    <button role="radio" aria-checked="false" data-mode="live" title="Живой ROS 2: выходы ноды через rosbridge">Живой ROS 2</button>
+    <button role="radio" aria-checked="false" data-mode="live" title="Живой ROS 2: выходы ноды через rosbridge" hidden>Живой ROS 2</button>
   </span>
   <div class="flex items-center gap-1.5 sm:gap-2 flex-none">
     <button class="icon-btn" data-open="model" aria-pressed="false" aria-label="Как устроена модель" title="Как устроена модель">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15c2.5 0 3-8 6-8s3 5 6 5"/></svg>
     </button>
-    <button class="icon-btn" data-open="ros" aria-pressed="false" aria-label="Пакет ROS 2" title="Пакет ROS 2: топики, схема ноды, время шага ядра">
+    <button class="icon-btn" data-open="ros" hidden aria-pressed="false" aria-label="Пакет ROS 2" title="Пакет ROS 2: топики, схема ноды, время шага ядра">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
     </button>
     <button class="icon-btn" data-open="metrics" aria-pressed="false" aria-label="Метрики" title="Метрики: модель против колеса по условиям">
@@ -297,7 +396,7 @@
     <button id="presBtn" class="icon-btn" aria-pressed="false" aria-label="Показ 60 секунд" title="Показ 60 с: проведёт по главным сценариям и покажет метрики">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
     </button>
-    <button id="recBtn" class="icon-btn" data-open="replay" aria-pressed="false" aria-label="Запись поездки" title="Запись поездки">
+    <button id="recBtn" class="icon-btn" data-open="replay" hidden aria-pressed="false" aria-label="Запись поездки" title="Запись поездки">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2" fill="#D6443A" stroke="none"/></svg>
     </button>
     <button id="helpBtn" class="icon-btn" aria-pressed="false" aria-label="Как читать экран" title="Как читать экран песочницы">
@@ -318,7 +417,7 @@
   <div id="ctrl" class="glass map-glass rounded-2xl p-4 mt-3 text-[12px]" aria-label="Управление сценарием">
     <div class="flex items-center justify-between -mx-4 px-4 pb-3 mb-3 border-b border-[var(--line)]">
       <span class="text-[14px]" style="font-family: var(--font-heading); font-weight: 500;">Управление</span>
-      <span id="gPill" class="flex items-center gap-1.5 text-[12px]" style="color: var(--ok);" title="Спутники. Модели GNSS нужен только в первые 3 с — для выставки положения">
+      <span id="gPill" class="flex items-center gap-1.5 text-[12px]" style="color: var(--ok);" title="Спутники. Скорость и путь модель считает без GNSS. В пакете GNSS выставляет положение на старте и поправляет его на карте">
         <span id="gDot" class="inline-block w-1.5 h-1.5 rounded-full" style="background: var(--ok);"></span>GNSS <span id="bG">на связи</span>
       </span>
     </div>
@@ -326,7 +425,7 @@
       <span class="ctrl-l">Сценарий</span>
       <span class="sc-row">
         <button id="scBtn" class="sc-pill" aria-haspopup="dialog" aria-expanded="false" aria-controls="scPop" title="Выбрать сценарий"><span id="scName">Свободная поездка</span><span id="sbTime" class="sc-time num">0:00</span><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="sc-prog" aria-hidden="true"><span id="scBar"></span></span></button>
-        <button id="sbSpd" class="sc-spd num" aria-label="Скорость времени ×4" title="Скорость времени: ×1 как в жизни, ×4, ×10 — нажмите, чтобы сменить">×4</button>
+        <button id="sbSpd" class="sc-spd num" aria-label="Скорость времени ×4" title="Скорость времени: ×1 как в жизни, ×4, ×10 - нажмите, чтобы сменить">×4</button>
       </span>
       <span class="ctrl-l">Движение</span>
       <span class="flex flex-wrap items-center gap-2 w-full">
@@ -339,13 +438,13 @@
         </button>
         <span class="seg seg-full flex-1 ctrl-mob-hide" role="radiogroup" aria-label="Кто ведёт вагон">
           <button role="radio" aria-checked="true" data-drive="auto" title="Ведёт автоводитель сценария">Авто</button>
-          <button role="radio" aria-checked="false" data-drive="manual" title="Ведёте вы: W/S или ↑/↓ — позиция ручки, пробел — выбег">Ручное</button>
+          <button role="radio" aria-checked="false" data-drive="manual" title="Ведёте вы: W/S или ↑/↓ - позиция ручки, пробел - выбег">Ручное</button>
         </span>
         <span id="handleRow" class="flex items-center gap-2 w-full" hidden>
           <span id="handleSeg" class="seg seg-full flex-1" role="radiogroup" aria-label="Ручка контроллера">
-            <button role="radio" aria-checked="false" data-sbh="15" title="Полная тяга +15 (W или ↑ — на позицию выше)">Тяга</button>
+            <button role="radio" aria-checked="false" data-sbh="15" title="Полная тяга +15 (W или ↑ - на позицию выше)">Тяга</button>
             <button role="radio" aria-checked="true" data-sbh="0" title="Выбег (пробел)">Выбег</button>
-            <button role="radio" aria-checked="false" data-sbh="-15" title="Полный тормоз −15 (S или ↓ — на позицию ниже)">Тормоз</button>
+            <button role="radio" aria-checked="false" data-sbh="-15" title="Полный тормоз −15 (S или ↓ - на позицию ниже)">Тормоз</button>
           </span>
           <b id="sbHandleV" class="num" title="Позиция ручки −15…+15">0</b>
         </span>
@@ -374,7 +473,7 @@
     <div class="mt-3 pt-3 -mx-4 px-4 border-t border-[var(--line)]">
       <div class="ctrl-l mb-2">Условия</div>
       <div class="cond-row">
-        <button class="sw-btn" role="switch" aria-checked="false" id="swUrban" title="Плотная застройка, спутники пропадают. Модели GNSS нужен только на старте" style="--sw: var(--warn);"><span class="sw-track"><span class="sw-knob"></span></span>Застройка</button>
+        <button class="sw-btn" role="switch" aria-checked="false" id="swUrban" title="Плотная застройка: спутники пропадают. Скорость и путь модель считает без GNSS" style="--sw: var(--warn);"><span class="sw-track"><span class="sw-knob"></span></span>Застройка</button>
         <button class="sw-btn" role="switch" aria-checked="false" id="swRush" title="Час пик: вагон на 30 % тяжелее. Модель об этом не знает" style="--sw: var(--ok);"><span class="sw-track"><span class="sw-knob"></span></span>Час пик</button>
         <button class="sw-btn" role="switch" aria-checked="true" id="swWsp" title="Защита от буксования и юза в имитаторе (как на вагоне)" style="--sw: var(--ok);"><span class="sw-track"><span class="sw-knob"></span></span>Защита от юза</button>
       </div>
@@ -389,22 +488,21 @@
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 mt-4">
     <div><div class="k">Скорость, модель</div><div class="big text-[28px] sm:text-[34px]" style="color: var(--ok);"><span id="bV">0</span><span class="text-[13px] opacity-60"> км/ч</span></div><div class="k" title="Тормозной путь по верхней границе скорости (+2σ) и оценке сцепления μ">тормозной путь <span id="bBrake" style="color: var(--ok);">0 м</span></div></div>
     <div><div class="k" title="База «только колесо»: среднее свежих показаний тележек (как в tools/eval.py)">Колесо, среднее тележек</div><div class="big text-[28px] sm:text-[34px]" style="color: var(--warn);"><span id="bW">0</span><span class="text-[13px] opacity-60"> км/ч</span></div><div class="k" title="Средняя абсолютная ошибка скорости с начала сценария против истины имитатора: модель / только колесо">ошибка, км/ч <span id="bEm" style="color: var(--ok);">0.00</span> / <span id="bEb" style="color: var(--warn);">0.00</span></div></div>
-    <div><div class="k">Путь, модель</div><div class="big text-[28px] sm:text-[34px]"><span id="bS">0</span><span class="text-[13px] opacity-60"> м</span></div><div class="k" title="Неопределённость пути ±2σ; путь — от старта сценария, чистая одометрия (без карты и привязок к остановкам)">± <span id="bSig">0.0</span> м (2σ)</div></div>
+    <div><div class="k">Путь, модель</div><div class="big text-[28px] sm:text-[34px]"><span id="bS">0</span><span class="text-[13px] opacity-60"> м</span></div><div class="k" title="Неопределённость пути ±2σ; путь - от старта сценария, чистая одометрия (без карты и привязок к остановкам)">± <span id="bSig">0.0</span> м (2σ)</div></div>
     <div><div class="k">Режим</div><div class="big text-[22px] sm:text-[26px] pt-[4px] flex items-center gap-2 whitespace-nowrap" id="bH">Стоянка</div><div class="k truncate" id="bHsub">вагон стоит, скорость ноль</div></div>
   </div>
 
-  <div class="k mt-2" id="sbNote">Песочница: имитатор трамвая — приближение; оценку считает <span id="sbPort">ядро пакета</span>, лист жюри <span id="sbSheet"></span>. Реальные записи — «Прогон данных комиссии».</div>
+  <div class="k mt-2" id="sbNote">Песочница: имитатор трамвая - приближение; оценку считает <span id="sbPort">ядро пакета</span>, лист жюри <span id="sbSheet"></span>. Реальные записи - «Прогон данных комиссии».</div>
 
   <div id="thRow">
     <div id="sbThink" class="glass map-glass rounded-2xl" aria-live="off" aria-label="Что сейчас думает модель">
-      <div class="th-h"><span class="k th-t">Модель думает</span><span id="thHead" class="th-head">Вагон на старте: ждём первых сообщений тележек и ручки.</span><button id="thMoreBtn" class="th-link" aria-expanded="false" aria-controls="sbThinkMore" title="Что сейчас думает модель — подробно">подробнее</button></div>
+      <div class="th-h"><span class="k th-t">Модель думает</span><span id="thHead" class="th-head">Вагон на старте: ждём первых сообщений тележек и ручки.</span><button id="thMoreBtn" class="th-link" aria-expanded="false" aria-controls="sbThinkMore" title="Что сейчас думает модель: подробно"><span id="thMoreTxt">подробнее</span><svg class="th-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>
       <div id="sbThinkMore" class="glass map-glass rounded-2xl" hidden>
         <div class="th-sec"><div class="flex flex-wrap items-center gap-2"><b class="th-title">Что сейчас думает модель</b><span id="thMode" class="th-mode"></span></div><div id="thHeadFull" class="th-full"></div>
           <div class="th-row"><span id="thBog0" class="th-bog"></span><span id="thBog1" class="th-bog"></span><span id="thFlags" class="th-flags"></span></div></div>
         <div class="th-sec"><div class="k">Сценарий ждёт от модели:</div><div id="thExpect"></div></div>
-        <div class="th-sec"><div class="k">Модель:</div><ul id="thLines" class="th-lines"></ul></div>
-        <div class="th-sec"><div class="k">На самом деле (имитатор; модели это не известно):</div><ul id="thTruth" class="th-lines"></ul></div>
-        <div class="th-sec"><button id="sbHelpBtn" class="th-link" style="padding-left:0">Как читать экран</button></div>
+        <div class="th-sec"><div class="k">Модель:</div><ul id="thLines" class="th-kv"></ul></div>
+        <div class="th-sec"><div id="thTruthK" class="k">На самом деле (имитатор, модели это не известно):</div><ul id="thTruth" class="th-kv"></ul></div>
       </div>
     </div>
     <span class="th-legend mob-hide">
@@ -449,12 +547,13 @@
   </div>
 </aside>
 
-<!-- ПРОГОН ДАННЫХ КОМИССИИ / ЖИВОЙ ROS 2: общий экран, данные — из экспорта прогона или из rosbridge -->
+<!-- ПРОГОН ДАННЫХ КОМИССИИ / ЖИВОЙ ROS 2: общий экран, данные - из экспорта прогона или из rosbridge -->
 <section id="runView" hidden aria-label="Прогон данных комиссии">
-  <div class="flex flex-wrap items-center justify-between gap-3">
+  <div id="rvHead" class="flex flex-wrap items-center justify-between gap-3">
     <h1 id="rvTitle" class="rv-title m-0">Прогон данных комиссии</h1>
     <span id="rvSub" class="k"></span>
   </div>
+  <div class="rv-tools">
   <div id="rvBarReplay" class="rv-bar">
     <select id="rvSel" class="rv-sel" aria-label="Прогон и вариант"></select>
     <button id="rvPlay" class="rv-btn" aria-pressed="false">Пуск</button>
@@ -473,7 +572,7 @@
     <span id="rvLiveSt" class="rv-pill" style="color: var(--fg); opacity: .7;"><span class="dot"></span><span>не подключено</span></span>
     <span id="rvRates" class="k num"></span>
   </div>
-  <div class="rv-bar">
+  <div class="rv-bar rv-win">
     <span class="k">Окно графиков</span>
     <span class="seg" role="radiogroup" aria-label="Окно графиков">
       <button role="radio" aria-checked="false" data-rvwin="60">1 мин</button>
@@ -481,10 +580,11 @@
       <button role="radio" aria-checked="false" data-rvwin="0">весь прогон</button>
     </span>
   </div>
-  <div id="rvNote" class="rv-note"></div>
+  </div>
+  <div id="rvNote" class="rv-note rv-clamp" title="Нажмите, чтобы развернуть"></div>
   <div class="rv-grid">
-    <div class="rv-col">
-      <div class="rv-card">
+    <div class="rv-col rv-charts">
+      <div class="rv-card rv-sp">
         <div class="rv-h"><b>Скорость, км/ч</b>
           <span class="rv-lg">
             <span><i style="background:#0E9AA7"></i>модель ± 2σ</span>
@@ -497,33 +597,34 @@
         <div class="rv-cv h-sp"><canvas id="rvSpeed" aria-label="Скорость: модель, база, эталон"></canvas><div id="rvOver" class="rv-over" hidden></div></div>
         <canvas id="rvStrip" class="rv-strip" aria-hidden="true" title="Полоса режимов оценщика"></canvas>
       </div>
-      <div class="rv-card">
-        <div class="rv-h"><b>Ошибка скорости относительно GNSS, км/ч</b><span class="k">полоса — ±2σ модели</span></div>
+      <div class="rv-card rv-er">
+        <div class="rv-h"><b>Ошибка скорости относительно GNSS, км/ч</b><span class="k">полоса - ±2σ модели</span></div>
         <div class="rv-cv h-er"><canvas id="rvErrV" aria-label="Ошибка скорости"></canvas></div>
-        <div class="rv-h" style="margin-top:10px"><b id="rvErrSh">Ошибка пути вдоль трассы относительно GNSS, м</b><span class="k" id="rvErrSk">полоса — ±2σ пути</span></div>
+        <div class="rv-h" style="margin-top:10px"><b id="rvErrSh">Ошибка пути вдоль трассы относительно GNSS, м</b><span class="k" id="rvErrSk">полоса - ±2σ пути</span></div>
         <div class="rv-cv h-er"><canvas id="rvErrS" aria-label="Ошибка положения"></canvas></div>
       </div>
     </div>
-    <div class="rv-col">
+    <div class="rv-col rv-s1">
       <div class="rv-card" id="rvStatus" aria-live="off"></div>
       <div class="rv-card" id="rvMetrics"></div>
-      <div class="rv-card">
+    </div>
+    <div class="rv-col rv-s2">
+      <div class="rv-card rv-plan" id="rvPlan">
         <div class="rv-h"><b>План, м</b>
-          <span class="seg" role="radiogroup" aria-label="Масштаб плана">
+          <span class="rv-hr"><span class="seg" role="radiogroup" aria-label="Масштаб плана">
             <button role="radio" aria-checked="true" data-rvzoom="all">весь маршрут</button>
             <button role="radio" aria-checked="false" data-rvzoom="near">у вагона</button>
-          </span>
+          </span><button class="rv-info" type="button" aria-expanded="false" aria-label="Что показано на плане" title="Что показано на плане"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></svg></button></span>
         </div>
         <div class="rv-cv h-map"><canvas id="rvMap" aria-label="План: трасса GNSS, модель и база"></canvas></div>
-        <div id="rvMapNote" class="rv-note"></div>
-        <div id="rvRefNote" class="rv-note"></div>
+        <div class="rv-pop"><div id="rvMapNote" class="rv-note"></div><div id="rvRefNote" class="rv-note"></div></div>
       </div>
     </div>
   </div>
 </section>
 
 <!-- INFO MODAL -->
-<div id="modal" class="fixed inset-0 z-40 items-center justify-center p-4" style="display:none; background: rgba(0,0,0,.38);">
+<div id="modal" class="fixed inset-0 z-40 items-center justify-center p-4" style="display:none;">
   <div id="mCard" class="glass relative w-full max-w-[600px] max-h-full overflow-auto rounded-2xl p-6 sm:p-8" role="dialog" aria-modal="true" aria-labelledby="mTitle">
     <button id="mClose" class="absolute right-5 top-4 text-[26px] leading-none hover:opacity-60 transition-opacity" aria-label="Закрыть">×</button>
     <h2 id="mTitle" class="text-[24px] sm:text-[28px] tracking-tight pr-8" style="font-family: var(--font-heading); font-weight: 500;"></h2>
@@ -537,20 +638,22 @@
 
 <!-- КАК ЧИТАТЬ ЭКРАН -->
 <div id="sbHelpModal" hidden>
-  <div class="glass relative w-full max-h-full overflow-auto rounded-2xl p-6 sm:p-8" style="max-width: 760px;" role="dialog" aria-modal="true" aria-labelledby="sbHelpTitle">
+  <div class="glass relative w-full max-h-full overflow-auto rounded-2xl p-6 sm:p-8" style="max-width: 1040px;" role="dialog" aria-modal="true" aria-labelledby="sbHelpTitle">
     <button id="sbHelpClose" class="absolute right-5 top-4 text-[26px] leading-none hover:opacity-60 transition-opacity" aria-label="Закрыть">×</button>
     <h2 id="sbHelpTitle" class="text-[24px] sm:text-[28px] tracking-tight pr-8" style="font-family: var(--font-heading); font-weight: 500;">Как читать экран</h2>
-    <ul class="help-list">
-      <li><b>Что здесь настоящее.</b> Скорость, путь, ±2σ, режим и решения по тележкам считает <b>ядро пакета</b> — estimator_core.py и шаг связки Runner, перенесённые в JavaScript и сверенные с Python (расхождение не больше 2·10⁻¹² м/с), с <b>листом жюри</b> config/tram.yaml — тем же, что запустит комиссия. Вход у него тот же, что у ноды: две тележки в км/ч и ручка −15…+15. GNSS модель не получает вовсе (в ноде он нужен только в первые 3 с для выставки положения).</li>
-      <li><b>Что здесь приближение.</b> «Истину» даёт <b>имитатор</b>: вагон с двумя тележками в 7,55 м друг от друга, сцепление с падающей характеристикой, колёса, которые могут буксовать и юзить, уклон, масса, датчики с шумом и пропусками. Сила привода — из той же таблицы, что у модели; погода и защита от юза подобраны на глаз. Линия — pathgraph организаторов (Щукинская — Таллинская), остановки — из карты пакета.</li>
-      <li><b>Сцена.</b> Вагон едет вправо, передняя тележка — справа. Под тележками — их показание и решение модели: <span style="color:#0E9AA7">принята</span>, <span style="color:#E89B0C">отброшена</span> (и почему), <span style="color:#D6443A">исключена</span> как неисправная. Колесо с синим ореолом буксует, с искрами — юзит, красное — заблокировано. Полоса на кузове — режим модели: бирюзовая — всё хорошо, синяя — срыв сцепления, красная — колёсам верить нечему, оранжевая — нет спутников (модели они и не нужны). Рельс синеет в дождь, белеет на наледи, буреет в листопад; в застройке спутники пропадают.</li>
-      <li><b>Цифры сверху.</b> Скорость по модели и тормозной путь по её верхней границе; «колесо» — просто среднее показаний тележек (база из оценки); ошибка — средняя с начала сценария против истины; путь по модели и его ±2σ; режим модели.</li>
-      <li><b>График.</b> Пунктир — истина, <span style="color:#0E9AA7">бирюзовая</span> линия — модель, заливка — её <b>±2σ</b> (на реальных записях истина внутри 94,7 % времени; в песочнице полоса шире — ~99 %), <span style="color:#E89B0C">оранжевая</span> — «только колесо», тонкий пунктир — сами тележки. Фон: красный — отказ датчиков, синий — скользкий рельс, жёлтый — масса, уклон или нет GNSS. Полоса под графиком — режим модели.</li>
-      <li><b>«Модель думает»</b> — строка над графиком: простыми словами, кому из тележек модель верит и почему. «Подробнее» — решение по каждой тележке, флаги, режим, сцепление μ, масштабы привода, неопределённость, что сценарий ждёт от модели и что на самом деле происходит в имитаторе (модели это не известно).</li>
-      <li><b>Управление.</b> «Сценарий» — готовые трудности одной кнопкой или свободная поездка по всей линии; в строке — время сценария, полоска его хода и скорость времени ×1 / ×4 / ×10. «Стоп» в свободной поездке — как в исходной песочнице: вагон тормозит до остановки и стоит, время идёт; «Старт» — поехали дальше. В сценариях время расписано, и кнопка там — «Пауза / Дальше»: время сценария стоит. Пробел — то же. «Ручное» — ведёте сами: W/S или ↑/↓ — позиция ручки, пробел — выбег. Погода и застройка в свободной поездке начинаются в 100 м впереди («Впереди: … через N м»), в сценариях — сразу на всей линии поверх сценария; датчики и условия меняют имитатор сразу; ↺ у подписи возвращает как в сценарии.</li>
-      <li><b>Значки сверху.</b> Как устроена модель · пакет ROS 2 (топики, схема ноды, время шага ядра) · метрики по условиям · показ на 60 с · запись поездки · эта справка · день и ночь. Карта справа — линия, кривые, профиль высот (наведите курсор).</li>
-      <li><b>Реальные данные</b> — режим «Прогон данных комиссии»: там оценку считает сам пакет ROS 2 по отложенной записи, эталон — GNSS. Путь в песочнице — чистая одометрия: привязок к остановкам и карты, которые есть в ноде, здесь нет.</li>
-    </ul>
+    <div class="help-cols">
+    <ol class="help-steps">
+      <li><b>Модель</b>Считает тот же код, что в пакете ROS 2, перенесённый в браузер. Видит только то, что видит нода в вагоне: показания двух тележек и положение ручки. По ним модель находит настоящую скорость и пройденный путь.</li>
+      <li><b>Имитатор</b>Трамвай, погода и поломки датчиков здесь придуманы. Зато имитатор знает настоящую скорость, и по ней мы проверяем модель. Линия настоящая: от Щукинской до Таллинской.</li>
+      <li><b>Цифры сверху</b>Слева <span style="color:#0E9AA7">скорость по модели</span>, рядом <span style="color:#E89B0C">скорость по колесу</span>: простое среднее двух тележек. Под ними средняя ошибка каждой, у модели она должна быть меньше.</li>
+      <li><b>Сцена</b>Под каждой тележкой её показание и решение модели: <span style="color:#0E9AA7">принята</span>, <span style="color:#E89B0C">отброшена</span>, когда колесо буксует или юзит, или <span style="color:#D6443A">исключена</span>, когда датчик сломан.</li>
+    </ol>
+    <ol class="help-steps">
+      <li><b>График за 60 с</b>Пунктир показывает истину, <span style="color:#0E9AA7">бирюзовая</span> линия модель, <span style="color:#E89B0C">оранжевая</span> колесо. Светлая полоса вокруг модели (±2σ) показывает, где по её расчёту может быть истина: у хорошей модели истина внутри около 95 % времени. Красный фон значит отказ датчика, синий скользкий рельс.</li>
+      <li><b>Модель думает</b>Строка над графиком одной фразой говорит, каким тележкам модель сейчас верит и почему. Кнопка <span class="help-ui">подробнее</span> раскрывает то же по пунктам.</li>
+      <li><b>Управление</b><span class="help-ui">Сценарий</span> выбирает готовую трудность или свободную поездку. <span class="help-ui">Стоп</span> или <span class="help-ui">Пауза</span> останавливает, <span class="help-ui">×4</span> меняет скорость времени. Погоду и поломки датчиков включают кнопки, а то, что задаёт сценарий, на это время заблокировано. В режиме <span class="help-ui">Ручное</span> вагон ведёте вы: клавиши W и S или стрелки.</li>
+    </ol>
+    </div>
   </div>
 </div>
 
@@ -568,7 +671,7 @@
 <script src="js/runner.js"></script>
 <script src="js/sheet.js"></script>
 <script src="js/track.js"></script>
-<!-- имитатор (приближение), сценарии; сцена и табло песочницы в исходном стиле -->
+<!-- имитатор (приближение), сценарии; сцена и табло песочницы -->
 <script src="js/plant.js"></script>
 <script src="js/sandbox.js"></script>
 <script src="js/scene.js"></script>
@@ -695,15 +798,15 @@
   $('rvSel').addEventListener('change', e => selectReplay(e.target.value));
   function replayNote() {
     const M = D.meta, S = D.summary;
-    // пометка утечки пишется экспортёром (sheet_leak); у старых файлов — по пути листа
+    // пометка утечки пишется экспортёром (sheet_leak); у старых файлов - по пути листа
     const leak = 'sheet_leak' in M ? M.sheet_leak : (/\/eval\//.test(M.sheet || '') ? null : 'лист не оценочный: подогнан по всем записям, включая эту');
-    const sheetW = leak ? ` <span class="rv-warn">${leak}. Оценочный лист (только обучающие) — config/eval/; когда он появится, прогон перегенерировать (tools/export_replay.py).</span>` : '';
+    const sheetW = leak ? ` <span class="rv-warn">${leak}. Оценочный лист (только обучающие) - config/eval/; когда он появится, прогон перегенерировать (tools/export_replay.py).</span>` : '';
     const inj = M.inject && M.inject.t0 != null ? ` Аномалия: <b>${M.inject.ru.toLowerCase()}</b>, с ${fmtT(M.inject.t0 - M.t0)}; внесена в записанные входы тележек (${M.inject.src}).` : '';
-    $('rvNote').innerHTML = `Запись <b>${M.run}</b> (${fmtT(M.dur)}, ${(S.path_m / 1000).toFixed(2)} км) — ${M.split === 'holdout_scored' ? 'отложенная: в подборе карты и разбиения не участвовала' : 'обучающая'}. `
-      + `Оценку посчитал пакет ROS 2 офлайн той же связкой, что нода (Runner, лист ${M.sheet}${M.sheet_label ? ' — ' + M.sheet_label : ''}, карта ${M.map || 'нет'}); сообщения в порядке записи, GNSS в оценщик — только первые 3 с, дальше он только эталон.${inj}${sheetW}`;
+    $('rvNote').innerHTML = `Запись <b>${M.run}</b> (${fmtT(M.dur)}, ${(S.path_m / 1000).toFixed(2)} км) - ${M.split === 'holdout_scored' ? 'отложенная: в подборе карты и разбиения не участвовала' : 'обучающая'}. `
+      + `Оценку посчитал пакет ROS 2 офлайн той же связкой, что нода (Runner, лист ${M.sheet}${M.sheet_label ? ' - ' + M.sheet_label : ''}, карта ${M.map || 'нет'}); сообщения в порядке записи, GNSS в оценщик - только первые 3 с, дальше он только эталон.${inj}${sheetW}`;
     const refL = M.frame.ref_label || 'антенна GNSS master';
     $('rvRefNote').textContent = '';
-    $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране — метры от первой точки эталона (x — восток, y — север). Эталон положения — ${refL}: та же точка вагона, что на выходе модели. Серая полоса — трасса эталона, фиолетовый пунктир — pathgraph организаторов (ось пути, оба направления). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
+    $('rvMapNote').textContent = `Плоскость: ${M.frame.label}; на экране - метры от первой точки эталона (x - восток, y - север). Эталон положения - ${refL}: та же точка вагона, что на выходе модели. Серая полоса - трасса эталона, фиолетовый пунктир - pathgraph организаторов (ось пути, оба направления). Судья считает положение в MGRS; ошибки в плане от сдвига начала не зависят.`;
     $('rvSub').textContent = `экспорт ${M.made || ''}${M.git ? ', git ' + M.git : ''}`;
   }
 
@@ -723,7 +826,7 @@
 
   // ---------------------------------------------------------------- помощники
   const fmtT = s => { s = Math.max(0, s); const m = Math.floor(s / 60), x = Math.floor(s % 60); return `${m}:${String(x).padStart(2, '0')}`; };
-  const f = (x, d = 2) => (x === null || x === undefined || !isFinite(x)) ? '—' : x.toFixed(d);
+  const f = (x, d = 2) => (x === null || x === undefined || !isFinite(x)) ? 'н/д' : x.toFixed(d);
   function upper(arr, t) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= t) lo = m + 1; else hi = m; } return lo; }   // число элементов <= t
   function fit(c) {
     const dpr = Math.min(2, devicePixelRatio || 1), w = c.clientWidth, h = c.clientHeight;
@@ -856,7 +959,7 @@
   function fmtNum(v) { const a = Math.abs(v); return a >= 10 ? v.toFixed(0) : a >= 1 ? v.toFixed(1).replace(/\.0$/, '') : v.toFixed(2); }
   // pathgraph организаторов (js/track.js) в плоскости экрана: метры UTM зоны 37 от первой
   // точки GNSS master (прогон: meta.frame.origin; живой режим: первая точка, которую
-  // увидела страница). Координаты pathgraph — MGRS 37UCB без переноса = UTM37 − (300 км; 6100 км).
+  // увидела страница). Координаты pathgraph - MGRS 37UCB без переноса = UTM37 − (300 км; 6100 км).
   const PG = { key: null, dirs: null };
   function pathgraphLocal() {
     const TR = window.TV_TRACK; if (!TR || !D) return null;
@@ -876,7 +979,7 @@
     c.clearRect(0, 0, w, h);
     if (!D || !D.n) return;
     const i = Math.max(0, upper(D.t, nowT()) - 1);
-    // границы: весь маршрут — по трассе GNSS (прогон) или по накопленным точкам (живой)
+    // границы: весь маршрут - по трассе GNSS (прогон) или по накопленным точкам (живой)
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     const acc = (x, y) => { if (isFinite(x) && isFinite(y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } };
     const TR = D.track || { x: [], y: [] };
@@ -903,14 +1006,14 @@
     };
     trail(D.nx, D.ny, C_NAIVE, 1.6);
     trail(D.x, D.y, C_OK, 2.2);
-    // pathgraph организаторов — тонкий пунктир поверх следов (ось пути, оба направления)
+    // pathgraph организаторов - тонкий пунктир поверх следов (ось пути, оба направления)
     const pg = pathgraphLocal();
     if (pg) {
       c.strokeStyle = '#7a5cd6'; c.globalAlpha = .9; c.lineWidth = 1.3; c.setLineDash([5, 4]);
       for (const d of pg) { c.beginPath(); for (let k = 0; k < d.x.length; k++) { const [px, py] = P(d.x[k], d.y[k]); if (k) c.lineTo(px, py); else c.moveTo(px, py); } c.stroke(); }
       c.setLineDash([]); c.globalAlpha = 1;
     }
-    // текущие точки: эталон, модель, база; ошибка модели — отрезок до эталона
+    // текущие точки: эталон, модель, база; ошибка модели - отрезок до эталона
     let gi = i; while (gi > 0 && !isFinite(D.gx[gi]) && i - gi < 30) gi--;
     const gOk = isFinite(D.gx[gi]), mOk = isFinite(D.x[i]), nOk = isFinite(D.nx[i]);
     if (gOk && mOk) { const [a, b] = P(D.gx[gi], D.gy[gi]), [p, q] = P(D.x[i], D.y[i]); c.strokeStyle = C_BAD; c.lineWidth = 1.2; c.beginPath(); c.moveTo(a, b); c.lineTo(p, q); c.stroke(); }
@@ -937,7 +1040,8 @@
       return `<div class="rv-bog"><div class="k">${name}</div><div class="big num">${f(val, 1)} <span class="k">км/ч</span></div><span class="rv-chip" style="${col ? `color:${col}` : 'opacity:.6'}">${txt}</span></div>`;
     };
     const live = D.live;
-    return `<div class="rv-h"><b>Состояние оценщика</b><span class="k num">t = ${fmtT(D.t[i])}${D.inj[i] ? ' · <span style="color:#D6443A">аномалия</span>' : ''}</span></div>
+    const on = $('rvStatus').classList.contains('pop-on');
+    return `<div class="rv-h"><b>Состояние оценщика</b><span class="rv-hr"><span class="k num">t = ${fmtT(D.t[i])}${D.inj[i] ? ' · <span style="color:#D6443A">аномалия</span>' : ''}</span><button class="rv-info" type="button" aria-expanded="${on}" aria-label="Как читать состояние тележек" title="Как читать состояние тележек"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></svg></button></span></div>
       <div class="rv-mode" style="color:${m === 'STANDSTILL' ? 'var(--fg)' : M_COL[m]}">${ico ? `<span class="mode-ico">${ico}</span>` : ''}<span>${M_RU[m]}</span></div>
       <div class="k">${M_SUB[m]}</div>
       <div class="rv-flags">
@@ -945,7 +1049,7 @@
         ${flag(fl & 2, 'срыв', '#5AA9D6', 'slip: признак срыва сцепления')}
         ${flag(fl & 4, 'стоим или скользим?', '#5AA9D6', 'ambiguous: все колёса в срыве, скорость по колёсам не различить')}
         ${flag(!(fl & 8), 'нет ручки', C_BAD, 'handle_ok = false: нет свежей команды ручки')}
-        ${flag(fl & 16, 'колёса молчат', C_BAD, 'wheels_stale: нет показаний тележек дольше 1 с — только модель')}
+        ${flag(fl & 16, 'колёса молчат', C_BAD, 'wheels_stale: нет показаний тележек дольше 1 с - только модель')}
         ${flag(fl & 32, 'положение выставлено', C_OK, 'pos_ready: выставка по GNSS прошла')}
       </div>
       <div class="rv-bogies">${bog('Передняя тележка', D.fr[i], D.b0[i])}${bog('Задняя тележка', D.rr[i], D.b1[i])}</div>
@@ -954,13 +1058,13 @@
         <div><div class="k">база, км/ч</div><div style="color:${C_NAIVE}">${f(D.nv[i] * 3.6, 1)}</div></div>
         <div><div class="k">GNSS, км/ч</div><div>${f(D.gv[i] * 3.6, 1)}</div></div>
         <div><div class="k">путь, м</div><div>${f(D.s[i], 0)} ± ${f(2 * D.ss[i], 1)}</div></div>
-        <div><div class="k">ручка</div><div>${isFinite(D.h[i]) ? (D.h[i] > 0 ? '+' : '') + D.h[i] : '—'}</div></div>
-        <div><div class="k">принято / отвергнуто</div><div>${isFinite(D.na[i]) ? D.na[i] : '—'} / ${isFinite(D.nr[i]) ? D.nr[i] : '—'}</div></div>
+        <div><div class="k">ручка</div><div>${isFinite(D.h[i]) ? (D.h[i] > 0 ? '+' : '') + D.h[i] : 'н/д'}</div></div>
+        <div><div class="k">принято / отвергнуто</div><div>${isFinite(D.na[i]) ? D.na[i] : 'н/д'} / ${isFinite(D.nr[i]) ? D.nr[i] : 'н/д'}</div></div>
         <div><div class="k">сцепление μ</div><div>${f(D.mu[i], 3)}</div></div>
         <div><div class="k">масштаб k<sub>т</sub> / k<sub>б</sub></div><div>${f(D.kt[i], 2)} / ${f(D.kb[i], 2)}</div></div>
         <div><div class="k">возмущение d, м/с²</div><div>${f(D.d[i], 2)}</div></div>
       </div>
-      <div class="rv-note">${live ? 'Тележки: «принята/отвергнута» выведены из n_accepted, n_rejected и wheel_healthy статуса (по тележкам причины в сообщении пока нет).' : 'Состояние тележек — последнее решение фильтра по её показанию: принята, отвергнута проверкой правдоподобия или срывом, исключена как неисправная.'}</div>`;
+      <div class="rv-pop"><div class="rv-note">${live ? 'Тележки: «принята/отвергнута» выведены из n_accepted, n_rejected и wheel_healthy статуса (по тележкам причины в сообщении пока нет).' : 'Состояние тележек - последнее решение фильтра по её показанию: принята, отвергнута проверкой правдоподобия или срывом, исключена как неисправная.'}</div></div>`;
   }
   function metricsAt(tc) {
     const pv = D.pv, pp = D.pp, k = upper(pv.t, tc), r = {};
@@ -968,7 +1072,7 @@
     const kp = upper(pp.t, tc);
     r.np = kp; r.h = kp ? pp.ch[kp] / kp : NaN; r.hn = pp.kn[kp] ? pp.chn[kp] / pp.kn[kp] : NaN;
     // дрейф на курсоре: ошибка на последней паре (вдоль трассы; если оценка ушла с
-    // трассы — в плане) / путь по эталону до неё; в конце прогона — «накопленный дрейф» ТЗ
+    // трассы - в плане) / путь по эталону до неё; в конце прогона - «накопленный дрейф» ТЗ
     const j = kp - 1, e = x => isFinite(x);
     r.drift = j >= 0 && pp.sr[j] > 100 ? 100 * (e(pp.al[j]) ? Math.abs(pp.al[j]) : pp.h[j]) / pp.sr[j] : NaN;
     r.driftN = j >= 0 && pp.sr[j] > 100 ? 100 * (e(pp.aln[j]) ? Math.abs(pp.aln[j]) : pp.hn[j]) / pp.sr[j] : NaN;
@@ -987,9 +1091,9 @@
     const tc = nowT(), r = metricsAt(tc), S = D.summary, live = D.live;
     const row = (name, a, b, title) => `<tr title="${title || ''}"><td>${name}</td><td style="color:${C_OK}">${a}</td><td style="color:${C_NAIVE}">${b}</td></tr>`;
     let rows = row('Скорость: MAE, м/с', f(r.mae, 4), f(r.maeN, 4), 'Средняя абсолютная ошибка против |v| GNSS master, пары по ближайшей метке ≤ 0,05 с')
-      + (live ? '' : row('Дрейф пути, % дистанции', f(r.drift, 3), f(r.driftN, 3), 'Ошибка вдоль трассы на момент курсора / путь по эталону; в конце прогона — «накопленный дрейф» по ТЗ'))
+      + (live ? '' : row('Дрейф пути, % дистанции', f(r.drift, 3), f(r.driftN, 3), 'Ошибка вдоль трассы на момент курсора / путь по эталону; в конце прогона - «накопленный дрейф» по ТЗ'))
       + row('Ошибка в плане, средняя, м', f(r.h, 2), f(r.hn, 2), live ? `Средняя ошибка x, y против эталона: ${REF.point === 'base_link' ? 'base_link по паре антенн' : REF.point === 'master' ? 'антенна master' : 'точка эталона ещё не выбрана'}` : `Средняя ошибка x, y против эталона: ${(D.meta && D.meta.frame && D.meta.frame.ref_label) || 'антенна GNSS master'}`)
-      + row('Истина в ±2σ скорости', isFinite(r.cov) ? (100 * r.cov).toFixed(1) + ' %' : '—', '—', 'Доля пар, где |ошибка| ≤ 2σ_v. У честной σ около 95 %');
+      + row('Истина в ±2σ скорости', isFinite(r.cov) ? (100 * r.cov).toFixed(1) + ' %' : 'н/д', 'н/д', 'Доля пар, где |ошибка| ≤ 2σ_v. У честной σ около 95 %');
     if (r.w0 !== undefined) rows += row(tc < r.w0 ? 'В окне аномалии: MAE, м/с (окно впереди)' : 'В окне аномалии: MAE, м/с', f(r.wMae, 3), f(r.wMaeN, 3), 'Ошибка скорости только в окне аномалии');
     let foot = '';
     if (!live && S) {
@@ -997,10 +1101,18 @@
       foot = `<div class="rv-note"><b>Итог прогона</b> (tools/export_replay.py, все ${S.pairs_v} пар): MAE ${f(S.v_mae, 4)} / ${f(S.naive_v_mae, 4)} м/с, дрейф ${f(S.drift_pct, 3)} / ${f(S.naive_drift_pct, 3)} %, в плане ${f(S.p2d_mean, 2)} / ${f(S.naive_p2d_mean, 2)} м, в ±2σ ${f(100 * S.cov2s_v, 1)} %.`
         + (w ? ` В окне аномалии: MAE ${f(w.v_mae, 3)} / ${f(w.naive_v_mae, 3)} м/с; ошибка пути к концу окна ${f(w.along_end, 1)} / ${f(w.naive_along_end, 1)} м.` : '')
         + ` Против скорости rover: MAE модели ${f(S.v_mae_vs_rover, 4)} м/с.</div>`;
-    } else if (live) foot = '<div class="rv-note">По живому потоку с троттлингом 10 Гц: пары с эталоном GNSS — по совпадению меток ≤ 0,05 с, числа приблизительные. Точные — в режиме «Прогон данных комиссии».</div>';
-    return `<div class="rv-h"><b>Метрики</b><span class="k">${live ? 'с подключения' : 'с начала прогона до курсора'}</span></div>
-      <table class="rv-tbl num"><thead><tr><th></th><th>модель</th><th>база «колесо»</th></tr></thead><tbody>${rows}</tbody></table>${foot}`;
+    } else if (live) foot = '<div class="rv-note">По живому потоку с троттлингом 10 Гц: пары с эталоном GNSS - по совпадению меток ≤ 0,05 с, числа приблизительные. Точные - в режиме «Прогон данных комиссии».</div>';
+    const on = $('rvMetrics').classList.contains('pop-on');
+    const info = foot ? `<button class="rv-info" type="button" aria-expanded="${on}" aria-label="Итог прогона" title="Итог прогона"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></svg></button>` : '';
+    return `<div class="rv-h"><b>Метрики</b><span class="rv-hr"><span class="k">${live ? 'с подключения' : 'с начала прогона до курсора'}</span>${info}</span></div>
+      <table class="rv-tbl num"><thead><tr><th></th><th>модель</th><th>база «колесо»</th></tr></thead><tbody>${rows}</tbody></table>${foot ? `<div class="rv-pop">${foot}</div>` : ''}`;
   }
+  // значок i открывает пояснения карточки поверх неё; описание записи разворачивается нажатием
+  $('runView').addEventListener('click', e => {
+    const b = e.target.closest('.rv-info');
+    if (b) { const on = b.closest('.rv-card').classList.toggle('pop-on'); b.setAttribute('aria-expanded', String(on)); return; }
+    if (e.target.closest('#rvNote')) $('rvNote').classList.toggle('open');
+  });
   let lastPanel = 0;
   function renderPanels(force) {
     const now = performance.now();
@@ -1014,7 +1126,7 @@
     }
     const live = mode === 'live';
     $('rvErrSh').textContent = live ? 'Ошибка в плане относительно GNSS, м' : 'Ошибка пути вдоль трассы относительно GNSS, м';
-    $('rvErrSk').textContent = live ? '' : 'полоса — ±2σ пути';
+    $('rvErrSk').textContent = live ? '' : 'полоса - ±2σ пути';
   }
 
   // ---------------------------------------------------------------- живой ROS 2 (rosbridge v2)
@@ -1029,12 +1141,12 @@
     ['/sensing/gnss/master/fix', 'sensor_msgs/msg/NavSatFix', 200],
     ['/sensing/gnss/rover/fix', 'sensor_msgs/msg/NavSatFix', 200],
   ];
-  // Точка эталона положения. Судья и pathgraph — base_link: ось поворота передней тележки на
+  // Точка эталона положения. Судья и pathgraph - base_link: ось поворота передней тележки на
   // уровне рельса; антенны в base_link (tf организаторов): master x −9,873 м, rover x +2,563 м.
-  // base_link = master + 9,873 м вперёд по оси вагона (курс — по паре антенн одной эпохи).
+  // base_link = master + 9,873 м вперёд по оси вагона (курс - по паре антенн одной эпохи).
   // Старые версии ноды выдавали точку антенны master. Какую точку выдаёт нода, странице не видно,
-  // поэтому точка выбирается сама по первым 10 парам «выход — GNSS»: какая ближе (они в 9,9 м
-  // друг от друга, ошибка модели ~1 м). ?ref=base_link | ?ref=master — задать явно.
+  // поэтому точка выбирается сама по первым 10 парам «выход - GNSS»: какая ближе (они в 9,9 м
+  // друг от друга, ошибка модели ~1 м). ?ref=base_link | ?ref=master - задать явно.
   const REF = { point: /^(base_link|master)$/.test(qs.get('ref') || '') ? qs.get('ref') : null, fixed: /^(base_link|master)$/.test(qs.get('ref') || ''), cand: [], course: null, mx: 9.873 };
   function liveCourse() {
     const m = LV.last.gm, r = LV.last.rf;
@@ -1044,8 +1156,8 @@
   }
   function refNote() {
     const el = $('rvRefNote'); if (!el) return;
-    el.textContent = REF.point === 'base_link' ? `Эталон положения — base_link (ось передней тележки на уровне рельса, как у судьи): антенна master + 9,873 м вперёд по курсу пары антенн${REF.fixed ? ' (задан ?ref=)' : '; выбран сам — выход ноды ближе к нему'}.`
-      : REF.point === 'master' ? `Эталон положения — антенна GNSS master${REF.fixed ? ' (задан ?ref=)' : REF.noRover ? ' (rover нет: base_link не посчитать)' : '; выбран сам — выход ноды ближе к нему, чем к base_link (нода выдаёт точку антенны)'}.`
+    el.textContent = REF.point === 'base_link' ? `Эталон положения - base_link (ось передней тележки на уровне рельса, как у судьи): антенна master + 9,873 м вперёд по курсу пары антенн${REF.fixed ? ' (задан ?ref=)' : '; выбран сам - выход ноды ближе к нему'}.`
+      : REF.point === 'master' ? `Эталон положения - антенна GNSS master${REF.fixed ? ' (задан ?ref=)' : REF.noRover ? ' (rover нет: base_link не посчитать)' : '; выбран сам - выход ноды ближе к нему, чем к base_link (нода выдаёт точку антенны)'}.`
       : 'Эталон положения выбирается по первым парам с выходом ноды (base_link или антенна master).';
   }
   const LV = { ws: null, want: false, retry: 0, timer: 0, state: 'idle', last: {}, cnt: {}, rateT: 0, rates: {}, lastMsg: 0, data: null, T0: null, fc: null, nodeHz: null, rowT: -1, frame: null, gnssPath: 0, gPrev: null, err: '' };
@@ -1071,7 +1183,7 @@
   }
   function enterLive() {
     if (!LV.data) { LV.data = emptyData(); LV.data.live = true; D = LV.data; }
-    $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master и rover (только эталон для показа: нода берёт GNSS лишь в окне выставки; пара антенн даёт точку base_link) через rosbridge, 10 Гц на топик. Адрес — поле выше или <b>?ros=wss://хост/ros</b>.';
+    $('rvNote').innerHTML = 'Страница подписана на выходы ноды <b>/result/velocity</b>, <b>/result/position</b>, <b>/tram/estimator_status</b>, входы <b>/vehicle/*</b> и GNSS master и rover (только эталон для показа: нода берёт GNSS лишь в окне выставки; пара антенн даёт точку base_link) через rosbridge, 10 Гц на топик. Адрес - поле выше или <b>?ros=wss://хост/ros</b>.';
     $('rvMapNote').textContent = 'Плоскость: выход ноды (MGRS/UTM переводится в метры от первой точки GNSS; разрыв квадрата 100 км снимается).';
     refNote();
     $('rvSub').textContent = '';
@@ -1089,7 +1201,7 @@
   function liveStop(byUser) {
     LV.want = false; clearTimeout(LV.timer);
     if (LV.ws) { try { LV.ws.onclose = null; LV.ws.close(); } catch (_) {} LV.ws = null; }
-    if (byUser) store.set('tv.liveAuto', '0');          // «Отключить» — не подключаться самим и дальше
+    if (byUser) store.set('tv.liveAuto', '0');          // «Отключить» - не подключаться самим и дальше
     if ($('rvLiveSt')) setLiveState('idle', 'не подключено');
   }
   function liveConnect(url) {
@@ -1154,7 +1266,7 @@
         const cu = REF.course && Math.abs(t - REF.course.t) <= 2 ? REF.course.u : null;
         const gb = cu ? [g[0] + REF.mx * cu[0], g[1] + REF.mx * cu[1], [g[2][0] + REF.mx * cu[0], g[2][1] + REF.mx * cu[1]]] : null;
         if (LV.gPrev) { const d = Math.hypot(g[0] - LV.gPrev[0], g[1] - LV.gPrev[1]); if (d > 0.3 && d < 50) { LV.gnssPath += d; LV.gPrev = g; } } else LV.gPrev = g;
-        // ошибка в плане — только когда выход ноды в абсолютной системе (MGRS/UTM): у локальной
+        // ошибка в плане - только когда выход ноды в абсолютной системе (MGRS/UTM): у локальной
         // системы ноды начало (первая точка master в записи) странице неизвестно
         const q = L.pos && Math.abs(L.pos.t - t) <= 0.1 && LV.T0 !== null ? posLocal(L.pos.x, L.pos.y, g) : null;
         if (!REF.point && q && !GEO.local) {
@@ -1167,16 +1279,16 @@
             refNote();
           }
         }
-        const ref = REF.point === 'base_link' ? gb : g;          // пока точка не выбрана — трасса по master
+        const ref = REF.point === 'base_link' ? gb : g;          // пока точка не выбрана - трасса по master
         if (ref) L.gf = { t, x: ref[0], y: ref[1], U: ref[2] };
         if (REF.point && ref && q && !GEO.local) livePairP(t - LV.T0, Math.hypot(q[0] - ref[0], q[1] - ref[1]));
         break;
       }
     }
   }
-  // Плоскость: выход ноды — MGRS/UTM (абсолютные метры, возможен перенос квадрата
+  // Плоскость: выход ноды - MGRS/UTM (абсолютные метры, возможен перенос квадрата
   // 100 км) или локальная система от первой точки master. GNSS переводится в UTM той
-  // же зоны; на экран — метры от первой точки GNSS, которую увидела страница.
+  // же зоны; на экран - метры от первой точки GNSS, которую увидела страница.
   const GEO = { zone: null, U0: null, K: null, prev: null, unw: [0, 0], local: null, sh: [0, 0], shSet: false };
   function utmEN(lat, lon, zone) {
     const a = 6378137, fl = 1 / 298.257223563, n = fl / (2 - fl);
@@ -1256,7 +1368,7 @@
         for (const [k, n] of Object.entries(LV.cnt)) LV.rates[k] = n / dt;
         LV.cnt = {}; LV.rateT = now;
         const rv = LV.rates['/result/velocity'] || 0;
-        $('rvRates').textContent = `нода ${LV.nodeHz ? LV.nodeHz.toFixed(1) : '—'} Гц (frame_count) · на странице /result/velocity ${rv.toFixed(1)} Гц, тележки ${((LV.rates['/vehicle/front_bogie_velocity'] || 0)).toFixed(1)} Гц${LV.last.st ? ` · шаг ${f(LV.last.st.step_time_us / 1000, 2)} мс` : ''}`;
+        $('rvRates').textContent = `нода ${LV.nodeHz ? LV.nodeHz.toFixed(1) : 'н/д'} Гц (frame_count) · на странице /result/velocity ${rv.toFixed(1)} Гц, тележки ${((LV.rates['/vehicle/front_bogie_velocity'] || 0)).toFixed(1)} Гц${LV.last.st ? ` · шаг ${f(LV.last.st.step_time_us / 1000, 2)} мс` : ''}`;
       }
       const silent = LV.ws && LV.ws.readyState === 1 && now - LV.lastMsg > 3000;
       if (LV.ws && LV.ws.readyState === 1) setLiveState('on', silent ? 'на связи, но нода молчит' : `на связи · ${LV.host}`);
@@ -1278,7 +1390,7 @@
   let last = performance.now();
   const frameErr = new Set();
   function frame(now) {
-    requestAnimationFrame(frame);                     // следующий кадр — при любом исходе этого
+    requestAnimationFrame(frame);                     // следующий кадр - при любом исходе этого
     try { frameBody(now); } catch (e) { const k = String(e && e.message || e); if (!frameErr.has(k)) { frameErr.add(k); console.error('кадр режима прогонов:', e); } }
   }
   function frameBody(now) {
@@ -1324,9 +1436,10 @@
     },
     liveTail: (n = 2000) => LV.data ? { x: LV.data.x.slice(-n), y: LV.data.y.slice(-n), h: LV.data.pp.h.slice(-n), host: LV.host || null, pill: $('rvLiveSt').textContent, ref: REF.point, refNote: $('rvRefNote').textContent } : null,
   };
-  const m0 = qs.get('mode') || store.get('tv.mode');
+  const m0 = qs.get('mode') || store.get('tv.mode'), liveOn = qs.get('mode') === 'live' || qs.get('live') === '1';
+  document.querySelector('[data-mode="live"]').hidden = !liveOn;
   requestAnimationFrame(frame);
-  setMode(m0 === 'replay' || m0 === 'live' ? m0 : 'sandbox');
+  setMode(m0 === 'replay' || (m0 === 'live' && liveOn) ? m0 : 'sandbox');
   if (qs.get('play') === '1') { RP.play = true; syncPlay(); }
   if (qs.has('sp')) { const b = document.querySelector(`[data-rvsp="${qs.get('sp')}"]`); if (b) b.click(); }
   if (qs.has('win')) { const b = document.querySelector(`[data-rvwin="${qs.get('win')}"]`); if (b) b.click(); }

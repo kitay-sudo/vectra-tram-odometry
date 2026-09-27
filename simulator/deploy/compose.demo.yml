@@ -9,7 +9,7 @@
 # Нужен образ vectra/tram:dev (docker build -t vectra/tram:dev -f docker/Dockerfile .).
 # rosbridge наружу не публикуется: доступ только через /ros веб-сервера, и мост только для
 # чтения (live_demo.sh: подписка на топики страницы, публикация и сервисы ноды закрыты);
-# ROSBRIDGE_OPEN=1 — без ограничений (только для отладки).
+# ROSBRIDGE_OPEN=1 - без ограничений (только для отладки).
 name: tram-demo
 services:
   tram-live:

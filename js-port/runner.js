@@ -3,7 +3,7 @@
 // разомкнутый режим при молчании колёс (wheel_timeout), достоверность ручки (handle_timeout),
 // приведение свежего показания к моменту шага по ускорению модели (age_comp),
 // ускорение выхода, σ пути выхода (position_sigma от точки выставки), причинная база
-// «только колесо» (NaiveCore из tools/eval_replay.py: среднее свежих показаний, путь — интеграл
+// «только колесо» (NaiveCore из tools/eval_replay.py: среднее свежих показаний, путь - интеграл
 // на сетке). Сверка с Python-связкой на реальной записи: js-port/record_runner.py +
 // compare_runner.js (входит в check.sh).
 //
@@ -18,7 +18,7 @@ const TramRunner = (() => {
   const LINEAR = { m_s: 1.0, km_h: 1.0 / 3.6 };
 
   class Runner {
-    // params — лист ядра (как Params), opts — параметры ноды: wheel_timeout_s, handle_timeout_s
+    // params - лист ядра (как Params), opts - параметры ноды: wheel_timeout_s, handle_timeout_s
     constructor(params, opts = {}) {
       this.core = new T.Estimator(params);
       this.p = this.core.p;
@@ -39,7 +39,7 @@ const TramRunner = (() => {
       this.age_comp = true;
       this._vlim = null;
       this._perUnit = T.sensor_to_speed([1.0], this.p)[0];     // м/с на единицу показания
-      // база «только колесо» — на той же сетке, из тех же входов
+      // база «только колесо» - на той же сетке, из тех же входов
       this.naive = { v: 0.0, s: 0.0, n: 0 };
       this.s_ref = 0.0;                                        // путь ядра в момент выставки (старт)
     }
@@ -121,7 +121,7 @@ const TramRunner = (() => {
       else o = c.step(this.notch, this._meas_at_step(), this.fresh.slice(), handle_ok);
       this.fresh.fill(false);
       const s = c.x[T.IS], v = c.x[T.IV];
-      // σ положения выхода: путь после выставки (в песочнице выставка — на старте)
+      // σ положения выхода: путь после выставки (в песочнице выставка - на старте)
       o.sigma_s_core = o.sigma_s;
       o.sigma_s = T.position_sigma(o.sigma_s, s - this.s_ref, p);
       const a = (T.body_force(c.u_filt, v, c.x[T.IKT], c.x[T.IKB], c.mu, p) - T.resistance(v, p)) / p.M_nom + c.x[T.ID];

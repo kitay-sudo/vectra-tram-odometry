@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Проверка демо-развёртывания: compose.demo.yml (tram-live + Caddy) и браузер в той же
-# сети docker открывает http://web/?mode=live без ?ros= (мост — тот же хост, /ros).
-#   bash simulator/test/demo_test.sh        (Git Bash / Linux, из корня; DATA_DIR — каталог прогонов)
+# сети docker открывает http://web/?mode=live без ?ros= (мост - тот же хост, /ros).
+#   bash simulator/test/demo_test.sh        (Git Bash / Linux, из корня; DATA_DIR - каталог прогонов)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 ROOT="$(cd "$(dirname "$0")/../.." && (pwd -W 2>/dev/null || pwd))"

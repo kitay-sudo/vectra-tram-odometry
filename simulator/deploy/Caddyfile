@@ -1,5 +1,5 @@
 # Демо на домене с TLS (Let's Encrypt автоматически): DOMAIN=demo.example.ru.
-# Без домена DOMAIN=:80 — просто http.
+# Без домена DOMAIN=:80 - просто http.
 {$DOMAIN::80} {
 	encode gzip
 	# rosbridge слушает путь "/": префикс /ros снимается; WebSocket проксируется сам

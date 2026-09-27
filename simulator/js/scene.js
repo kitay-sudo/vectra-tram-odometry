@@ -1,8 +1,8 @@
-// ---- Сцена песочницы: город, линия, вагон, погода (исходная сцена страницы, 110a5e0) ----
+// ---- Сцена песочницы: город, линия, вагон, погода ----
 // Только рисование. Состояние даёт экран песочницы (js/sandbox_ui.js) из имитатора и ядра:
 // где вагон, истинная скорость, режим модели, решения по тележкам, зоны погоды и застройки.
-// Вагон — с двумя тележками в 7,55 м друг от друга (шкворни, tf организаторов), как в листе
-// жюри; антенны GNSS master и rover — там же, где в tf (−9,873 и +2,563 м от передней тележки).
+// Вагон - с двумя тележками в 7,55 м друг от друга (шкворни, tf организаторов), как в листе
+// жюри; антенны GNSS master и rover - там же, где в tf (−9,873 и +2,563 м от передней тележки).
 const TramScene = (() => {
   const OK = '14,154,167', WARN = '232,155,12', WET = '90,169,214';
   const PAL = {
@@ -18,7 +18,7 @@ const TramScene = (() => {
       tint: 'rgba(0,0,0,0.28)', lamp: 'rgba(232,155,12,0.9)', shadow: 'rgba(0,0,0,0.45)', urban: '#1c232c', urbanEdge: '#27303b', road: '#141a21', lane: 'rgba(255,255,255,0.1)', tree: '#10151a', trunk: '#0c1014', verge0: 'rgba(20,28,24,0.6)', verge1: 'rgba(14,20,17,0.85)', curb: '#1b2128', fence: 'rgba(200,210,220,0.18)', plat: '#2a313a', platEdge: '#a88a2e' }
   };
   const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
-  // вагон: 15,3 м (как КТМ-19 с двумя тележками), шкворни в 7,55 м; начало координат — середина кузова
+  // вагон: 15,3 м (как КТМ-19 с двумя тележками), шкворни в 7,55 м; начало координат - середина кузова
   const TL = 15.3, HALF = 7.55 / 2, DOORS = [-5.4, 0, 5.4];
   const ANT_MASTER = HALF - 9.873, ANT_ROVER = HALF + 2.563;
   // равномерное созвездие: не сбивается в кучу и не оставляет небо пустым
@@ -217,7 +217,7 @@ const TramScene = (() => {
       for (let m = m0; m <= mMax; m += 2) ctx.lineTo(X(m), RY(m) + 0.5 * ppm);
       ctx.lineTo(W + 10, H); ctx.closePath(); ctx.fill();
 
-      // platforms with waiting passengers (behind the track); p — передняя тележка вагона на остановке
+      // platforms with waiting passengers (behind the track); p - передняя тележка вагона на остановке
       (S.stops || []).forEach((q, qi) => {
         const c = q.p - HALF, pa = X(c - 9), pb = X(c + 9);
         if (pb < -40 || pa > W + 40) return;
@@ -553,7 +553,7 @@ const TramScene = (() => {
       [[HALF, 0], [-HALF, 1]].forEach(([bp, b]) => {
         const g = bog[b]; if (!g) return;
         const m = S.s + bp, x = X(S.s) + Math.cos(tilt) * (X(m) - X(S.s)), y = RY(m) + 1.25 * ppm + (mobile ? 10 : 12);
-        // подписи расходятся от середины вагона: задняя — влево, передняя — вправо
+        // подписи расходятся от середины вагона: задняя - влево, передняя - вправо
         const align = b ? 'right' : 'left', ax = b ? x + (mobile ? 10 : 0.9 * ppm) : x - (mobile ? 10 : 0.9 * ppm);
         ctx.textAlign = align; ctx.textBaseline = 'middle';
         ctx.font = `${fs}px ${FONT}`;

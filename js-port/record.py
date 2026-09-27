@@ -19,7 +19,7 @@ for name, kw in SCENARIOS:
         o = es.step(notch, m)
         rec.append([notch, [float(x) for x in m], o['v'], o['s'], int(o['mode']), o['sigma_v'], o['k_t'], o['mu'], o['d'], pl.v])
     out[name] = rec
-# отпечаток ядра (LF, 12 знаков) — compare.js сверяет его с TramEst.PORT.core_sha1
+# отпечаток ядра (LF, 12 знаков) - compare.js сверяет его с TramEst.PORT.core_sha1
 out['_core_sha1'] = hashlib.sha1(open(EC.__file__, 'rb').read().replace(bytes([13, 10]), bytes([10]))).hexdigest()[:12]
 json.dump(out, open('rec.json', 'w'))
 print('ok', {k: len(v) for k, v in out.items() if not k.startswith('_')}, 'ядро', out['_core_sha1'])

@@ -1,12 +1,12 @@
 // Проверка режима «Живой ROS 2» против настоящего rosbridge (headless Chromium).
 //
-// Оркестровка — simulator/test/live_test.sh (контейнер ROS: нода + rosbridge +
+// Оркестровка - simulator/test/live_test.sh (контейнер ROS: нода + rosbridge +
 // ros2 bag play; контейнер браузера: этот скрипт). Фазы:
 //   1) подключение, данные идут: строки буфера растут, частота ноды по frame_count
 //      около 20 Гц, есть скорость, положение, статус, тележки, пары с GNSS;
-//   2) скрипт пишет <out>/live_phase1.done, оркестратор останавливает ROS —
+//   2) скрипт пишет <out>/live_phase1.done, оркестратор останавливает ROS -
 //      страница должна показать «нет связи» и повторять подключение;
-//   3) <out>/live_phase2.done — ROS запущен снова: страница переподключается сама.
+//   3) <out>/live_phase2.done - ROS запущен снова: страница переподключается сама.
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
@@ -57,7 +57,7 @@ async function bridgeProbe(url) {
     headless: 'new', args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
   });
   const rep = { ros: ROS, checks: [], errors: [], timeline: [] };
-  const check = (name, ok, info) => { rep.checks.push({ name, ok: !!ok, info }); console.log(`${ok ? 'OK  ' : 'FAIL'} ${name} — ${JSON.stringify(info)}`); };
+  const check = (name, ok, info) => { rep.checks.push({ name, ok: !!ok, info }); console.log(`${ok ? 'OK  ' : 'FAIL'} ${name} - ${JSON.stringify(info)}`); };
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
   page.on('pageerror', e => rep.errors.push(String(e.message || e)));
@@ -77,7 +77,7 @@ async function bridgeProbe(url) {
   await sleep(10000);
   s = await st();
   const dtw = (Date.now() - t1) / 1000, rowHz = (s.rows - rows1) / dtw;
-  // частота ноды — средняя за 10 с по frame_count статуса (мгновенная на странице скачет под нагрузкой хоста)
+  // частота ноды - средняя за 10 с по frame_count статуса (мгновенная на странице скачет под нагрузкой хоста)
   const nodeHz10 = fc1 != null && s.fc != null ? (s.fc - fc1) / dtw : s.nodeHz;
   const probe = await page.evaluate(() => {
     const D = window.__tvRun; const r = document.getElementById('rvStatus').textContent;
@@ -97,11 +97,11 @@ async function bridgeProbe(url) {
 
   // фаза 2: мост остановлен
   s = await waitFor(x => /нет связи/.test(x.pill) && /нет связи/.test(x.over), 60000, 'обрыв замечен');
-  check('живой: обрыв — «нет связи» и повтор', /нет связи/.test(s.pill) && /нет связи/.test(s.over), { pill: s.pill, over: s.over });
+  check('живой: обрыв - «нет связи» и повтор', /нет связи/.test(s.pill) && /нет связи/.test(s.over), { pill: s.pill, over: s.over });
   await page.screenshot({ path: path.join(OUT, 'live_down.png') });
   fs.writeFileSync(path.join(OUT, 'live_phase2.done'), String(Date.now()));
 
-  // фаза 3: мост снова поднят — переподключение без действий пользователя
+  // фаза 3: мост снова поднят - переподключение без действий пользователя
   const rowsDown = s.rows;
   s = await waitFor(x => /на связи/.test(x.pill) && x.rows > rowsDown + 50, 240000, 'переподключение');
   check('живой: переподключение с отсрочкой', /на связи/.test(s.pill) && s.rows > rowsDown + 50, { pill: s.pill, rows: s.rows, rowsDown });

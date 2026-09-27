@@ -1,5 +1,5 @@
 // Демо-развёртывание (simulator/deploy/compose.demo.yml): страница с веб-сервера,
-// мост по тому же адресу /ros. Открывается http://<web>/?mode=live БЕЗ ?ros= —
+// мост по тому же адресу /ros. Открывается http://<web>/?mode=live БЕЗ ?ros= -
 // страница должна сама взять ws://<хост>/ros и подключиться.
 //   node /sim/test/demo_test.js http://web /out
 const fs = require('fs');

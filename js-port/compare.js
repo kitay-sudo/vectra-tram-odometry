@@ -25,5 +25,5 @@ for (const [name, rows] of Object.entries(rec)) {
 console.log(`шагов ${steps}; худшее: dv ${worst.v.toExponential(2)} м/с, ds ${worst.s.toExponential(2)} м, dσv ${worst.sv.toExponential(2)}, dμ ${worst.mu.toExponential(2)}, dk ${worst.k.toExponential(2)}, dd ${worst.d.toExponential(2)}; режим ≠ ${worst.mode}`);
 const numOk = Math.max(worst.v, worst.s, worst.sv, worst.mu, worst.k, worst.d) <= 1e-6 && worst.mode === 0;
 const shaOk = !rec._core_sha1 || rec._core_sha1 === T.PORT.core_sha1;
-if (!shaOk) console.log(`ядро ${rec._core_sha1} ≠ ядро сверки порта ${T.PORT.core_sha1} (PORT в est.js): ${numOk ? 'числа совпали — обнови PORT в est.js и во вшитой копии simulator/index.html' : 'перенеси правку ядра в est.js (и во вшитую копию) либо оставь ярлык «упрощённое ядро»'}`);
+if (!shaOk) console.log(`ядро ${rec._core_sha1} ≠ ядро сверки порта ${T.PORT.core_sha1} (PORT в est.js): ${numOk ? 'числа совпали - обнови PORT в est.js и во вшитой копии simulator/index.html' : 'перенеси правку ядра в est.js (и во вшитую копию) либо оставь ярлык «упрощённое ядро»'}`);
 process.exit(numOk && shaOk ? 0 : 1);

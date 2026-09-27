@@ -11,7 +11,7 @@ tools/eval.py (tools/export_replay.resolve_sheet -> Params пакета), и
     docker run --rm -v <repo>:/repo -w /repo vectra/tram:compose \
         python3 js-port/gen_sheet.py [--sheet jury|eval|<путь>] [--out simulator/js/sheet.js]
 
-Перезапускать после каждой правки листа (tools/gen_params.py) — иначе
+Перезапускать после каждой правки листа (tools/gen_params.py) - иначе
 simulator/test/page_test.js и js-port/check_sheet.js сообщат о расхождении
 отпечатка листа.
 """
@@ -26,7 +26,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import export_replay as X  # noqa: E402
 
-NODE_KEYS = ("wheel_timeout_s", "handle_timeout_s", "init_window_s")
+NODE_KEYS = ("wheel_timeout_s", "handle_timeout_s", "init_window_s", "speed_output_delay_s")
 
 
 def sha1_lf(path):
@@ -53,7 +53,7 @@ def main():
     body = json.dumps(doc, ensure_ascii=False, indent=1)
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     with open(a.out, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("// Сгенерировано js-port/gen_sheet.py из листа пакета — не править руками.\n")
+        fh.write("// Сгенерировано js-port/gen_sheet.py из листа пакета - не править руками.\n")
         fh.write("(function (g) {\n")
         fh.write(f"g.TV_SHEET = {body};\n")
         fh.write("if (typeof module !== 'undefined') module.exports = g.TV_SHEET;\n")

@@ -2,14 +2,14 @@
 прогоняется через Runner пакета (лист жюри, карта пакета) и сравниваются
 выходы каждого шага:
 
-  (1) GNSS master/rover на ВЕСЬ прогон  против  (2) без GNSS вовсе —
+  (1) GNSS master/rover на ВЕСЬ прогон  против  (2) без GNSS вовсе -
       скорость, путь, σ скорости, режим: ядру GNSS не нужен совсем (и с
       коррекцией по GNSS, лист жюри как есть);
   (1) GNSS на весь прогон  против  (3) GNSS только первые 3 с (как в bag жюри,
-      analysis/evaluate.events) при gnss_correction: false — всё то же плюс
+      analysis/evaluate.events) при gnss_correction: false - всё то же плюс
       положение x, y, z и признаки «положение выставлено / опубликовано».
       С коррекцией (по умолчанию, docs/POSITION_FRAME.md) GNSS после
-      окна поправляет положение — это печатается для сведения.
+      окна поправляет положение - это печатается для сведения.
 
     docker run --rm -v <repo>:/repo -v <data>:/repo/data:ro \
       -v <cache>:/repo/analysis/cache:ro -w /repo/js-port vectra/tram:compose \
@@ -36,7 +36,7 @@ for tb, th, n in a["cmd"]:
     ev.append((tb, 1, 0, th, n))
 gn = [(row[0], 2, ant, row[1], (row[2], row[3], row[4], int(row[5])))
       for key, ant in (("mfix", "master"), ("rfix", "rover")) for row in a[key]]
-t_end = a["mfix"][0, 0] + INIT_S          # окно выставки — от первой записи master (evaluate.events)
+t_end = a["mfix"][0, 0] + INIT_S          # окно выставки - от первой записи master (evaluate.events)
 gn3 = [g for g in gn if g[0] <= t_end]
 
 
@@ -91,7 +91,7 @@ print(f"{bag}: точек GNSS {len(gn)} (весь прогон), {len(gn3)} (п
       f"шагов {len(A)} / {len(B)} / {len(C)}")
 print(f"  весь прогон против без GNSS: {fmt(dAB)}")
 print(f"  весь прогон против первых {INIT_S:.0f} с (gnss_correction: false): {fmt(dAC)}")
-print(f"  для сведения, с коррекцией (лист): весь прогон против первых {INIT_S:.0f} с — "
+print(f"  для сведения, с коррекцией (лист): весь прогон против первых {INIT_S:.0f} с - "
       f"положение {fmt(dcor)} (поправки по GNSS после окна)")
 ok = (len(A) == len(B) == len(Aoff) == len(Coff) and all(v == 0 for v in dAB.values())
       and all(v == 0 for v in dAC.values()))

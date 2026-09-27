@@ -1,6 +1,6 @@
 // ---- Tram state estimator: JavaScript port of estimator_core.py (UKF over the motion model) ----
 // Порт ядра пакета строка в строку (сверка: bash js-port/check.sh, допуск 1e-6 по v, s, σ,
-// μ, k, d; режимы и неоднозначность — совпадение на каждом шаге).
+// μ, k, d; режимы и неоднозначность - совпадение на каждом шаге).
 //
 // ЗЕРКАЛО (что перенесено из ros2_ws/src/tram_state_estimator/tram_state_estimator/
 // estimator_core.py; при правке ядра перенести те же места):
@@ -15,20 +15,20 @@
 //   оценка шума, скачок против тренда с правилом отголоска, axle_jump, первая инициализация),
 //   _frozen_all, _adapt_scale (окно по реальному времени, adapt_on), step_open_loop,
 //   _sigma_v_out, _finish (slip_all, meas_noise).
-//   Срыв всех осей и оценка шума показаний перенесены вместе с ядром (сверка 26.09).
+//   Срыв всех осей и оценка шума показаний перенесены вместе с ядром.
 //   Не перенесено (на выход не влияет): проверка листа Params.__post_init__, adapt_stats.
-//   Добавлено (не из ядра, на числа не влияет): diag() — запись решений фильтра по осям для
+//   Добавлено (не из ядра, на числа не влияет): diag() - запись решений фильтра по осям для
 //   панели «Что сейчас думает модель» в песочнице.
 //
-// PORT — ядро, с которым порт сверен: sha1 estimator_core.py (переводы строк LF, 12 знаков;
+// PORT - ядро, с которым порт сверен: sha1 estimator_core.py (переводы строк LF, 12 знаков;
 // так же его пишут tools/export_replay.py и js-port/record*.py). Страница сравнивает его с
 // ядром, которым посчитаны прогоны комиссии, и при расхождении подписывает песочницу
-// «упрощённое ядро». Копия для страницы — simulator/js/est.js (байт в байт; её пишет
+// «упрощённое ядро». Копия для страницы - simulator/js/est.js (байт в байт; её пишет
 // node js-port/sync.js, проверяют js-port/check.sh и simulator/test/page_test.js).
 const TramEst = (() => {
   const G = 9.81;
   const MAD_TO_SIGMA = 1.4826;                      // σ = 1,4826 · медиана |нормальной величины|
-  const PORT = { core_git: '3466ac4', core_sha1: '684530832766', checked: '26.09', dv: '≤ 2·10⁻¹² м/с' };
+  const PORT = { core_git: '3466ac4', core_sha1: '684530832766', dv: '≤ 2·10⁻¹² м/с' };
   const DEFAULT = {
     M_nom: 28000.0, r_nom: 0.35, n_axles: 4, driven: [true, true, false, false], braked: [true, true, true, true], v_max_line: 20.0,
     F_notch: 36000.0, F_brake: 30000.0, v_base: 8.0, v_ed_fade: 1.5, brake_hold_frac: 1.0,
@@ -58,7 +58,7 @@ const TramEst = (() => {
   const median = a => { const s = a.slice().sort((p, q) => p - q), n = s.length; return n % 2 ? s[(n - 1) / 2] : 0.5 * (s[n / 2 - 1] + s[n / 2]); };
 
   // ---------------- модель ----------------
-  function interpGrid(x, fp) {                      // np.interp(x, 0..N, fp): за краем — край
+  function interpGrid(x, fp) {                      // np.interp(x, 0..N, fp): за краем - край
     const N = fp.length - 1;
     if (x >= N) return fp[N];
     if (x <= 0) return fp[0];
@@ -90,7 +90,7 @@ const TramEst = (() => {
     return [slots, i];
   }
   const hasTable = p => p.acc_table && p.acc_table.length > 0;
-  function cell(grid, x) {                          // bisect_right - 1, края — край
+  function cell(grid, x) {                          // bisect_right - 1, края - край
     let i = -1; for (let k = 0; k < grid.length; k++) if (grid[k] <= x) i = k; else break;
     i = i < 0 ? 0 : (i > grid.length - 2 ? grid.length - 2 : i);
     const w = (x - grid[i]) / (grid[i + 1] - grid[i]);
@@ -389,7 +389,7 @@ const TramEst = (() => {
       return out;
     }
     _slip_all_update(z, ok, u, hbar, v0) {
-      // СРЫВ ВСЕХ ОСЕЙ (юз или буксование обеих тележек): начало и конец — см. докстроку ядра
+      // СРЫВ ВСЕХ ОСЕЙ (юз или буксование обеих тележек): начало и конец - см. докстроку ядра
       const p = this.p, live = this._live();
       const maxLive = arr => Math.max(...live.map(a => arr[a])), minLive = arr => Math.min(...live.map(a => arr[a]));
       if (this.slip_all) {
@@ -423,7 +423,7 @@ const TramEst = (() => {
       this.slip_j = minLive(this.jump_m);
       this.slip_back = new Set(); this.slip_ok_t0 = null; this.slip_ret = new Set();
       this.n_slip_all += 1;
-      // дальше скорость ведёт модель: σ возмущения — ошибка разомкнутого прогноза
+      // дальше скорость ведёт модель: σ возмущения - ошибка разомкнутого прогноза
       const sd = Math.sqrt(Math.max(this.P[ID][ID], 0.0));
       if (sd > 0.0) {
         const f = p.slip_sigma_a / sd;
@@ -445,7 +445,7 @@ const TramEst = (() => {
       }
     }
     _slip_all_end(u, keep_jump = false) {
-      // конец срыва всех осей; keep_jump — закончился нулями: скачок и производная шага остаются
+      // конец срыва всех осей; keep_jump - закончился нулями: скачок и производная шага остаются
       this.slip_all = 0; this.slip_back = new Set(); this.slip_ret = new Set(); this.slip_ok_t0 = null;
       if (!keep_jump) { this.axle_dot.fill(this._a_model(u)); this.axle_jump.fill(false); }
       this.jump_t.fill(-Infinity);
@@ -465,7 +465,7 @@ const TramEst = (() => {
       if (!axles.length) return acc;
       const v0 = this.x[IV], F0 = body_force(u, v0, 1.0, 1.0, this.mu, p);
       const hbar = h_axles(this.x, u, this.mu, p);
-      // срыв всех осей: начало и конец (может раздуть σ возмущения — до сигма-точек)
+      // срыв всех осей: начало и конец (может раздуть σ возмущения - до сигма-точек)
       const ep_prev = this.slip_all;
       this._slip_all_update(z, ok, u, hbar, v0);
       // снят нулями всех новых показаний (юз перешёл в блокировку): нули не принимаются
@@ -504,7 +504,7 @@ const TramEst = (() => {
         let nu = z[a] - zh, nis = nu * nu / S;
         let forced, held, override;
         if (ep) {
-          // срыв всех осей: показание в сторону срыва — лишь граница скорости корпуса
+          // срыв всех осей: показание в сторону срыва - лишь граница скорости корпуса
           const returned = this.slip_back.has(a);
           if (!returned && ep * nu > p.slip_cont_k * Math.sqrt(R)) { rej.push([a, nu, nis, false]); ep_rej.add(a); dgw(a, nu, nis, 'slipall'); continue; }
           spinning = forced = held = false;
@@ -549,7 +549,7 @@ const TramEst = (() => {
         pts = this._sigma(); Zall = h_axles_batch(pts, u, this.mu, p);
       }
       this.n_acc = acc.length; this.n_rej = rej.length;
-      // срыв всех осей идёт: все новые показания приняты — отсчёт для его снятия
+      // срыв всех осей идёт: все новые показания приняты - отсчёт для его снятия
       if (this.slip_all && acc.length && !rej.length) { if (this.slip_ok_t0 === null) this.slip_ok_t0 = this.t; }
       else this.slip_ok_t0 = null;
       // признак насыщения: нагруженная ось отвергнута в сторону срыва, значимо, и срыв подтверждён
@@ -610,18 +610,18 @@ const TramEst = (() => {
           const raw = (z[a] - this.axle_prev[a]) / gap;
           this._noise(a, z[a], gap);
           const nz = p.noise_k * Math.sqrt(2.0) * this.nz_excess[a];   // шум сверх паспортного расширяет пороги
-          // скачок против СОБСТВЕННОГО тренда оси — срыв этой оси (все оси одного знака — срыв всех осей)
+          // скачок против СОБСТВЕННОГО тренда оси - срыв этой оси (все оси одного знака - срыв всех осей)
           if (this.nz_cnt[a] > 2 && gap <= p.slip_pair_s && (this.t_since_acc <= p.slip_pair_s || this.slip_all)
               && !(this.amb || this.frozen)) {
             const dzj = z[a] - this.axle_prev[a];
             const jr = dzj - this.axle_dot[a] * gap;
             const thr = p.slip_jump + p.a_slip_margin * gap + nz;
             const sg = jr > 0 ? 1.0 : -1.0;
-            // отголосок своего скачка: ровное показание после скачка — не скачок обратно
+            // отголосок своего скачка: ровное показание после скачка - не скачок обратно
             const echo = !this.slip_all && sg === -this.jump_s[a] && this.t - this.jump_t[a] <= p.slip_pair_s && Math.abs(dzj) <= thr;
             if (Math.abs(jr) > thr && !echo) { this.jump_t[a] = this.t; this.jump_s[a] = sg; this.jump_m[a] = Math.abs(jr); }
           }
-          // скачок за один интервал больше физически возможного — срыв или отказ сразу
+          // скачок за один интервал больше физически возможного - срыв или отказ сразу
           const dz = z[a] - this.axle_prev[a], lim_j = dz > 0 ? p.a_max_acc : p.a_max_brake;
           this.axle_jump[a] = Math.abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol + nz;
           this.axle_dot[a] += p.axle_dot_alpha * (raw - this.axle_dot[a]);
@@ -642,7 +642,7 @@ const TramEst = (() => {
       const mode = this._mode(u);
       this.mode_pre = mode;
       if (this.frozen) {
-        // залипли все датчики разом: только прогноз по ручке, неопределённость по ускорению — до предела
+        // залипли все датчики разом: только прогноз по ручке, неопределённость по ускорению - до предела
         const lim = Math.max(this._a_limit(u, true), this._a_limit(u, false));
         this.P[ID][ID] = Math.max(this.P[ID][ID], (p.sigma_rej_frac * lim) ** 2);
         this.adapting = false; this.n_acc = this.n_rej = 0; this.sat = false; this.slip_all = 0; this.last_acc_n = 0;
@@ -713,7 +713,7 @@ const TramEst = (() => {
     _sigma_v_out(sv, u) {
       // публикуемая σ скорости: σ фильтра с множителем, пол, возраст показаний·|a|, масштаб колёс·v
       const p = this.p, v = this.x[IV];
-      const a = p.sv_age ? this._a_model(u) : 0.0;   // ускорение модели — как в выходе связки
+      const a = p.sv_age ? this._a_model(u) : 0.0;   // ускорение модели - как в выходе связки
       const floor = this.mode === STANDSTILL ? p.sv_floor_stand : p.sv_floor;
       return Math.sqrt((p.sv_gain * sv) ** 2 + floor * floor + (p.sv_age * a) ** 2 + (p.sv_rel * v) ** 2);
     }
@@ -741,7 +741,7 @@ const TramEst = (() => {
       if (this.sat || this.amb || this.slip_all) this.mode = SLIP;
       if (standstill) this.mode = STANDSTILL;
       const valid = this.have_meas && this.t_since_acc <= p.t_valid && !this.amb && !this.frozen;
-      // при срыве всех осей скорость ведёт модель: режим — срыв, а не отказ
+      // при срыве всех осей скорость ведёт модель: режим - срыв, а не отказ
       if (!this.have_meas || (!valid && !this.amb && !this.slip_all)) this.mode = DEGRADED;
       const sv_filt = Math.sqrt(Math.max(this.P[IV][IV], 0.0));
       let sv = this._sigma_v_out(sv_filt, u);

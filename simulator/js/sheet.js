@@ -1,4 +1,4 @@
-// Сгенерировано js-port/gen_sheet.py из листа пакета — не править руками.
+// Сгенерировано js-port/gen_sheet.py из листа пакета - не править руками.
 (function (g) {
 g.TV_SHEET = {
  "sheet": "jury",
@@ -534,7 +534,8 @@ g.TV_SHEET = {
  "node": {
   "wheel_timeout_s": 1.0,
   "handle_timeout_s": 0.5,
-  "init_window_s": 3.0
+  "init_window_s": 3.0,
+  "speed_output_delay_s": 0.08
  }
 };
 if (typeof module !== 'undefined') module.exports = g.TV_SHEET;

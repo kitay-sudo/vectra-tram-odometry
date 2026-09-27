@@ -36,6 +36,6 @@ const rb = rec.robust || {}, robustOk = !rb.resets && !rb.gaps && !rb.core_reset
 console.log(`связка ${rec.bag} ${rec.variant}: сообщений ${k}, шагов ${n}/${rec.rows.length}; max|dv| ${mv.toExponential(2)} м/с, |ds| ${ms.toExponential(2)} м, |dσv| ${msv.toExponential(2)}, |dσs| ${mss.toExponential(2)}, |da| ${ma.toExponential(2)}; база: |dv| ${mnv.toExponential(2)}, |ds| ${mns.toExponential(2)}; режим ≠ ${modeMis}, флаги ≠ ${flagMis}, метка ≠ ${stampMis}, число шагов ≠ ${countMis}; ветки устойчивости ${JSON.stringify(rb)}; ${us.toFixed(1)} мкс/шаг`);
 const numOk = worst <= 1e-6 && modeMis === 0 && flagMis === 0 && stampMis === 0 && countMis === 0 && n === rec.rows.length;
 const shaOk = !rec.core_sha1 || rec.core_sha1 === T.PORT.core_sha1;
-if (!robustOk) console.log('в записи сработали ветки устойчивости связки (сброс, провал, пропуск узлов): JS-связка их не повторяет — выберите другую запись');
+if (!robustOk) console.log('в записи сработали ветки устойчивости связки (сброс, провал, пропуск узлов): JS-связка их не повторяет - выберите другую запись');
 if (!shaOk) console.log(`ядро ${rec.core_sha1} ≠ ядро сверки порта ${T.PORT.core_sha1}`);
 process.exit(numOk && shaOk && robustOk ? 0 : 1);

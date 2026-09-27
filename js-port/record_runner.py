@@ -10,7 +10,7 @@
 
 GNSS в связку не подаётся: скорость и путь ядра от него не зависят (он идёт
 только в выставку, docs/POSITION_FRAME.md), а JS-связка песочницы выставку не
-повторяет. Лист по умолчанию — лист жюри config/tram.yaml (как в песочнице).
+повторяет. Лист по умолчанию - лист жюри config/tram.yaml (как в песочнице).
 """
 import json
 import os
@@ -35,7 +35,7 @@ rn = ER.make_naive(params, node, None)
 events, rows = [], []
 for tb, kind, i, th, val in X.E.events(b):
     if kind == 2:
-        continue                              # GNSS — только выставка, см. docstring
+        continue                              # GNSS - только выставка, см. docstring
     if kind == 0:
         outs, outn = r.on_wheel(i, th, val), rn.on_wheel(i, th, val)
     else:
