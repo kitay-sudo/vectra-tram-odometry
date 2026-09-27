@@ -21,11 +21,13 @@
 
 name: vectra-tram
 
-x-ros: &ros
+# Образ собирает только estimator (и test, eval — для run без up). Остальные
+# сервисы берут тот же готовый образ: если build стоит у всех, up --build
+# собирает один тег параллельно пять раз, и Docker Desktop с хранилищем
+# образов containerd падает на «image ... already exists».
+x-ros-run: &ros-run
   image: ${VECTRA_IMAGE:-vectra/tram:compose}
-  build:
-    context: .
-    dockerfile: docker/Dockerfile
+  pull_policy: never
   init: true
   environment: &ros-env
     ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
@@ -35,6 +37,13 @@ x-ros: &ros
     RCUTILS_LOGGING_BUFFERED_STREAM: "0"
   volumes:
     - ./:/repo:ro
+
+x-ros: &ros
+  <<: *ros-run
+  pull_policy: missing
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
 
 services:
   # ---------------------------------------------------------------- демо (по умолчанию)
@@ -53,7 +62,7 @@ services:
     # весь контейнер: docker compose up -d --force-recreate
 
   player:
-    <<: *ros
+    <<: *ros-run
     depends_on: [estimator]
     network_mode: "service:estimator"
     ipc: "service:estimator"
@@ -71,7 +80,7 @@ services:
     stop_signal: SIGINT
 
   probe:
-    <<: *ros
+    <<: *ros-run
     depends_on: [estimator]
     network_mode: "service:estimator"
     ipc: "service:estimator"
@@ -91,7 +100,7 @@ services:
     stop_signal: SIGINT
 
   bridge:
-    <<: *ros
+    <<: *ros-run
     # rosbridge v2 (JSON по websocket) для симулятора: ws://<хост>:9090.
     # По умолчанию только для чтения (публичный домен): docker/bridge.sh;
     # ROSBRIDGE_OPEN=1 — без ограничений (отладка на своей машине)
@@ -106,7 +115,7 @@ services:
     restart: unless-stopped
 
   web:
-    <<: *ros
+    <<: *ros-run
     # статическая страница симулятора (python http.server). Внешних ресурсов
     # у страницы нет: CSS и шрифты локальные, работает без интернета —
     # см. docs/DEPLOY.md
