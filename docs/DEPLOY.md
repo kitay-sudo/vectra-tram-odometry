@@ -2,8 +2,10 @@
 
 Схема демо: показываем с ноутбука. ROS 2 работает на
 сервере, страница симулятора открыта по публичному домену. Всё поднимает
-`docker-compose.yml` из корня репозитория, настройки — в `.env` (шаблон
+`docker-compose.yml` из корня репозитория, настройки - в `.env` (шаблон
 `.env.example`).
+
+**Разделы:** [Ноутбук](#1-ноутбук-всё-локально) · [Публичный сервер](#2-публичный-сервер) · [Проверка](#3-проверка) · [Сетевые заметки](#4-сетевые-заметки)
 
 ## 1. Ноутбук (всё локально)
 
@@ -21,7 +23,7 @@ docker compose up --build   # первый раз соберёт образ (~3 
 | `http://localhost:8080` | страница симулятора (сервис `web`, `python3 -m http.server`) |
 | `ws://localhost:9090` | rosbridge (сервис `bridge`): `/result/*`, `/tram/estimator_status` |
 
-После сборки образа сеть не нужна: нода, мост и bag — локально. Страница
+После сборки образа сеть не нужна: нода, мост и bag - локально. Страница
 симулятора тоже без внешних зависимостей (CSS собран статически, шрифты системные).
 
 Порты по умолчанию открыты только на `127.0.0.1`. Чтобы открыть страницу с
@@ -47,13 +49,13 @@ docker compose logs -f proxy estimator player
 ```
 
 Профиль `server` добавляет к сервисам демо обратный прокси nginx
-(`nginx:1.30-alpine` — 1.30.5 stable от 22.09.2026, закреплён по digest):
+(`nginx:1.30-alpine` - 1.30.5 stable от 22.09.2026, закреплён по digest):
 
 | Путь | Куда |
 |---|---|
 | `/` | статическая страница `simulator/` |
 | `/ros`, `/ros/` | websocket rosbridge (`bridge:9090`); префикс `/ros` снимается |
-| `/healthz` | `ok` — проверка живости |
+| `/healthz` | `ok` - проверка живости |
 
 Порт 9090 наружу не открывается: `BRIDGE_BIND=127.0.0.1` по умолчанию. Мост
 доступен только через прокси.
@@ -62,7 +64,7 @@ docker compose logs -f proxy estimator player
 
 Положите PEM-сертификат и ключ в `docker/proxy/certs/`:
 `fullchain.pem`, `privkey.pem`. Другой каталог задаётся в `TLS_DIR`, другие имена
-файлов — в `TLS_CERT` / `TLS_KEY`. Например, от certbot:
+файлов - в `TLS_CERT` / `TLS_KEY`. Например, от certbot:
 
 ```bash
 certbot certonly --standalone -d demo.example.org        # до запуска прокси (порт 80 свободен)
@@ -73,8 +75,8 @@ TLS_DIR=/etc/letsencrypt/live/demo.example.org           # в .env
 весь `/etc/letsencrypt` и укажите полные пути в `TLS_CERT` и `TLS_KEY`.
 
 При старте прокси проверяет файлы:
-- есть — включает HTTPS на 443, в логе `vectra-proxy: HTTPS включён`;
-- нет — работает только HTTP на 80.
+- есть - включает HTTPS на 443, в логе `vectra-proxy: HTTPS включён`;
+- нет - работает только HTTP на 80.
 
 HTTP при этом тоже остаётся. Если нужен редирект на HTTPS, добавьте его в
 `docker/proxy/templates/default.conf.template`.
@@ -90,7 +92,7 @@ HTTP при этом тоже остаётся. Если нужен редире
 
 Адрес моста задаётся полем в панели страницы или параметром
 `?ros=wss://demo.example.org/ros`. По умолчанию страница с `https://хост` берёт
-`wss://хост/ros`, с `http://хост` — `ws://хост/ros`, с `file://` и localhost —
+`wss://хост/ros`, с `http://хост` - `ws://хост/ros`, с `file://` и localhost -
 `ws://localhost:9090` ([simulator/README.md](../simulator/README.md), «Живой ROS 2»).
 
 ### CORS, Origin, смешанный контент
@@ -108,12 +110,12 @@ HTTP при этом тоже остаётся. Если нужен редире
   `allow`/`deny` по IP или `auth_basic`. У rosbridge своей авторизации нет.
 - **Мост только для чтения (по умолчанию).** Сервис `bridge`
   запускается `docker/bridge.sh`: подписка только на топики страницы
-  (`/result/*`, `/tram/*`, `/vehicle/*`, `/sensing/gnss/master/*`, `/sensing/gnss/rover/fix` — для эталона base_link на странице), публикация,
-  сервисы и параметры закрыты — посетитель домена не может подать ноде ложные
+  (`/result/*`, `/tram/*`, `/vehicle/*`, `/sensing/gnss/master/*`, `/sensing/gnss/rover/fix` - для эталона base_link на странице), публикация,
+  сервисы и параметры закрыты - посетитель домена не может подать ноде ложные
   `/vehicle/*` или GNSS и вызвать `set_parameters`. Проверено: `docker compose up`,
-  20 попыток опубликовать `/vehicle/front_bogie_velocity` через мост — у топика
-  по-прежнему один издатель (`rosbag2_player`); `/result/velocity` через мост —
-  20,0 Гц. `ROSBRIDGE_OPEN=1` в `.env` — открытый мост для отладки на своей машине.
+  20 попыток опубликовать `/vehicle/front_bogie_velocity` через мост - у топика
+  по-прежнему один издатель (`rosbag2_player`); `/result/velocity` через мост -
+  20,0 Гц. `ROSBRIDGE_OPEN=1` в `.env` - открытый мост для отладки на своей машине.
 
 ## 3. Проверка
 
@@ -125,7 +127,7 @@ python3 tools/ws_check.py wss://demo.example.org/ros               # снару�
 ```
 
 `ws_check.py` подписывается на `/result/velocity` и `/result/position` и печатает
-частоту и последний выход. Код 0 — сообщения идут.
+частоту и последний выход. Код 0 - сообщения идут.
 
 Проверено 25.09 на Docker Desktop:
 
@@ -136,13 +138,13 @@ python3 tools/ws_check.py wss://demo.example.org/ros               # снару�
 | `wss://proxy/ros` с тестовым самоподписанным сертификатом, `--insecure` | 20 Гц |
 | тот же `wss://` без `--insecure` | отказ: `CERTIFICATE_VERIFY_FAILED` |
 | страница через прокси по HTTP и HTTPS | 148 739 байт, как с диска |
-| то же с `nginx:1.30-alpine` (1.30.5), `docker compose --profile server up -d` | `/healthz` ok; страница 148 739 байт по HTTP и HTTPS; `ws://proxy/ros` и `wss://proxy/ros` — 20 Гц; у `estimator` `restart=no` |
+| то же с `nginx:1.30-alpine` (1.30.5), `docker compose --profile server up -d` | `/healthz` ok; страница 148 739 байт по HTTP и HTTPS; `ws://proxy/ros` и `wss://proxy/ros` - 20 Гц; у `estimator` `restart=no` |
 
 ## 4. Сетевые заметки
 
 - **DDS между контейнерами.** ROS-сервисы находятся в сети проекта compose и
   видят друг друга по multicast в одном `ROS_DOMAIN_ID`. `player` и `probe`
-  работают в сетевом и IPC-пространстве `estimator` — как процессы на одной машине.
+  работают в сетевом и IPC-пространстве `estimator` - как процессы на одной машине.
 - **Изоляция.** Сеть проекта изолирована: чужие ROS 2 на сервере в тот же домен не
   попадут. Если нужен `network_mode: host`, задайте уникальный `ROS_DOMAIN_ID`.
 - **Останов.** `docker compose down` посылает SIGINT (`stop_signal`), как Ctrl+C.
@@ -155,7 +157,7 @@ python3 tools/ws_check.py wss://demo.example.org/ros               # снару�
 - **Второй вариант сервера.** Есть `simulator/deploy/compose.demo.yml` (Caddy с
   автоматическим TLS от Let's Encrypt, тот же путь `/ros`, мост только для
   чтения). Он тоже занимает порты 80/443: на сервере запускать что-то одно.
-  **Основной вариант — `docker compose --profile server up -d` из корня** (один
+  **Основной вариант - `docker compose --profile server up -d` из корня** (один
   compose на ноутбук и сервер, тесты и оценку, nginx закреплён по digest);
-  `compose.demo.yml` — запасной, если на сервере нужен автоматический
+  `compose.demo.yml` - запасной, если на сервере нужен автоматический
   сертификат Let's Encrypt без ручной выдачи.
