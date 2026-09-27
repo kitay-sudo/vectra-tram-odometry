@@ -187,7 +187,7 @@ def _run_one(task, share):
         if pos is not None and not naive:
             row.update({k: getattr(pos, k, 0) for k in (
                 "n_corr", "n_corr_big", "n_corr_reloc", "n_corr_gated", "n_corr_skew",
-                "n_corr_geom", "n_realign")})
+                "n_corr_geom", "n_corr_nonrtk", "n_realign")})
             row["mult"] = float(getattr(pos, "mult", 1.0))
         row["crash"] = e.get("crash")
         res["est"][name] = row

@@ -90,14 +90,21 @@ class Position:
         CORR_BASE_TOL); одна антенна (второй нет) — перенос вдоль курса карты;
       * σ точки по NavSatFix.status (2 — RTK: gnss_sigma_rtk_m, 1 — SBAS,
         0 — без поправок: gnss_sigma_fix_m), по заявленной ковариации, если
-        она есть (в данных пустая);
+        она есть (в данных пустая); статус эпохи — худший из двух антенн, а
+        эпохи только с rover — не лучше статуса master (rover меряется от
+        master: подвижная база, _status);
       * обновление Калмана вдоль пути: невязка ν вдоль касательной курсора,
         априорная σ — σ_s связки с ростом gnss_prior_rel на метр пути (Runner
         передаёт её в step), K = P/(P + R); курсор сдвигается по карте на K·ν,
         σ_s после — √((1−K)P); не чаще gnss_min_interval_s (ошибки соседних
         точек связаны);
+      * без RTK (статус эпохи < 2) — только малые поправки (|K·ν| ≤
+        gnss_jump_m, не чаще CORR_NONRTK_INTERVAL_S), окно привязки к
+        остановкам они не сужают; RTK-поправка сужает его только до σ после
+        поправки;
       * отбраковка: правдоподобная большая поправка (|ν| ≤ gnss_gate·√(P+R),
-        но K·ν > gnss_jump_m) — после gnss_confirm_n согласных эпох подряд;
+        но K·ν > gnss_jump_m) — только RTK, после gnss_confirm_n согласных
+        эпох подряд;
         неправдоподобная (вне ворот, поперёк пути дальше max(2,5 м, 3σ),
         чистая пара против курса пути больше CORR_HEAD_TOL) — только RTK и
         только если держится gnss_persist_s с той же невязкой (скачок сразу
@@ -140,6 +147,9 @@ class Position:
     CORR_JUMP_M = 2.0            # м: и невязка изменилась больше этого + 3σ точки
     CORR_NONRTK_INTERVAL_S = 20.0    # с: поправки без RTK не чаще (ошибка держится
                                      # десятки секунд — повтор ничего не добавляет)
+    CORR_MSTAT_S = 10.0          # с: эпоха только с rover — статус master не старше этого
+    # окно привязки к остановке (TrackMap.anchor): σ = hypot(σ точки, SD0 + REL·путь)
+    ANCHOR_SD0, ANCHOR_REL = 2.0, 0.003
     CORR_PEND_MAX = 300          # эпох в очереди подтверждения
     CORR_DRIFT_TOL = 0.02        # доля пути: рост невязки вдоль за время подтверждения
                                  # (колёса врут до ~2 % при срыве) — ещё согласие
@@ -247,6 +257,7 @@ class Position:
         self._pend = []                 # эпохи вне ворот: ждут подтверждения
         self._pend_jump = False         # несогласие началось скачком GNSS
         self._ok = None                 # (метка, ν) последней эпохи, согласной с оценкой
+        self._m_stat = None             # (метка, статус) последней точки master после окна
         self._seg = None                # отрезок масштаба: [путь от якоря, Σ поправок]
         self.n_corr = 0                 # принятых поправок
         self.corr_var = None            # σ² вдоль пути после последней поправки
@@ -260,6 +271,7 @@ class Position:
         self.n_corr_skew = 0            # точек с меткой не по часам входов
         self.n_corr_geom = 0            # эпох с негодной геометрией (база, курс)
         self.n_corr_skip = 0            # годных эпох между поправками (min_interval)
+        self.n_corr_nonrtk = 0          # эпох без RTK с большой невязкой (не берутся)
         self.n_realign = 0              # окон выставки, открытых заново после окна
 
     # ---------- GNSS ----------
@@ -526,23 +538,39 @@ class Position:
         self._cq = [q for q, u in zip(cq, used) if not u]
         return changed
 
-    def _sd_fix(self, rows, single):
+    def _sd_fix(self, rows, single, status):
         """σ точки GNSS, м: заявленная ковариация, если есть, иначе по
-        NavSatFix.status (берётся худший статус эпохи); одна антенна — плюс
-        CORR_SINGLE_SD (курс карты × плечо до base_link)."""
+        статусу эпохи status (_status); одна антенна — плюс CORR_SINGLE_SD
+        (курс карты × плечо до base_link)."""
         var = [q[6] for q in rows if q[6] is not None]
         if var:
             sd = math.sqrt(max(max(var), 0.01))
         else:
-            st = min(q[5] for q in rows)
-            sd = self.gnss_sigma[min(max(st, 0), 2)]
+            sd = self.gnss_sigma[min(max(status, 0), 2)]
         return math.hypot(sd, self.CORR_SINGLE_SD) if single else sd
+
+    def _status(self, m, r, ts):
+        """Статус эпохи для веса и правил: худший из master и rover. Rover
+        меряется от master (подвижная база: статус 2 у rover — это решённый
+        вектор базы, а не точность самой точки; в данных 30618_defd0170 и
+        30618_0686195f у master весь прогон статус 0, у rover — 2, а база
+        пары ровно 12,42 м): точность эпохи только с rover — по статусу
+        master, последнего не старше CORR_MSTAT_S; master не было — без RTK."""
+        if m is not None:
+            self._m_stat = (m[0], m[5])
+            return m[5] if r is None else min(m[5], r[5])
+        ms = self._m_stat
+        if ms is None and self._m:              # последняя точка master окна выставки
+            ms = (self._m[-1][0], self._m[-1][5])
+        st_m = ms[1] if ms is not None and abs(ts - ms[0]) <= self.CORR_MSTAT_S else 0
+        return min(r[5], st_m)
 
     def _epoch(self, t, s, ds, sigma, m, r):
         """Одна эпоха GNSS (m — master, r — rover, любая может быть None):
         base_link по GNSS, невязка вдоль и поперёк пути на метку эпохи,
         ворота, подтверждение, поправка. True — положение изменилось."""
         ts = m[0] if m is not None else r[0]
+        status = self._status(m, r, ts)
         s_fix = self._path_at(ts)
         if s_fix is None:
             self.n_corr_skew += 1
@@ -578,8 +606,7 @@ class Position:
             gp = np.array(self.body.shift(xyz(q), h_ref, q[1] if q[1] == "master" else "rover",
                                           self.track_point))
         rows = [q for q in (m, r) if q is not None]
-        status = min(q[5] for q in rows)
-        sd = self._sd_fix(rows, len(rows) < 2)
+        sd = self._sd_fix(rows, len(rows) < 2, status)
         # пара смотрит не вдоль пути курсора (разворот на петле, курсор на
         # встречном пути или не на той ветке): поправка вдоль пути не имеет
         # смысла — только перестановка курсора по подтверждённой паре RTK
@@ -649,12 +676,20 @@ class Position:
         self._pend.append((ts, nu_a, nu_c, sd, in_gate, cross_out, status, flip, s_fix,
                            float(gp[0]), float(gp[1])))
         self._pend = self._pend[-self.CORR_PEND_MAX:]
+        if status < 2:
+            # без RTK — только малые поправки (выше: |K·ν| ≤ gnss_jump_m, не
+            # чаще CORR_NONRTK_INTERVAL_S); большой — никогда: смещение точек
+            # без поправок бывает 10–16 м и держится минутами (30618_b8044aa0
+            # glitchy: пачка статуса 0 со сдвигом 11 м давала поправки 4,7 +
+            # 6,4 м), подтверждение несколькими эпохами его не отличает
+            self.n_corr_nonrtk += 1
+            return False
         last = self._pend[-self.gnss_confirm_n:]
         if len(last) < self.gnss_confirm_n or ts - last[0][0] > self.CORR_CONFIRM_S:
             return False
         tol = 1.0 + 2.0 * max(q[3] for q in last)
-        if all(q[4] for q in last) and not self._pend_jump:
-            use, inflate = last, False      # правдоподобная: короткое подтверждение
+        if all(q[4] and q[6] >= 2 for q in last) and not self._pend_jump:
+            use, inflate = last, False      # правдоподобная: короткое подтверждение (RTK)
         else:
             span = [q for q in self._pend if ts - q[0] <= persist + 1e-9]
             if not all(q[6] >= 2 for q in span):
@@ -745,11 +780,25 @@ class Position:
                 self._seg = [ds, 0.0]
             else:
                 self._seg[1] += delta
-        self._s_anchor = ds                 # привязка к остановке — от этой поправки
         self.n_corr += 1
         # σ² после: (1 − K)·P, но не меньше доли σ² точки (и не больше P)
         floor = max(self.CORR_VAR_FLOOR, self.CORR_VAR_FRAC * sd * sd)
         self.corr_var = max(var, min(floor, var / max(1.0 - K, 1e-9)))
+        # Окно привязки к остановке (TrackMap.anchor, σ = SD0 + REL·путь с
+        # прошлой привязки) — главное средство main против дрейфа, и поправка
+        # его сужает только по RTK и только до σ после поправки: отсчёт пути
+        # привязки сдвигается на ds − L, где L — путь, за который окно
+        # дорастает до этой σ (большее из σ поправки и σ самого окна после
+        # того же обновления Калмана). Поправка без RTK окно не трогает:
+        # смещение таких точек бывает 10–16 м, а привязка при ошибке колёс
+        # ~25 м бывает на краю окна (30618_defd0170 sparse: привязок 11 → 8,
+        # конец 3,3 → 15,6 м, когда окно сужала каждая поправка)
+        if status >= 2:
+            w2 = (self.ANCHOR_SD0 + self.ANCHOR_REL * max(ds - self._s_anchor, 0.0)) ** 2
+            w2 = w2 * sd * sd / (w2 + sd * sd) if kind != "reloc" else 0.0
+            sig = math.sqrt(max(self.corr_var, w2))
+            L_eq = max(0.0, (sig - self.ANCHOR_SD0) / self.ANCHOR_REL)
+            self._s_anchor = max(self._s_anchor, ds - L_eq)
         self.corr_s, self.corr_ds, self.corr_stamp = s, ds, ts
         if len(self.corr_log) < 20000:
             self.corr_log.append((ts, nu, delta, sd, kind))

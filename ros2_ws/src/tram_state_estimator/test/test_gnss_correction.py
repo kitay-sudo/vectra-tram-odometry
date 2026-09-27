@@ -79,11 +79,14 @@ def s_true(t):
 
 
 def feed(r, t0, t1, wheel_gain=1.0, gnss=lambda t: t <= 2.0, fix=None, rover=True,
-         status=2, extra=None):
+         status=2, extra=None, prof=None):
     """Поток как в bag: тележки ~9,4 Гц, ручка 20 Гц, GNSS эпохи 10 Гц, пока
     gnss(t). fix(t) -> (dE, dN, status, stamp_shift) — искажение эпохи (по
     умолчанию нет). extra(t, r) — вызывается на каждой эпохе (мусор и т. п.).
-    Колёса показывают V·wheel_gain."""
+    Колёса показывают V·wheel_gain. prof — (v(t), s(t), ручка(t)) вместо
+    разгона до V (например, stop_profile)."""
+    v_true_, s_true_, notch_ = prof or (
+        v_true, s_true, lambda t: 3 if T_START < t < T_START + V / ACC else 0)
     ev = []
     for k in range(int((t1 - t0) * 9.4)):
         t = t0 + k / 9.4
@@ -93,12 +96,12 @@ def feed(r, t0, t1, wheel_gain=1.0, gnss=lambda t: t <= 2.0, fix=None, rover=Tru
     outs = []
     for t, kind in sorted(ev):
         if kind == 2:
-            outs += r.on_handle(t, 3 if T_START < t < T_START + V / ACC else 0)
+            outs += r.on_handle(t, notch_(t))
         elif kind < 2:
-            outs += r.on_wheel(kind, t, v_true(t) * wheel_gain * 3.6)
+            outs += r.on_wheel(kind, t, v_true_(t) * wheel_gain * 3.6)
         elif gnss(t - t0):
             dE, dN, st, sh = fix(t - t0) if fix is not None else (0.0, 0.0, status, 0.0)
-            s = s_true(t)
+            s = s_true_(t)
             e_m = E0 + s - BL                              # master позади base_link
             outs += r.on_fix(t + sh, "master", *_latlon(e_m + dE, N0 + dN), ALT_ANT, st)
             if rover:
@@ -109,14 +112,46 @@ def feed(r, t0, t1, wheel_gain=1.0, gnss=lambda t: t <= 2.0, fix=None, rover=Tru
     return outs
 
 
-def along_err(o, r):
+def along_err(o, r, s_fn=None):
     """Ошибка вдоль пути (м, + — впереди) выхода o против истины: путь на
     восток, выход в MGRS от 37UCB (x = E − 300 000)."""
-    return o["x"] + 300000.0 - (E0 + s_true(o["stamp"]))
+    return o["x"] + 300000.0 - (E0 + (s_fn or s_true)(o["stamp"]))
 
 
 def runner(**kw):
     return Runner(_tram(), track_map=_map(), **kw)
+
+
+def stop_profile(x_stop):
+    """Разгон до V, ход, торможение ACC до остановки ровно на x_stop м пути
+    и стоянка -> (v(t), s(t), ручка(t), момент остановки)."""
+    ta = V / ACC
+    t_dec = T_START + ta + (x_stop - V * ta) / V
+    t_halt = t_dec + ta
+
+    def v(t):
+        if t <= T_START:
+            return 0.0
+        if t <= T_START + ta:
+            return ACC * (t - T_START)
+        if t <= t_dec:
+            return V
+        return max(0.0, V - ACC * (t - t_dec))
+
+    def s(t):
+        u = max(0.0, t - T_START)
+        if u <= ta:
+            return 0.5 * ACC * u * u
+        s1 = 0.5 * V * ta + V * (min(t, t_dec) - T_START - ta)
+        w = min(max(t - t_dec, 0.0), ta)
+        return s1 + V * w - 0.5 * ACC * w * w
+
+    def notch(t):
+        if T_START < t < T_START + ta:
+            return 3
+        return -3 if t_dec < t < t_halt + 1.0 else 0
+
+    return (v, s, notch), t_halt
 
 
 def final_err(outs, r):
@@ -477,3 +512,84 @@ def test_dead_end_hold_is_released_by_gnss_track():
     assert abs(along_err(outs[-1], r)) < 2.0
     r0, outs0 = run(False)
     assert abs(along_err(outs0[-1], r0)) > 100.0
+
+
+# ------------------------------------------------------------ ревью раунда 2
+
+def _stop_map(x_stop, L=3000.0):
+    """Прямой путь на восток с точкой остановки на x_stop (base_link)."""
+    x = np.arange(-50.0, L, 1.0)
+    P = np.c_[E0 + x, np.full(len(x), N0), np.full(len(x), ALT_RAIL)]
+    la, lo = _latlon(E0 + x_stop, N0)
+    return TrackMap.from_polylines([P], crs="utm", zone=37, bidirectional=False,
+                                   stops=[(la, lo, math.pi / 2, 1.0)])
+
+
+def test_weak_correction_keeps_stop_anchoring():
+    """Колёса врут на +1,2 %; на 400 м пути пачка GNSS без RTK (статус 0):
+    малая поправка (≈1 м из ~5 м невязки). На остановке у 1600 м ошибка
+    ~18 м — привязка к остановке должна случиться, как и без коррекции:
+    слабая поправка окно привязки не сужает (раньше отсчёт окна начинался
+    от поправки: окно ±17 м, привязки нет, ошибка оставалась)."""
+    x_stop = 1600.0
+    prof, t_halt = stop_profile(x_stop)
+    res = {}
+    for flag in (False, True):
+        r = Runner(_tram(), track_map=_stop_map(x_stop), gnss_correction=flag)
+        outs = feed(r, 0.0, t_halt + 15.0, wheel_gain=1.012, prof=prof,
+                    gnss=lambda t: t <= 2.0 or 48.0 <= t <= 54.0,
+                    fix=lambda t: (0.0, 0.0, 0 if t > 3.0 else 2, 0.0))
+        before = [o for o in outs if t_halt - 1.0 <= o["stamp"] <= t_halt]
+        res[flag] = (r, outs, along_err(before[-1], r, prof[1]))
+    r0, _, e0 = res[False]
+    r1, outs1, e1 = res[True]
+    assert e0 > 15.0 and e1 > 15.0, (e0, e1)          # до остановки — дрейф колёс
+    assert r1.pos.n_corr >= 1 and abs(e0 - e1) > 0.3  # поправка без RTK была
+    assert r0.pos.anchors == 1
+    assert r1.pos.anchors == 1                         # и привязка — тоже
+    assert abs(along_err(outs1[-1], r1, prof[1])) < 3.0
+
+
+@pytest.mark.parametrize("status", [0, 1])
+@pytest.mark.parametrize("bias", [6.0, 10.0, 15.0])
+def test_nonrtk_bias_burst_is_not_followed(status, bias):
+    """Пачка без RTK (статус 0 или 1) на 8 с со сдвигом 6–15 м вдоль пути
+    через 2,4 км точных колёс: σ_s уже большая, невязка в воротах, но без
+    RTK большая поправка не делается (смещение таких точек держится
+    минутами) — ошибка как без коррекции (раньше: 5–15 м)."""
+    fix = (lambda t: (bias, 0.0, status, 0.0) if t >= 250.0 else (0.0, 0.0, 2, 0.0))
+    gnss = (lambda t: t <= 2.0 or 250.0 <= t <= 258.0)
+    r0 = runner(gnss_correction=False)
+    e0 = final_err(feed(r0, 0.0, 300.0, gnss=gnss, fix=fix), r0)
+    r1 = runner()
+    e1 = final_err(feed(r1, 0.0, 300.0, gnss=gnss, fix=fix), r1)
+    assert abs(e1 - e0) < 0.5, (e0, e1)
+    assert r1.pos.n_corr_big == 0 and r1.pos.n_corr_nonrtk > 0
+
+
+def test_rover_only_epoch_takes_master_status():
+    """Rover меряется от master (подвижная база): у rover статус 2, у master
+    0 — эпоха только с rover не RTK. Пачка пар (master статус 0), через 5 с
+    — пачка, где master пропал, а rover со сдвигом 10 м и статусом 2:
+    поправки больше gnss_jump_m нет (раньше такая эпоха считалась RTK и
+    после 3 эпох ставила положение на 10 м вперёд)."""
+    r = runner()
+    orig = r.on_fix
+
+    def on_fix(stamp, antenna, lat, lon, alt, status=0, cov=None):
+        if stamp > 3.5:
+            if antenna == "master":
+                if stamp >= 250.0:
+                    return []                   # master пропал
+                status = 0                      # master весь прогон без RTK
+            elif stamp >= 250.0:
+                e, n = g.utm_fwd(lat, lon, 37)
+                lat, lon = _latlon(float(e) + 10.0, float(n))
+        return orig(stamp, antenna, lat, lon, alt, status, cov)
+    r.on_fix = on_fix
+    gnss = (lambda t: t <= 2.0 or 240.0 <= t <= 245.0 or 250.0 <= t <= 258.0)
+    outs = feed(r, 0.0, 300.0, gnss=gnss)
+    r0 = runner(gnss_correction=False)
+    e0 = final_err(feed(r0, 0.0, 300.0, gnss=gnss), r0)
+    assert abs(final_err(outs, r) - e0) < 3.0
+    assert r.pos.n_corr_big == 0
