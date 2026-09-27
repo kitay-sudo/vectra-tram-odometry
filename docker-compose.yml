@@ -122,6 +122,7 @@ services:
     command: python3 -m http.server 8080 --bind 0.0.0.0 --directory /repo/simulator
     ports:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+    stop_signal: SIGINT                   # http.server выходит по Ctrl+C с кодом 0
     restart: unless-stopped
 
   # ---------------------------------------------------------------- публичный сервер

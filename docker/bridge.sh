@@ -44,12 +44,35 @@ rosapi:
     params_glob: "[]"
 YAML
 echo "[bridge] rosbridge только для чтения: подписки $SUB_GLOB, публикация запрещена, порт $PORT"
+# Узлы запускаются напрямую, не через «ros2 run»: обёртка ros2 run ловит
+# SIGINT и ждёт дочерний процесс, до которого сигнал не доходит, и docker stop
+# через 10 с убивает контейнер (код 137).
+LIB=/opt/ros/humble/lib
 pids=()
-cleanup() { for p in "${pids[@]}"; do kill -INT "$p" 2>/dev/null || true; done; wait 2>/dev/null || true; }
-trap cleanup EXIT INT TERM
-ros2 run rosapi rosapi_node --ros-args -r __node:=rosapi --params-file "$CFG" &
+alive() { for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null && return 0; done; return 1; }
+stop_all() {
+  for p in "${pids[@]}"; do kill -INT "$p" 2>/dev/null || true; done
+  for _ in $(seq 50); do alive || break; sleep 0.1; done   # до 5 с на штатный выход
+  for p in "${pids[@]}"; do kill -TERM "$p" 2>/dev/null || true; done
+  wait 2>/dev/null || true
+}
+trap 'stop_all; echo "[bridge] остановлен"; exit 0' INT TERM
+# rosapi в Humble не ловит ExternalShutdownException при штатном останове и
+# печатает трассировку: запуск через runpy с перехватом этого исключения
+QUIET='import runpy, sys
+from rclpy.executors import ExternalShutdownException
+sys.argv = sys.argv[1:]
+try:
+    runpy.run_path(sys.argv[0], run_name="__main__")
+except (ExternalShutdownException, KeyboardInterrupt):
+    pass'
+python3 -c "$QUIET" "$LIB/rosapi/rosapi_node" --ros-args -r __node:=rosapi --params-file "$CFG" &
 pids+=($!)
-ros2 run rosbridge_server rosbridge_websocket --ros-args -r __node:=rosbridge_websocket \
+"$LIB/rosbridge_server/rosbridge_websocket" --ros-args -r __node:=rosbridge_websocket \
   --params-file "$CFG" &
 pids+=($!)
-wait -n "${pids[@]}"
+rc=0
+wait -n "${pids[@]}" || rc=$?
+echo "[bridge] узел моста завершился (код $rc), останавливаю второй"
+stop_all
+exit "$rc"
