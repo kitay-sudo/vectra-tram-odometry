@@ -561,13 +561,15 @@ class Position:
             M, R = xyz(m), xyz(r)
             d = R - M
             b = math.hypot(d[0], d[1])
-            if self.BASE_MIN <= b <= self.BASE_MAX:
-                gp = np.array(self.body.from_pair(M, R, self.track_point))
-                if abs(b - self.body.baseline) <= self.CORR_BASE_TOL:
-                    h_g = math.atan2(d[0], d[1])
-            else:
-                self.n_corr_geom += 1       # база не та: пара негодна, берём master
-                r = None
+            if not self.BASE_MIN <= b <= self.BASE_MAX:
+                # база не та: одна из антенн сбита, а какая — не знаем
+                # (30618_616ec56b, 570 с: база 41 м, master сбит на ~5 м) —
+                # эпоха не берётся
+                self.n_corr_geom += 1
+                return False
+            gp = np.array(self.body.from_pair(M, R, self.track_point))
+            if abs(b - self.body.baseline) <= self.CORR_BASE_TOL:
+                h_g = math.atan2(d[0], d[1])
         if gp is None:
             q = m if m is not None else r
             gp = np.array(self.body.shift(xyz(q), h_ref, q[1] if q[1] == "master" else "rover",
@@ -641,7 +643,8 @@ class Position:
                    else self.gnss_persist_s)
         keep_s = max(self.CORR_CONFIRM_S, persist)
         self._pend = [q for q in self._pend if ts - q[0] <= keep_s]
-        self._pend.append((ts, nu_a, nu_c, sd, in_gate, cross_out, status, flip, s_fix))
+        self._pend.append((ts, nu_a, nu_c, sd, in_gate, cross_out, status, flip, s_fix,
+                           float(gp[0]), float(gp[1])))
         self._pend = self._pend[-self.CORR_PEND_MAX:]
         last = self._pend[-self.gnss_confirm_n:]
         if len(last) < self.gnss_confirm_n or ts - last[0][0] > self.CORR_CONFIRM_S:
@@ -663,8 +666,10 @@ class Position:
             # роста от масштаба колёс на пройденном за эти эпохи пути
             A = [q[1] for q in use]
             C = [q[2] for q in use]
-            tol_a = tol + self.CORR_DRIFT_TOL * (max(q[8] for q in use) - min(q[8] for q in use))
-            if max(A) - min(A) > tol_a or max(C) - min(C) > tol:
+            L = max(q[8] for q in use) - min(q[8] for q in use)
+            tol_a = tol + self.CORR_DRIFT_TOL * L
+            if (max(A) - min(A) > tol_a or max(C) - min(C) > tol) and not (
+                    inflate and self._track_agrees(use, tol_a)):
                 return False
         self._pend = []
         Pb = max(P, nu_a * nu_a + nu_c * nu_c) if inflate else P   # сбилась: априори ≥ ν²
@@ -690,6 +695,21 @@ class Position:
             if cross_out or abs(nu_a) > 10.0 * self.CORR_ALONG_MAX:
                 return False                # переставить нельзя, а вдоль — не то
         return self._shift(ts, s, ds, Kb, nu_a, nu_c, var, sd, status, "big")
+
+    def _track_agrees(self, use, tol):
+        """Путь точек GNSS эпох подтверждения (ломаная по base_link) равен пути
+        колёс за то же время (с допуском tol): GNSS движется, как говорят
+        колёса, — значит, сбилась не GNSS, а оценка (курсор стоит в тупике
+        карты, ушёл на другую ветку), хотя невязка и растёт."""
+        q_ = sorted(use, key=lambda q: q[0])
+        g = [q_[0]]
+        for q in q_[1:]:                    # точки не чаще раза в секунду: шум RTK
+            if q[0] - g[-1][0] >= 1.0 or q is q_[-1]:   # не удлиняет ломаную
+                g.append(q)
+        Lg = sum(math.hypot(b[9] - a[9], b[10] - a[10]) for a, b in zip(g, g[1:]))
+        k = self.map.scale * self.mult if self.map is not None else self.frame.k0
+        Lw = (g[-1][8] - g[0][8]) * k
+        return Lw > 5.0 and abs(Lg - Lw) <= tol
 
     def _shift(self, ts, s, ds, K, nu, nu_c, var, sd, status, kind):
         """Поправка K·ν: с картой — курсор по карте вдоль пути на K·ν (поперёк

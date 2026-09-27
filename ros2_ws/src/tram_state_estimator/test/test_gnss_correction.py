@@ -437,3 +437,43 @@ def test_short_rtk_offset_in_a_burst_is_not_followed():
                 fix=lambda t: (15.0, 0.0, 2, 0.0) if t > 3.0 else (0.0, 0.0, 2, 0.0))
     err = [abs(along_err(o, r)) for o in outs if o["stamp"] >= 10.0]
     assert max(err) < 1.5, max(err)
+
+
+def test_broken_pair_is_not_used():
+    """База пары 40 м (одна антенна сбита, неизвестно какая): эпоха не
+    берётся вовсе — ни парой, ни одной антенной (30618_616ec56b, 570 с)."""
+    r = runner()
+    # rover сбит на 28 м вперёд, master — на 4 м назад вдоль пути
+    orig = r.on_fix
+
+    def on_fix(stamp, antenna, lat, lon, alt, status=0, cov=None):
+        if 40.0 <= stamp <= 50.0:
+            e, n = g.utm_fwd(lat, lon, 37)
+            e = float(e) + (28.0 if antenna == "rover" else -4.0)
+            lat, lon = _latlon(e, float(n))
+        return orig(stamp, antenna, lat, lon, alt, status, cov)
+    r.on_fix = on_fix
+    outs = feed(r, 0.0, 60.0, gnss=lambda t: True)
+    err = [abs(along_err(o, r)) for o in outs if o["stamp"] >= 10.0]
+    assert max(err) < 1.0, max(err)
+    assert r.pos.n_corr_geom > 50
+
+
+def test_dead_end_hold_is_released_by_gnss_track():
+    """Карта кончается тупиком (удержание курсора в тупике, terminal_hold
+    any), а трамвай едет дальше по пути, которого нет в карте. Невязка
+    растёт со скоростью вагона, но точки GNSS движутся ровно так, как
+    говорят колёса: после gnss_persist_s курсор ставится в точку GNSS вне
+    карты и едет дальше."""
+    def run(correction):
+        x = np.arange(-50.0, 400.0, 1.0)
+        tm = TrackMap.from_polylines(
+            [np.c_[E0 + x, np.full(len(x), N0), np.full(len(x), ALT_RAIL)]],
+            crs="utm", zone=37, bidirectional=False)
+        r = Runner(_tram(), track_map=tm, terminal_hold="any", gnss_correction=correction)
+        return r, feed(r, 0.0, 75.0, gnss=lambda t: True)
+    r, outs = run(True)
+    assert r.pos.n_corr_reloc >= 1
+    assert abs(along_err(outs[-1], r)) < 2.0
+    r0, outs0 = run(False)
+    assert abs(along_err(outs0[-1], r0)) > 100.0
