@@ -53,6 +53,8 @@ if [ ! -d /opt/ros/humble ]; then
 fi
 
 # ---------------- контейнер ----------------
+# управление заданиями: фоновые процессы получают SIGINT (иначе bash их игнорирует)
+set -m
 source /opt/ros/humble/setup.bash
 echo "Проверка: скрипт организаторов hackathon_solution_checker"
 echo "Запись: $(basename "$(dirname /bag/metadata.yaml)") ($(grep -m1 -A1 '^  duration:' /bag/metadata.yaml | awk '/nanoseconds/{printf "%.0f с", $2/1e9}'))"
@@ -76,13 +78,22 @@ source /ws/install/setup.bash
 echo "Этап: запуск ноды, проверяющей ноды и записи"
 ros2 launch tram_state_estimator tram.launch.py > /out/node.log 2>&1 &
 node=$!
-ros2 run hackathon_solution_checker metrics > /out/metrics.log 2>&1 &
+# проверяющая нода запускается напрямую: обёртка ros2 run не передаёт SIGINT, и итог
+# ноды (он печатается при остановке) не появлялся бы
+/ws/install/hackathon_solution_checker/lib/hackathon_solution_checker/metrics \n  > /out/metrics.log 2>&1 &
 metrics=$!
 sleep 6
 ros2 bag play /bag -d 3 -r "$RATE" > /out/play.log 2>&1
 sleep 3
-kill -INT "$metrics"; wait "$metrics" 2>/dev/null
-kill -INT "$node"; wait "$node" 2>/dev/null
+stop() {
+  # SIGINT, до 15 с на итог и выход, затем принудительно
+  kill -INT "$1" 2>/dev/null
+  for _ in $(seq 1 30); do kill -0 "$1" 2>/dev/null || return 0; sleep 0.5; done
+  kill -9 "$1" 2>/dev/null
+  wait "$1" 2>/dev/null
+}
+stop "$metrics"
+stop "$node"
 python3 - <<'EOF'
 import re, sys
 text = open("/out/metrics.log", encoding="utf-8", errors="replace").read()
