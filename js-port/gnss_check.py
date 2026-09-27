@@ -8,11 +8,11 @@
   (1) GNSS на весь прогон  против  (3) GNSS только первые 3 с (как в bag жюри,
       analysis/evaluate.events) при gnss_correction: false — всё то же плюс
       положение x, y, z и признаки «положение выставлено / опубликовано».
-      С коррекцией (по умолчанию с 26.09, docs/POSITION_FRAME.md) GNSS после
+      С коррекцией (по умолчанию, docs/POSITION_FRAME.md) GNSS после
       окна поправляет положение — это печатается для сведения.
 
     docker run --rm -v <repo>:/repo -v <data>:/repo/data:ro \
-      -v <cache>:/repo/analysis/cache:ro -w /repo/js-port vectra/tram:integration \
+      -v <cache>:/repo/analysis/cache:ro -w /repo/js-port vectra/tram:compose \
       python3 gnss_check.py [bag]
 """
 import math

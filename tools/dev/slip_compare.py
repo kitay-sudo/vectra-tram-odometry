@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""До / после по двум прогонам tools/eval.py (поток slip): инъекции по видам и
-чистые метрики. Таблицы — Markdown для docs/audit/SLIP.md.
+"""До / после по двум прогонам tools/eval.py (правки срыва): инъекции по видам и
+чистые метрики. Таблицы — Markdown.
 
-  python3 tools/slip_compare.py out/eval_before15 out/eval_after15 [--runs a,b,c]
+  python3 tools/dev/slip_compare.py out/eval_before15 out/eval_after15 [--runs a,b,c]
 
 --runs — только эти прогоны инъекций (например, три прогона по умолчанию
 tools/eval.py: 30618_3e9f4952,30639_d3c43d69,30618_e9a34502).

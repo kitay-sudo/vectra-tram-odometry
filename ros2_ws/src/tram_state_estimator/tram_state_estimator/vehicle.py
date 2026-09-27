@@ -202,7 +202,7 @@ def wheel_scale_hook(runner, enabled, **kw):
 
 def apply_node(params, node):
     """Для оценки: параметры ноды (dict) -> (Params, сведения). Если в листе
-    нет параметров вагона (лист до 26.09), Params не меняются."""
+    нет параметров вагона (старый лист), Params не меняются."""
     if "vehicle" not in node:
         return params, dict(requested="", used=AUTO, meas_scale=None, warning=None,
                             known=[], sheet_meas_scale=float(params.meas_scale))

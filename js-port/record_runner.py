@@ -5,7 +5,7 @@
 затем `node compare_runner.js`.
 
     docker run --rm -v <repo>:/repo -v <data>:/repo/data:ro \
-      -v <cache>:/repo/analysis/cache:ro -w /repo/js-port vectra/tram:integration \
+      -v <cache>:/repo/analysis/cache:ro -w /repo/js-port vectra/tram:compose \
       python3 record_runner.py [bag] [variant] [лист]
 
 GNSS в связку не подаётся: скорость и путь ядра от него не зависят (он идёт

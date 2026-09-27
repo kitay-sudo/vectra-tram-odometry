@@ -1,6 +1,19 @@
-import sys, numpy as np, evaluate as E
-from dataclasses import replace
+"""Ранний перебор q_v и sigma_meas по пяти прогонам (analysis/evaluate.py).
+Лист теперь подгоняет analysis/calib_tune.py; скрипт оставлен как след
+исследования.
+
+    python3 tools/dev/tune_q.py <dt>
+"""
+import os
+import sys
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
+
+import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "analysis"))
+import evaluate as E  # noqa: E402
+
 RUNS = ["30618_3e9f4952", "30618_6cb3280a", "30618_b95ca60a", "30639_d3c43d69", "30639_3b3d9eb8"]
 def one(args):
     b, qv, sm = args

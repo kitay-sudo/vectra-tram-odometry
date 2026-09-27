@@ -31,9 +31,13 @@ else
   mkdir -p "$WS"
   colcon --log-base "$WS/log" build --base-paths "$SRC" --build-base "$WS/build" \
     --install-base "$WS/install" --event-handlers console_cohesion- summary+ >"$WS/build.log" 2>&1 \
-    || { cat "$WS/build.log"; echo "[test] colcon build FAILED"; exit 1; }
-  tail -1 "$WS/build.log"
-  echo "[test] colcon build: $(( $(date +%s) - t0 )) с"
+    || { cat "$WS/build.log"; echo "[test] colcon build: ОШИБКА"; exit 1; }
+  echo "[test] colcon build: $(grep -m1 '^Summary:' "$WS/build.log" | sed 's/^Summary: //'), $(( $(date +%s) - t0 )) с"
+  # предупреждения setuptools о выключенной байт-компиляции (PYTHONDONTWRITEBYTECODE
+  # образа) безвредны; остальное из stderr сборки показываем
+  extra=$(cat "$WS"/log/latest_build/*/stderr.log 2>/dev/null \
+          | grep -v -e "byte-compiling is disabled" -e '^[[:space:]]*$' || true)
+  if [ -n "$extra" ]; then echo "[test] colcon build, stderr:"; echo "$extra" | head -20; fi
 fi
 source "$WS/install/setup.bash"
 
@@ -47,5 +51,6 @@ echo "[test] pytest ${args[*]} $*"
 t0=$(date +%s)
 # PYTHONPATH на исходники: тесты и фикстуры — из рабочего дерева
 PYTHONPATH="$SRC/tram_state_estimator:$PYTHONPATH" python3 -m pytest test/ "${args[@]}" "$@" && rc=0 || rc=$?
-echo "[test] pytest: код $rc за $(( $(date +%s) - t0 )) с"
+if [ $rc = 0 ]; then verdict="PASS"; else verdict="FAIL"; fi
+echo "[test] ИТОГ: $verdict (pytest, код $rc) за $(( $(date +%s) - t0 )) с"
 exit $rc

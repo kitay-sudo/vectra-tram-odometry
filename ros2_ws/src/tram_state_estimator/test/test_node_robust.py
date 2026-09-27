@@ -1,5 +1,5 @@
-"""Нода tram_estimator без DDS-трафика: пульс (WP16), подавление повторов,
-темп проигрывания, сброс, ковариации (WP12a), лист пакета (WP22).
+"""Нода tram_estimator без DDS-трафика: пульс, подавление повторов,
+темп проигрывания, сброс, ковариации, лист пакета.
 
 Входы подаются прямо в node._input по времени прихода, таймер пульса
 вызывается каждые 10 мс поддельных монотонных часов (модуль time ноды
@@ -172,7 +172,7 @@ def test_odometry_covariances_have_no_zero_diagonal(ros, monkeypatch):
         node._input(m, a)
     node.destroy_node()
     assert len(got) > 150
-    # до якоря GNSS положение не публикуется (pos_valid, поток «положение»),
+    # до якоря GNSS положение не публикуется (pos_valid),
     # поэтому все опубликованные — с якорем: σ x, y конечна и мала
     assert len(got) < len(vel)
     assert all(o.pose.covariance[0] < 1e5 for o in got)

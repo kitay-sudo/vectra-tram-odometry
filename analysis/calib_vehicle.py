@@ -43,7 +43,7 @@ PKG = ROOT / "ros2_ws" / "src" / "tram_state_estimator"
 CALIB = {"eval": PKG / "config" / "eval" / "tram_calibration.json",
          "jury": PKG / "config" / "tram_calibration.json"}
 VEHICLES = ("30618", "30639")
-# вагон по умолчанию в листе: проверка организаторов — только 30618 (26.09)
+# вагон по умолчанию в листе: проверка организаторов — только 30618
 DEFAULT_VEHICLE = "30618"
 
 

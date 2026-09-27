@@ -49,7 +49,7 @@ import inject as I              # noqa: E402
 SCENARIOS = ("first3", "sparse", "bursts", "nostart", "midstart", "full", "glitchy")
 # Сценарии с теми же первыми 3 с GNSS, что first3: при gnss_correction false
 # точки после окна отбрасываются, поэтому выход плеч «до» у них тот же, что в
-# first3 (C2; проверено: tools/eval_gnss.py --no-share-before). Плечи «до»
+# first3 (проверено: tools/eval_gnss.py --no-share-before). Плечи «до»
 # считаются один раз — в first3 — и копируются.
 SAME_BEFORE = ("sparse", "bursts", "full", "glitchy")
 KEYS = ("v_mae", "v_bias", "p3d_mean", "p3d_end_mean", "p3d_end_median", "p3d_end_max",
@@ -228,7 +228,7 @@ def render(summary):
     A("")
     A(f"Прогоны: {meta['split']} ({len(meta['runs'])}), лист {meta['sheet']}, карта {meta['map']}. "
       f"Код пакета sha `{meta['pkg_src_sha']}`. «до» — `gnss_correction: false` (GNSS только "
-      "для выставки, как до 26.09), «после» — `true`. Эталон — base_link по всем точкам GNSS "
+      "для выставки), «после» — `true`. Эталон — base_link по всем точкам GNSS "
       "прогона, MGRS 37UCB.")
     A("")
     for sc in meta["scenarios"]:

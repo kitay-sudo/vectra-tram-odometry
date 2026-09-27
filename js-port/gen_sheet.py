@@ -8,7 +8,7 @@ tools/eval.py (tools/export_replay.resolve_sheet -> Params пакета), и
 пишется целиком (все поля Params) плюс параметры ноды, которые видит ядро
 (таймауты входов, окно выставки).
 
-    docker run --rm -v <repo>:/repo -w /repo vectra/tram:integration \
+    docker run --rm -v <repo>:/repo -w /repo vectra/tram:compose \
         python3 js-port/gen_sheet.py [--sheet jury|eval|<путь>] [--out simulator/js/sheet.js]
 
 Перезапускать после каждой правки листа (tools/gen_params.py) — иначе

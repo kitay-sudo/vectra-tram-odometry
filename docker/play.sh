@@ -3,7 +3,9 @@
 #
 # Переменные (из .env): BAG — каталог прогона в DATA_DIR (смонтирован в /data);
 # PLAY_LOOP=1 — по кругу (демо-сервер); PLAY_RATE — скорость (1.0);
-# PLAY_DELAY — пауза перед проигрыванием, с (2, как в инструкции жюри);
+# PLAY_DELAY — пауза перед проигрыванием, с (5). Нужна, чтобы нода и проба
+# нашли издателей плеера до первого сообщения (DDS): с 2 с при одновременном
+# старте моста и страницы нода теряла первые 4 с bag, а с ними окно выставки;
 # WAIT_SUBSCRIBERS — сколько подписчиков /vehicle/front_bogie_velocity ждать
 # (нода + проба = 2; не дождались за 60 с — играем всё равно).
 set -o pipefail
@@ -22,7 +24,7 @@ python3 /repo/tools/ros_wait.py \
   --subscribers "/vehicle/front_bogie_velocity:${WAIT_SUBSCRIBERS:-2}" --timeout 60 \
   || echo "[player] подписчиков меньше ${WAIT_SUBSCRIBERS:-2} — проигрываю всё равно"
 
-args=(-d "${PLAY_DELAY:-2}" -r "${PLAY_RATE:-1.0}" --disable-keyboard-controls)
+args=(-d "${PLAY_DELAY:-5}" -r "${PLAY_RATE:-1.0}" --disable-keyboard-controls)
 [ "${PLAY_LOOP:-0}" = "1" ] && args+=(--loop)
 echo "[player] ros2 bag play /data/$BAG ${args[*]}"
 exec ros2 bag play "/data/$BAG" "${args[@]}"

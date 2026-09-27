@@ -5,14 +5,14 @@
 # проверки ROS-контейнер останавливается и запускается снова (обрыв и переподключение).
 #
 #   bash simulator/test/live_test.sh [bag=30618_e9a34502]      (Git Bash / Linux, из корня)
-# Переменные: DATA_DIR (<repo>/data), OUT (<repo>/out/sim_wp17/live), ROSBRIDGE_OPEN=1 — мост без
+# Переменные: DATA_DIR (<repo>/data), OUT (<repo>/out/sim/live), ROSBRIDGE_OPEN=1 — мост без
 # ограничений (контроль: проверка «мост только для чтения» тогда должна упасть)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 ROOT="$(cd "$(dirname "$0")/../.." && (pwd -W 2>/dev/null || pwd))"
 BAG="${1:-30618_e9a34502}"
 DATA_DIR="${DATA_DIR:-$ROOT/data}"
-OUT="${OUT:-$ROOT/out/sim_wp17/live}"
+OUT="${OUT:-$ROOT/out/sim/live}"
 NET="tv-sim-net-$RANDOM"
 ROSC="tv-sim-ros-$RANDOM"
 mkdir -p "$OUT"; rm -f "$OUT"/live_phase*.done

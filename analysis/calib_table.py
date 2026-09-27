@@ -3,7 +3,7 @@
 Собирает готовые прогоны calib_eval.py (out/calib/speed_<tag>.json и
 full_<tag>.json) в одну таблицу и пишет analysis/calib_holdout_table.json.
 
-    python3 analysis/calib_table.py a_orig_yaml:"(a) tram.yaml напарника" \\
+    python3 analysis/calib_table.py a_orig_yaml:"(a) исходный tram.yaml" \\
         b_orig_json:"(b) tram_calibration.json" c_eval:"(c) лист оценки"
 
 Строка «база» — причинная база «только колесо» (та же карта, выставка и

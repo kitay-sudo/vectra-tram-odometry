@@ -15,7 +15,7 @@
 //   оценка шума, скачок против тренда с правилом отголоска, axle_jump, первая инициализация),
 //   _frozen_all, _adapt_scale (окно по реальному времени, adapt_on), step_open_loop,
 //   _sigma_v_out, _finish (slip_all, meas_noise).
-//   Срыв всех осей и шум (поток «срыв», docs/audit/SLIP.md §7) перенесены 26.09 при интеграции (раунд 2).
+//   Срыв всех осей и оценка шума показаний перенесены вместе с ядром (сверка 26.09).
 //   Не перенесено (на выход не влияет): проверка листа Params.__post_init__, adapt_stats.
 //   Добавлено (не из ядра, на числа не влияет): diag() — запись решений фильтра по осям для
 //   панели «Что сейчас думает модель» в песочнице.
@@ -621,7 +621,7 @@ const TramEst = (() => {
             const echo = !this.slip_all && sg === -this.jump_s[a] && this.t - this.jump_t[a] <= p.slip_pair_s && Math.abs(dzj) <= thr;
             if (Math.abs(jr) > thr && !echo) { this.jump_t[a] = this.t; this.jump_s[a] = sg; this.jump_m[a] = Math.abs(jr); }
           }
-          // скачок за один интервал больше физически возможного — срыв или отказ сразу (правка №1 интеграции)
+          // скачок за один интервал больше физически возможного — срыв или отказ сразу
           const dz = z[a] - this.axle_prev[a], lim_j = dz > 0 ? p.a_max_acc : p.a_max_brake;
           this.axle_jump[a] = Math.abs(dz) > (lim_j + p.a_slip_margin) * gap + p.agree_tol + nz;
           this.axle_dot[a] += p.axle_dot_alpha * (raw - this.axle_dot[a]);

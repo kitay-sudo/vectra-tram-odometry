@@ -4,9 +4,9 @@
     /vehicle/front_bogie_velocity   tram_vehicle_msgs/VelocitySensor  (км/ч)
     /vehicle/rear_bogie_velocity    tram_vehicle_msgs/VelocitySensor  (км/ч)
     /vehicle/driver_position_cmd    tram_vehicle_msgs/DriverControllerCommand
-Начальная выставка (первые init_window секунд) и коррекция положения по
+Начальная выставка (первые init_window_s секунд) и коррекция положения по
 GNSS в середине маршрута (gnss_correction, по умолчанию включено; ответ
-организаторов 26.09 18:05):
+организаторов 26.09: такие сообщения можно использовать для коррекции):
     /sensing/gnss/master/fix, /sensing/gnss/rover/fix   sensor_msgs/NavSatFix
 Выходы:
     /result/velocity   tram_vehicle_msgs/VelocitySensor   скорость, м/с
@@ -21,23 +21,30 @@ GNSS в середине маршрута (gnss_correction, по умолчан�
 
 Время — header.stamp входных сообщений (время из bag), не часы ноды. Ядро
 шагает на сетке p.dt по этим меткам (runner.Runner); каждый шаг публикуется с
-меткой своего момента. Та же связка используется в офлайн-оценке
-analysis/evaluate.py, поэтому числа оценки и работа ноды совпадают.
+меткой своего момента. Та же связка работает в офлайн-оценке
+(tools/eval_replay.py), поэтому числа оценки и работа ноды совпадают.
 
 Устойчивость (docs/ROBUST.md):
   * лист: config/tram.yaml пакета всегда подкладывается под параметры
-    запуска; без --params-file нода работает по нему целиком (WP22);
+    запуска; без --params-file нода работает по нему целиком;
   * битые входы и разрывы времени отсекает Runner; исключение в колбэке не
     роняет ноду (лог с ограничением частоты), launch перезапускает её при
     падении (respawn);
-  * пульс (WP16): если входы молчат, таймер по монотонным часам публикует
-    прогноз на копии связки (состояние не меняется) не дальше
-    pulse_horizon_s от последней метки; метки выхода не идут назад; темп
-    проигрывания (play -r) оценивается по приросту меток;
-  * старт (WP24): первые start_sort_s с по часам прихода сообщения
-    сортируются по метке, сетка начинается с самой ранней.
+  * пульс: если входы молчат, таймер по монотонным часам публикует прогноз
+    на копии связки (состояние не меняется) не дальше pulse_horizon_s от
+    последней метки; метки выхода не идут назад; темп проигрывания
+    (play -r) оценивается по приросту меток;
+  * старт: первые start_sort_s с по часам прихода сообщения сортируются по
+    метке, сетка начинается с самой ранней.
+
+Консоль: при запуске — блок настроек (лист, вагон, карта, система выхода,
+GNSS, шаг); во время работы — строка состояния раз в STATUS_EVERY_S с
+времени bag и предупреждения только о настоящих отклонениях (с ограничением
+частоты); при останове — итог (входы, выходы, отброшенное, сбросы, время
+шага). Логирование на оценку не влияет.
 """
 
+import hashlib
 import math
 import os
 import signal
@@ -69,7 +76,10 @@ IN_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                     history=HistoryPolicy.KEEP_LAST, depth=50)
 PKG = "tram_state_estimator"
 SHEET = os.path.join("config", "tram.yaml")
-# Ковариации Odometry (WP12a): диагонали, которые ядро не оценивает, заданы
+IN_TOPICS = ("/vehicle/front_bogie_velocity", "/vehicle/rear_bogie_velocity",
+             "/vehicle/driver_position_cmd", "/sensing/gnss/master/fix",
+             "/sensing/gnss/rover/fix")
+# Ковариации Odometry: диагонали, которые ядро не оценивает, заданы
 # физически осмысленными конечными значениями, а не нулём («известно точно»).
 ROLL_SD = 0.05          # рад: возвышение наружного рельса в кривой до ~3°
 UNKNOWN_VAR = 1.0e6     # курс неизвестен (якорь есть, курса ещё нет)
@@ -85,6 +95,13 @@ GNSS_PARAMS = ("gnss_correction", "gnss_sigma_rtk_m", "gnss_sigma_sbas_m",
                "gnss_sigma_fix_m", "gnss_gate", "gnss_jump_m", "gnss_confirm_n",
                "gnss_min_interval_s", "gnss_max_skew_s", "gnss_prior_rel", "gnss_scale_adapt",
                "gnss_stop_skip_m", "gnss_persist_s")
+# консоль
+STATUS_EVERY_S = 10.0   # с времени bag между строками состояния
+NO_POS_WARN_S = 10.0    # с после окна выставки без положения — предупреждение
+WARN_THROTTLE_S = 5.0   # с: одно и то же предупреждение не чаще
+# режимы ядра (estimator_core.MODE_NAMES) по-русски, как на странице симулятора
+MODE_RU = ("выбег", "тяга", "торможение", "смена режима", "срыв сцепления",
+           "стоянка", "нет данных колёс")
 
 
 def fix_var(m):
@@ -98,6 +115,31 @@ def fix_var(m):
         return v if math.isfinite(v) and v > 0.0 else None
     except (AttributeError, IndexError, TypeError, ValueError):
         return None
+
+
+def package_info():
+    """(версия из package.xml, отпечаток кода) для строки запуска. Отпечаток —
+    sha256 модулей пакета по имени и содержимому, первые 16 знаков: так же
+    считается «Код пакета: sha» в шапке docs/EVAL.md."""
+    ver = "?"
+    try:
+        import xml.etree.ElementTree as ET
+        from ament_index_python.packages import get_package_share_directory
+        xml = os.path.join(get_package_share_directory(PKG), "package.xml")
+        ver = (ET.parse(xml).getroot().findtext("version") or "?").strip()
+    except Exception:                            # noqa: BLE001
+        pass
+    h = hashlib.sha256()
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        for name in sorted(f for f in os.listdir(here) if f.endswith(".py")):
+            h.update(name.encode())
+            with open(os.path.join(here, name), "rb") as fh:
+                h.update(fh.read())
+        sha = h.hexdigest()[:16]
+    except OSError:
+        sha = "?"
+    return ver, sha
 
 
 def _sheet_section(doc, node):
@@ -118,7 +160,7 @@ def _sheet_section(doc, node):
 
 
 def use_package_sheet(node):
-    """WP22. Без --params-file (ros2 run) нода молча брала бы заглушки Params:
+    """Без --params-file (ros2 run) нода молча брала бы заглушки Params:
     4 оси, rad_s, шаг 10 мс, без карты. Поэтому лист config/tram.yaml пакета
     всегда подкладывается под параметры запуска: ключи из --params-file и -p
     остаются, недостающие берутся из листа, а не из заглушек Params (один -p
@@ -155,9 +197,13 @@ def use_package_sheet(node):
                 v = [float(x) for x in v]        # [0, 0.5] — один тип
             ov[k] = Parameter(k, value=v)
             n += 1
-    how = ("без --params-file: лист пакета" if not given else
-           f"под параметрами запуска: из листа {n} ключей, "
-           f"параметров ядра из запуска {len(given)}")
+    if not given:
+        how = "без --params-file: лист пакета"
+    elif n:
+        how = (f"под параметрами запуска: из листа {n} ключей, "
+               f"параметров ядра из запуска {len(given)}")
+    else:
+        how = f"все ключи листа заданы при запуске через --params-file или -p, параметров ядра {len(given)}"
     return f"{path} [{sect}] ({how})"
 
 
@@ -174,10 +220,23 @@ def to_msg(t):
     return m
 
 
+def _map_line(tmap, path):
+    """Строка лога о карте путей."""
+    if tmap is None:
+        return ("карты нет (map_file пуст): положение по пути колёс от точки "
+                "выставки, nomap_mode")
+    parts = [f"точек осей {len(tmap.lat)}"]
+    for n, what in ((len(tmap.stops), "остановок"), (len(tmap.terminals), "конечных"),
+                    (len(tmap.bi), "веток у конечных")):
+        if n:
+            parts.append(f"{what} {n}")
+    return f"карта есть: {path} ({', '.join(parts)})"
+
+
 class TramEstimatorNode(Node):
     def __init__(self):
         super().__init__("tram_state_estimator")
-        self.sheet_src = use_package_sheet(self)          # WP22: до объявлений
+        self.sheet_src = use_package_sheet(self)          # до объявлений параметров
         P = self.declare_parameter
         P("wheel_timeout_s", 1.0)
         P("handle_timeout_s", 0.5)
@@ -220,9 +279,8 @@ class TramEstimatorNode(Node):
         P("keep_offset_z", True)           # если медиана статуса окна ≤
         P("keep_offset_max_status", -1)    # этого: −1 никогда, 1 без RTK, 2 всегда
         P("terminal_hold", "terminals")    # тупик карты: terminals | off | any
-        # коррекция по GNSS после окна выставки (организаторы 26.09 18:05:
-        # сообщения GNSS в середине маршрута можно использовать для коррекции);
-        # false — GNSS только для выставки, как до 26.09 (бит-в-бит)
+        # коррекция по GNSS после окна выставки; false — GNSS только для
+        # выставки (точки после окна отбрасываются)
         P("gnss_correction", True)
         P("gnss_sigma_rtk_m", 0.5)         # σ точки при NavSatFix.status 2 (RTK)
         P("gnss_sigma_sbas_m", 1.5)        # status 1
@@ -273,8 +331,9 @@ class TramEstimatorNode(Node):
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
         self._robust_setup()
+        self._console_setup()
 
-        # Все входы идут через _input: ошибки и порядок старта (WP3, WP24).
+        # Все входы идут через _input: ошибки и порядок старта.
         def sub(mtype, topic, name, args):
             self.create_subscription(
                 mtype, topic, lambda m: self._input(name, args(m)), IN_QOS)
@@ -295,26 +354,44 @@ class TramEstimatorNode(Node):
         self.pub_a = self.create_publisher(AccelStamped, "/result/acceleration", 10)
         self.pub_s = self.create_publisher(EstimatorStatus,
                                            "/tram/estimator_status", 10)
-        self.get_logger().info(
-            f"оценщик запущен: шаг {params.dt * 1000:.0f} мс, "
-            f"карта {'есть' if tmap is not None else 'нет'}; "
-            f"лист: {self.sheet_src}; карта: {path or 'нет (map_file пуст)'}; "
-            f"единицы {params.meas_units}; "
-            f"{vehicle_sheet.describe(self.vehicle_info, g('wheel_scale_online'))}; "
-            f"пульс {self.pulse_h:.1f} с; выход "
-            f"{g('projection')}"
-            + (f" от квадрата {g('mgrs_grid')} непрерывно" if g("mgrs_grid") else
-               " (MGRS: каждая точка в своём 100-км квадрате)" if g("projection") == "mgrs" else "")
-            + f"; точка {g('output_point')}"
-            + (f" (карта по {tmap.point})" if tmap is not None else "")
-            + f"; коррекция по GNSS после окна {'вкл' if g('gnss_correction') else 'выкл'}")
+        self._log_start(params, tmap, path, g)
+
+    def _log_start(self, params, tmap, path, g):
+        """Блок настроек при запуске. Первая строка («оценщик запущен») —
+        признак готовности для скриптов и инструкции жюри."""
+        ver, sha = package_info()
+        grid = g("mgrs_grid")
+        if g("projection") == "mgrs":
+            frame = (f"mgrs от квадрата {grid} непрерывно" if grid else
+                     "mgrs (MGRS: каждая точка в своём 100-км квадрате)")
+        else:
+            frame = str(g("projection"))
+        point = g("output_point") + (f" (карта по {tmap.point})" if tmap is not None else "")
+        corr = "вкл" if g("gnss_correction") else "выкл"
+        lines = [
+            f"оценщик запущен: {PKG} {ver}, код sha {sha}",
+            f"  лист: {self.sheet_src}",
+            f"  {vehicle_sheet.describe(self.vehicle_info, g('wheel_scale_online'))}",
+            f"  {_map_line(tmap, path)}",
+            f"  выход {frame}; точка {point}; frame_id {self.frame_id}, "
+            f"child_frame_id {self.child}",
+            f"  GNSS: выставка по первым {float(g('init_window_s')):.1f} с; "
+            f"коррекция по GNSS после окна {corr} (только положение вдоль пути, "
+            "скорость от GNSS не зависит)",
+            f"  шаг {params.dt * 1000:.0f} мс ({1.0 / params.dt:.0f} Гц) по header.stamp "
+            f"входов; единицы {params.meas_units}; пульс {self.pulse_h:.1f} с; "
+            "QoS входов best-effort",
+            f"  жду входы: {', '.join(IN_TOPICS)}",
+        ]
+        for line in lines:
+            self.get_logger().info(line)
 
     # ---------- устойчивость ----------
 
     def _robust_setup(self):
         P = self.declare_parameter
         g = lambda n: self.get_parameter(n).value               # noqa: E731
-        P("sheet", "auto")                  # auto | путь к листу | none (WP22)
+        P("sheet", "auto")                  # auto | путь к листу | none
         P("pulse_horizon_s", 2.0)           # с от последней метки; 0 — без пульса
         P("pulse_margin_s", 0.1)            # с: узел просрочен — прогноз (ручка есть)
         P("pulse_margin_nohandle_s", 0.03)  # с: то же без ручки (сетка от 10 Гц)
@@ -338,10 +415,26 @@ class TramEstimatorNode(Node):
         self.create_timer(max(float(g("pulse_period_s")), 1e-3), self._pulse,
                           clock=Clock(clock_type=ClockType.STEADY_TIME))
 
+    def _console_setup(self):
+        """Счётчики для строки состояния и итога. На оценку не влияют."""
+        self.n_msgs = {"on_wheel": 0, "on_handle": 0, "on_fix": 0}
+        self.n_pos = 0                      # опубликовано /result/position
+        self.step_us_sum = 0.0              # время шага связки: сумма и максимум
+        self.step_us_max = 0.0
+        self.t_first = None                 # метка первого выхода прогона
+        self.t_last = None                  # метка последнего выхода
+        self._st_next = None                # метка следующей строки состояния
+        self._st_n = self._st_pulse = 0     # выходов и прогнозов пульса в окне
+        self._st_t0 = None                  # начало окна строки состояния
+        self._pos_seen = False              # было ли положение в этом прогоне
+        self._no_pos_warned = False
+        self._wall0 = time.monotonic()
+
     def _input(self, name, args):
         """Колбэк входа. Исключение не выходит в rclpy.spin: нода живёт."""
         try:
             now = time.monotonic()
+            self.n_msgs[name] = self.n_msgs.get(name, 0) + 1
             stamp = args[1] if name == "on_wheel" else args[0]
             for item in self._sorter.push(now, stamp, (name, args)):
                 self._dispatch(now, *item)
@@ -358,11 +451,12 @@ class TramEstimatorNode(Node):
             self.get_logger().warn(f"сброс связки: {r.reset_reason}")
             self._last_pub = -math.inf           # новый прогон: метки заново
             self._stamp_ref = self._rate_anchor = None
+            self._new_run()
         if r.gaps != gaps:
-            self.get_logger().warn(r.gap_reason)
+            self.get_logger().warn(r.gap_reason, throttle_duration_sec=WARN_THROTTLE_S)
             self._rate_anchor = None
         if r.core_resets != core_resets:
-            self.get_logger().warn(r.reset_reason, throttle_duration_sec=5.0)
+            self.get_logger().warn(r.reset_reason, throttle_duration_sec=WARN_THROTTLE_S)
         if r.n_in != n_in:                       # принято новое сообщение
             self._fork = None
             if self._stamp_ref is None or r.stamp_max > self._stamp_ref:
@@ -397,7 +491,7 @@ class TramEstimatorNode(Node):
         self.get_logger().error(
             f"ошибка в {where} ({self.n_errors} всего): {type(e).__name__}: {e}"
             f" | {' / '.join(x.strip() for x in tb[-3:])}",
-            throttle_duration_sec=5.0)
+            throttle_duration_sec=WARN_THROTTLE_S)
         if self._errors >= 20:
             # что-то застряло: только ядро заново (путь, выставка и сетка
             # остаются; полный сброс потерял бы выставку до конца прогона)
@@ -416,7 +510,7 @@ class TramEstimatorNode(Node):
             self._fail("пульс", e)
 
     def _extrapolate(self, now):
-        """WP16. Входы молчат: публикуются узлы сетки, просроченные на margin
+        """Входы молчат: публикуются узлы сетки, просроченные на margin
         по часам (метка последнего входа + прошедшее время), не дальше
         pulse_horizon_s от этой метки. Считаются на копии связки: когда входы
         вернутся, связка продолжит со своего состояния, а её узлы, уже
@@ -436,20 +530,114 @@ class TramEstimatorNode(Node):
         if self._fork is None:
             self._fork = r.fork()
         outs = self._fork.tick(target)
-        self.n_pulse += self._emit(outs, (time.perf_counter_ns() - t0) / 1000.0)
+        n = self._emit(outs, (time.perf_counter_ns() - t0) / 1000.0, pulse=True)
+        self.n_pulse += n
 
     def summary(self):
+        """Итог работы ноды (печатается при останове)."""
         r = self.runner
-        return (f"итог: выходов {self.frame}, из них прогноз пульса "
-                f"{self.n_pulse}, подавлено повторов {self.n_suppressed}; "
-                f"сбросов связки {r.resets}, ядра {r.core_resets}, провалов "
-                f"входов {r.gaps}; темп {self.rate:.2f}; отброшено "
-                f"меток {r.rejected_stamps}, значений {r.rejected_values}; "
-                f"ошибок в колбэках {self.n_errors}")
+        n = max(1, self.frame - self.n_pulse)
+        span = (self.t_last - self.t_first) if self.t_first is not None else 0.0
+        return "\n".join([
+            f"итог: выходов {self.frame} (/result/position {self.n_pos}), "
+            f"из них прогноз пульса {self.n_pulse}, подавлено повторов "
+            f"{self.n_suppressed}; время bag {span:.1f} с, по часам "
+            f"{time.monotonic() - self._wall0:.1f} с",
+            f"  входы: тележки {self.n_msgs.get('on_wheel', 0)}, ручка "
+            f"{self.n_msgs.get('on_handle', 0)}, GNSS {self.n_msgs.get('on_fix', 0)}; "
+            f"отброшено меток {r.rejected_stamps}, значений {r.rejected_values}",
+            f"  сбросов связки {r.resets}, ядра {r.core_resets}, провалов входов "
+            f"{r.gaps}; ошибок в колбэках {self.n_errors}; темп {self.rate:.2f}",
+            f"  время шага связки: среднее {self.step_us_sum / n / 1000.0:.2f} мс, "
+            f"макс {self.step_us_max / 1000.0:.2f} мс",
+        ])
+
+    # ---------- консоль ----------
+
+    def _new_run(self):
+        """Сброс связки (второй bag, --loop): строка состояния и проверка
+        выставки считаются заново."""
+        self.t_first = self._st_next = self._st_t0 = None
+        self._st_n = self._st_pulse = 0
+        self._pos_seen = self._no_pos_warned = False
+
+    def _console(self, o, pulse):
+        """Строка состояния раз в STATUS_EVERY_S с времени bag и события
+        выставки. Ошибка здесь не должна влиять на выход — глотается."""
+        try:
+            t = float(o["stamp"])
+            if self.t_first is None:
+                self.t_first = self._st_t0 = t
+                self._st_next = t + STATUS_EVERY_S
+                self.get_logger().info(
+                    f"входы пошли: первый выход на метке {t:.2f}; это t+0, "
+                    "дальше время bag — от неё")
+            self.t_last = t
+            self._st_n += 1
+            self._st_pulse += int(pulse)
+            if o.get("pos_valid", True) and not self._pos_seen:
+                self._pos_seen = True
+                pos = self.runner.pos
+                how = ("запасная выставка прежнего прогона" if o.get("pos_fallback")
+                       else f"выставка по GNSS: точек {pos.n_used}, курс "
+                            f"{'есть' if pos.ready else 'ещё нет'}")
+                self.get_logger().info(
+                    f"положение есть с метки {t:.2f}, t+{t - self.t_first:.1f} с ({how}): "
+                    f"x {float(o['x']):.1f}, "
+                    f"y {float(o['y']):.1f}, z {float(o['z']):.1f}")
+            elif (not self._pos_seen and not self._no_pos_warned
+                  and t - self.t_first > self.runner.pos.init_window + NO_POS_WARN_S):
+                self._no_pos_warned = True
+                self.get_logger().warn(
+                    f"нет выставки по GNSS за {t - self.t_first:.0f} с: /result/position "
+                    "не публикуется, пока не придёт GNSS (/sensing/gnss/*/fix); "
+                    "/result/velocity идёт")
+            if t + 1e-6 >= self._st_next:
+                self.get_logger().info(self._status_line(o, t))
+                self._st_t0, self._st_next = t, t + STATUS_EVERY_S
+                self._st_n = self._st_pulse = 0
+        except Exception:                        # noqa: BLE001
+            pass
+
+    def _status_line(self, o, t):
+        span = max(t - self._st_t0, 1e-6)
+        mode = int(o["mode"])
+        v = float(o["v"])
+        flags = []
+        if o.get("wheels_stale"):
+            flags.append("колёса молчат")
+        sa = int(o.get("slip_all", 0))
+        if sa:
+            flags.append("срыв всех осей: " + ("буксование" if sa > 0 else "юз"))
+        elif o.get("slip"):
+            flags.append("срыв")
+        if o.get("ambiguous"):
+            flags.append("стоим или скользим?")
+        if not o.get("valid", True):
+            flags.append("недостоверно")
+        if o.get("pos_valid", True) and o.get("pos_fallback"):
+            flags.append("запасная выставка")
+        if self._st_pulse:
+            flags.append(f"прогноз пульса {self._st_pulse}")
+        na, nr = int(o.get("n_accepted", 0)), int(o.get("n_rejected", 0))
+        pos = (f"x {float(o['x']):.1f} y {float(o['y']):.1f} z {float(o['z']):.1f} "
+               f"±{float(o['sigma_s']):.1f} м" if o.get("pos_valid", True)
+               else "положения нет")
+        # режим ядра (тяга или торможение) идёт от знака ручки, поэтому ручка
+        # впереди: в части записей вагон разгоняется при «тормозной» позиции
+        mode_s = "режим ядра: " + (MODE_RU[mode] if 0 <= mode < len(MODE_RU) else str(mode))
+        notch = getattr(self.runner, "notch", None)
+        if isinstance(notch, (int, float)) and math.isfinite(notch):
+            mode_s = f"ручка {notch:+.0f}, {mode_s}"
+        return (f"t+{t - self.t_first:.0f} с | {self._st_n / span:.1f} Гц | "
+                f"{mode_s} | "
+                f"v {v:.2f} м/с ({v * 3.6:.1f} км/ч) ±{float(o['sigma_v']):.2f} | "
+                f"{pos} | тележки {na}/{na + nr} | "
+                f"{', '.join(flags) if flags else 'норма'}")
 
     # ---------- публикация ----------
 
-    def _emit(self, outs, call_us=0.0):
+    def _emit(self, outs, call_us=0.0, pulse=False):
         """Публикует шаги по порядку меток; возвращает число опубликованных.
         step_time_us — время вызова связки (шаг ядра и карты), делённое на
         число шагов этого вызова."""
@@ -462,6 +650,10 @@ class TramEstimatorNode(Node):
             self._publish(o, per_us)
             self._last_pub = o["stamp"]
             n += 1
+            if not pulse:
+                self.step_us_sum += per_us
+                self.step_us_max = max(self.step_us_max, per_us)
+            self._console(o, pulse)
         return n
 
     def _publish(self, o, step_us):
@@ -474,7 +666,7 @@ class TramEstimatorNode(Node):
         if not (math.isfinite(v_) and all(math.isfinite(c) for c in xyz)):
             # последний рубеж: NaN в выход не уходит (ядро сбрасывается само)
             self.get_logger().warn("неконечный выход заменён последним конечным",
-                                   throttle_duration_sec=5.0)
+                                   throttle_duration_sec=WARN_THROTTLE_S)
             v_ = v_ if math.isfinite(v_) else 0.0
             xyz = tuple(c if math.isfinite(c) else g
                         for c, g in zip(xyz, self._good))
@@ -498,7 +690,7 @@ class TramEstimatorNode(Node):
         if yaw is not None:
             od.pose.pose.orientation.z = math.sin(yaw / 2.0)
             od.pose.pose.orientation.w = math.cos(yaw / 2.0)
-        # WP12a: ни одной нулевой диагонали. x, y — σ пути ядра (изотропно);
+        # Ни одной нулевой диагонали. x, y — σ пути ядра (изотропно);
         # z — высота карты; крен — возвышение рельса; тангаж — уклон линии
         # (theta_max); курс — ось пути карты. Положение публикуется только с
         # якорем GNSS (pos_valid), поэтому x, y, z известны всегда; без курса
@@ -521,6 +713,7 @@ class TramEstimatorNode(Node):
         tc[35] = (v_ / R_CURVE_MIN) ** 2 + ANG_RATE_SD ** 2
         if pos_ok:
             self.pub_p.publish(od)
+            self.n_pos += 1
 
         ac = AccelStamped()
         ac.header.stamp, ac.header.frame_id = st, self.child
@@ -563,7 +756,8 @@ def main(args=None):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         if node is not None:
             try:            # контекст уже закрыт: в /rosout не пишется, только в консоль
-                print(f"[tram_state_estimator] {node.summary()}", flush=True)
+                for line in node.summary().splitlines():
+                    print(f"[tram_state_estimator] {line}", flush=True)
             except Exception:                    # noqa: BLE001
                 pass
             node.destroy_node()
