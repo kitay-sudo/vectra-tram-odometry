@@ -13,21 +13,21 @@
         (лист ЖЮРИ: уходит в пакет)
 
 Источники:
-  * таблица привода, delay, tau — calib_drive.py (drive_model_<лист>.json);
-  * масштаб показаний — отношение скорости тележек к скорости GNSS на
+  * таблица привода, delay, tau - calib_drive.py (drive_model_<лист>.json);
+  * масштаб показаний - отношение скорости тележек к скорости GNSS на
     установившемся движении;
-  * шум измерения — разброс «тележки − GNSS» там же;
-  * крип — регрессия относительной разницы «тележки / GNSS − 1» на силу
-    привода (только для отчёта; решение о c_creep — по прогону фильтра на
+  * шум измерения - разброс «тележки − GNSS» там же;
+  * крип - регрессия относительной разницы «тележки / GNSS − 1» на силу
+    привода (только для отчёта; решение о c_creep - по прогону фильтра на
     обучающих, calib_tune.py);
   * параметры фильтра, подобранные прогоном связки на подгоночных прогонах
-    (q_v, крип, адаптация — calib_tune.py; выходная σ — calib_sigma.py), —
+    (q_v, крип, адаптация - calib_tune.py; выходная σ - calib_sigma.py), -
     analysis/calib_tuned_<лист>.json;
   * масштаб колёс каждого вагона (блок "vehicles": 30618, 30639 по записям
-    своего вагона из тех же подгоночных) — calib_vehicle.py; нода выбирает
+    своего вагона из тех же подгоночных) - calib_vehicle.py; нода выбирает
     его параметром vehicle (docs/VEHICLES.md).
 
-Весь пересчёт по порядку — analysis/calib_all.sh.
+Весь пересчёт по порядку - analysis/calib_all.sh.
 """
 
 import json
@@ -114,7 +114,7 @@ def creep_regression(ids, W, delay, tau, scale):
     X, R, PH = map(np.concatenate, (X, R, PH))
     A = np.vstack([np.ones_like(X), X]).T
     coef = np.linalg.lstsq(A, R, rcond=None)[0]
-    for _ in range(3):                         # грубые выбросы — вон
+    for _ in range(3):                         # грубые выбросы - вон
         e = R - A @ coef
         keep = np.abs(e) < 4.0 * 1.4826 * np.median(np.abs(e - np.median(e)))
         coef = np.linalg.lstsq(A[keep], R[keep], rcond=None)[0]
@@ -174,7 +174,7 @@ def main():
         "sensors_per_axle": 1,
         "meas_units": "km_h",
         "meas_scale": round(scale, 6),
-        # показание тележки — уже скорость пути, разницы бортов нет
+        # показание тележки - уже скорость пути, разницы бортов нет
         "curve_ratio_max": 0.0,
         "sigma_meas": round(max(sig, 0.05), 3),
         # 15 позиций тяги и 15 торможения; u = позиция / 15

@@ -1,16 +1,16 @@
 """Один источник правды для листов вагона.
 
-Нода читает config/tram.yaml, оценка — config/tram_calibration.json. Прежде
+Нода читает config/tram.yaml, оценка - config/tram_calibration.json. Прежде
 yaml не перегенерировали после смены q_v, и нода считала другим листом, чем
 оценка (MAE 0,0515 против 0,0485). Здесь проверяется:
 
-  * yaml — ровно вывод tools/gen_params.py из своей калибровки (руками не
+  * yaml - ровно вывод tools/gen_params.py из своей калибровки (руками не
     правится);
   * все поля ядра в yaml равны калибровке, а поля, которых в калибровке нет,
     равны значениям Params по умолчанию;
   * yaml несёт параметры ноды вне ядра (карта, проекция, сетка MGRS, кадры,
     таймауты);
-  * лист оценки подогнан только по split train, лист жюри — по всем данным.
+  * лист оценки подогнан только по split train, лист жюри - по всем данным.
 """
 
 import importlib.util
@@ -85,7 +85,7 @@ def test_every_core_field_equals_calibration(which):
     # не пишет: парсер ROS 2 их не принимает)
     missing = [k for k, v in over.items() if k not in got and v != []]
     assert not missing, f"поля калибровки не записаны в yaml: {missing}"
-    # поля без калибровки — значения Params по умолчанию
+    # поля без калибровки - значения Params по умолчанию
     for f in fields(Params):
         if f.name not in over and getattr(DEFAULT, f.name) != ():
             assert _same(getattr(p_yaml, f.name), getattr(DEFAULT, f.name)), f.name
@@ -119,7 +119,7 @@ def test_jury_sheet_ships_the_map_and_eval_sheet_does_not():
 
 @pytest.mark.skipif(not os.path.exists(SPLIT), reason="нет tools/split.json")
 def test_eval_sheet_is_fit_on_train_only_and_jury_on_all():
-    """Дисциплина утечки: лист оценки — только split train; лист жюри — все
+    """Дисциплина утечки: лист оценки - только split train; лист жюри - все
     уникальные записи."""
     with open(SPLIT, encoding="utf-8") as fh:
         split = json.load(fh)
@@ -136,7 +136,7 @@ def test_eval_sheet_is_fit_on_train_only_and_jury_on_all():
 def test_creep_stubs_are_removed_by_data(which):
     """Заглушки крипа (0,02 и 0,002) давали смещение +0,01 м/с и до
     +0,05 на торможении. Регрессия по данным (calib_sheet.py) даёт крип около
-    нуля: масштаб колёс уже подогнан по GNSS. В листе — ноль."""
+    нуля: масштаб колёс уже подогнан по GNSS. В листе - ноль."""
     d = _calib(which)
     assert d["params"]["c_creep"] == 0.0 and d["params"]["c_creep_drag"] == 0.0
     reg = d["_creep_regression"]
@@ -155,7 +155,7 @@ def test_output_sigma_is_calibrated(which):
 
 def _node_declared():
     """Параметры, которые объявляет tram_node.py (P("имя", умолчание)), с
-    умолчаниями — разбором исходника, без rclpy."""
+    умолчаниями - разбором исходника, без rclpy."""
     import ast
     src = os.path.join(PKG, "tram_state_estimator", "tram_node.py")
     with open(src, encoding="utf-8") as fh:
@@ -179,11 +179,11 @@ def _node_declared():
 
 @pytest.mark.parametrize("which", SHEETS)
 def test_sheet_carries_every_node_param_with_node_type(which):
-    """В листе — все параметры, которые объявляет нода, того же типа, что умолчание
+    """В листе - все параметры, которые объявляет нода, того же типа, что умолчание
     в ноде: ROS 2 отвергает лист, если тип параметра не совпал (20 вместо
-    20.0). Значения — как в ноде, кроме карты (у листа оценки карта пустая) и
+    20.0). Значения - как в ноде, кроме карты (у листа оценки карта пустая) и
     масштаба колёс вагонов у листа оценки (подогнан только по train; у листа
-    жюри он равен умолчанию ноды — test_vehicle.py)."""
+    жюри он равен умолчанию ноды - test_vehicle.py)."""
     import math
     decl = _node_declared()
     got = _yaml(which)

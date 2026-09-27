@@ -53,8 +53,8 @@ def test_utm_matches_pyproj(ll, E, N, code):
 
 
 def test_one_geodesy_and_independent_series():
-    """Интеграция: eval_geo — обёртка над геодезией пакета (одна реализация
-    на ноду, оценку и экспорт). Независимая проверка — ряд Снайдера
+    """Интеграция: eval_geo - обёртка над геодезией пакета (одна реализация
+    на ноду, оценку и экспорт). Независимая проверка - ряд Снайдера
     (analysis/georef.py) на линии и вокруг: < 1 см."""
     sys.path.insert(0, str(ROOT / "analysis"))
     import georef
@@ -262,7 +262,7 @@ def _synthetic_run():
 
 def test_naive_speed_is_mean_of_fresh_bogies():
     """База для любой версии Runner: при постоянных показаниях v = среднее ×
-    meas_scale / 3,6, путь — интеграл v·dt на сетке."""
+    meas_scale / 3,6, путь - интеграл v·dt на сетке."""
     import eval_replay as R
     a = _synthetic_run()
     a["front"][:, 2] = 36.0
@@ -366,7 +366,7 @@ def _line_ref(n=600, E0=399700.0, N0=6185000.0, dE=1.0, zone=37):
 
 
 def _out(t, lat, lon, alt, pv):
-    """Выход «как у Runner»: GEO (для опубликованных), сырые XYZ — MGRS с переносом."""
+    """Выход «как у Runner»: GEO (для опубликованных), сырые XYZ - MGRS с переносом."""
     E, N = G.utm_fwd(lat, lon, 37)
     x, y = G.wrap(E, N)
     XYZ = np.c_[x, y, alt]
@@ -385,7 +385,7 @@ def test_pos_valid_rows_are_not_paired():
     lat_e = lat + 1e-6                                   # оценка ~0,11 м севернее
     pv_all = np.ones(len(t), bool)
     pv_late = pv_all.copy()
-    pv_late[:50] = False                                 # первые 5 с — без якоря
+    pv_late[:50] = False                                 # первые 5 с - без якоря
     kw = dict(full=False, ref_point="master", judge_grid="")   # механика пар, выход в антенне
     r_all, _ = M.score_position(_out(t, lat_e, lon, alt, pv_all), a, fr, **kw)
     r_late, _ = M.score_position(_out(t, lat_e, lon, alt, pv_late), a, fr, **kw)
@@ -399,7 +399,7 @@ def test_pos_valid_rows_are_not_paired():
     o["PV"][100] = False
     r_nan, _ = M.score_position(o, a, fr, **kw)
     assert r_nan["p_nan"] == 1 and r_nan["p_unpaired"] == 1
-    # после первого опубликованного: 5 с без якоря не «пропуски», NaN — пропуск
+    # после первого опубликованного: 5 с без якоря не «пропуски», NaN - пропуск
     assert r_late["p_gap_steps"] == 0 and r_nan["p_gap_steps"] == 1
 
 
@@ -443,8 +443,8 @@ def test_totals_pair_fractions_and_empty_runs():
 
 
 def test_boundary_matrix():
-    """Эталон через E = 400 км, оценка = эталон: совпавшие соглашения — 0 м,
-    разные — 100 км у каждой пары западнее границы."""
+    """Эталон через E = 400 км, оценка = эталон: совпавшие соглашения - 0 м,
+    разные - 100 км у каждой пары западнее границы."""
     a, t, E, N, lat, lon, alt = _line_ref()
     fr = M.Frame("mgrs", (lat[0], lon[0], alt[0]))
     r, _ = M.score_position(_out(t, lat, lon, alt, np.ones(len(t), bool)), a, fr, full=False,
@@ -459,7 +459,7 @@ def test_boundary_matrix():
 
 def _pair_ref(n=600, E0=399700.0, N0=6185000.0, grade=0.02, rover_gap=()):
     """Прямая на восток через E = 400 км: master и rover (на 12,436 м впереди,
-    на 12,436·grade выше), фиксы 10 Гц; rover_gap — индексы без rover."""
+    на 12,436·grade выше), фиксы 10 Гц; rover_gap - индексы без rover."""
     a, t, E, N, lat, lon, alt = _line_ref(n, E0, N0)
     Er = E + 12.436
     la_r, lo_r = G.utm_inv(Er, N, 37)
@@ -471,9 +471,9 @@ def _pair_ref(n=600, E0=399700.0, N0=6185000.0, grade=0.02, rover_gap=()):
 
 
 def test_reference_base_link_by_tf():
-    """Эталон base_link: по паре — master + 9,873/12,436·(rover − master), z по
-    той же доле минус 3; без пары (rover пропал) — master + 9,873 м по курсу
-    траектории, z − 3; антенна master — прежний эталон."""
+    """Эталон base_link: по паре - master + 9,873/12,436·(rover − master), z по
+    той же доле минус 3; без пары (rover пропал) - master + 9,873 м по курсу
+    траектории, z − 3; антенна master - прежний эталон."""
     gap = range(200, 260)
     a, t, E, N, lat, lon, alt = _pair_ref(rover_gap=gap)
     ref = M.reference(a, "base_link")
@@ -485,7 +485,7 @@ def test_reference_base_link_by_tf():
     assert ref["alt"][pair] == pytest.approx(alt[pair] + 9.873 * 0.02 - 3.0, abs=1e-6)
     assert ref["alt"][~pair] == pytest.approx(alt[~pair] - 3.0, abs=1e-6)
     assert np.abs(ref["yaw"]).max() < 1e-3                 # на восток
-    tm, la, lo, al = M.reference_geo(a)                    # по умолчанию — антенна master
+    tm, la, lo, al = M.reference_geo(a)                    # по умолчанию - антенна master
     assert np.array_equal(la, lat) and np.array_equal(al, alt)
     # выход в антенне master против эталона base_link: 9,873 м вдоль и 3 м по высоте
     fr = M.Frame("mgrs", (lat[0], lon[0], alt[0]))
@@ -496,7 +496,7 @@ def test_reference_base_link_by_tf():
 
 def test_build_map_track_is_base_link():
     """Карта строится по траектории base_link: та же точка, что эталон оценки
-    (пара антенн по tf), z — уровень рельса; курс — по ходу движения."""
+    (пара антенн по tf), z - уровень рельса; курс - по ходу движения."""
     sys.path.insert(0, str(ROOT / "analysis"))
     import build_map
     a, t, E, N, lat, lon, alt = _pair_ref(n=600, grade=0.0, rover_gap=range(300, 320))
@@ -582,7 +582,7 @@ def test_node_declared_parses_defaults(tmp_path):
     d = R.node_declared(src)
     assert d["init_window_s"] == 3.0 and math.isnan(d["origin_lat"]) and d["mgrs_grid"] == ""
     assert d["utm_zone"] == 0 and d["pulse_horizon_s"] == 2.0
-    assert "dt" not in d                                  # поле Params — не параметр ноды
+    assert "dt" not in d                                  # поле Params - не параметр ноды
 
 
 def test_make_runner_passes_position_kwargs(monkeypatch):
@@ -614,7 +614,7 @@ def test_make_runner_passes_position_kwargs(monkeypatch):
 
 
 def test_glue_status_and_start_sorter(monkeypatch):
-    """Статус NavSatFix — если on_fix его принимает; стартовый всплеск — по меткам."""
+    """Статус NavSatFix - если on_fix его принимает; стартовый всплеск - по меткам."""
     import types
     import eval_replay as R
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# measure_realtime.sh — замер реального времени ноды (критерий 4 ТЗ):
+# measure_realtime.sh - замер реального времени ноды (критерий 4 ТЗ):
 # полный bag x1, нода в своём контейнере с лимитами ТЗ (--cpus 2 --memory 512m),
-# плеер и проба — в соседнем контейнере в тех же сетевом, IPC и PID
-# пространствах (как процессы на одной машине; лимиты — только на ноду).
+# плеер и проба - в соседнем контейнере в тех же сетевом, IPC и PID
+# пространствах (как процессы на одной машине; лимиты - только на ноду).
 #
 # С хоста (Git Bash / Linux), из корня репозитория:
 #   tools/measure_realtime.sh --bag 30618_e9a34502                 # 20 мин, отложенный
@@ -20,7 +20,7 @@
 #   --stats-every S период опроса docker stats, с (5)
 # Переменные: IMAGE (vectra/tram:compose), DATA_DIR (<repo>/data).
 # Результат: out/realtime/<tag>/{summary.json,summary.md,raw.npz,node.log,
-# docker_stats.csv,harness.log}; копия итога — out/realtime/summary.{json,md}.
+# docker_stats.csv,harness.log}; копия итога - out/realtime/summary.{json,md}.
 
 set -o pipefail
 if [ -d /opt/ros/humble ] && [ "${1:-}" = "--inside" ]; then
@@ -32,7 +32,7 @@ if [ -d /opt/ros/humble ] && [ "${1:-}" = "--inside" ]; then
   export PYTHONUNBUFFERED=1 RCUTILS_LOGGING_BUFFERED_STREAM=0
   ts() { date +%H:%M:%S.%3N; }
   # Без --report-every: промежуточная сводка считается в том же цикле, что принимает
-  # сообщения, и за 20 мин растёт до ~0,3 с простоя пробы раз в 120 с — пробе входы и
+  # сообщения, и за 20 мин растёт до ~0,3 с простоя пробы раз в 120 с - пробе входы и
   # выходы приходят с опозданием, и in2out > 250 мс ложно (замер: паузы приёма
   # 0,08 → 0,31 с ровно каждые 120 с при паузах меток входов ≤ 0,08 с).
   python3 /repo/tools/ros_probe.py --out "$OUT/summary_probe.json" --npz "$OUT/raw.npz" \
@@ -81,7 +81,7 @@ fi
 # нода работает из /ws образа: исходники образа (кроме test/) должны совпадать с деревом
 if ! docker run --rm -v "$here:/repo:ro" "$IMAGE" diff -r -q -x __pycache__ -x .pytest_cache -x test /ws/src /repo/ros2_ws/src >/dev/null 2>&1; then
   if [ $STALE_OK -eq 1 ]; then
-    echo "[rt] ВНИМАНИЕ: /ws/src образа $IMAGE не совпадает с ros2_ws/src — мерится код образа (--allow-stale)"
+    echo "[rt] ВНИМАНИЕ: /ws/src образа $IMAGE не совпадает с ros2_ws/src - мерится код образа (--allow-stale)"
   else
     echo "[rt] образ $IMAGE собран из других исходников, чем ros2_ws/src рабочего дерева:"
     echo "[rt] замер был бы по старому коду. Добавьте --build (или --allow-stale)."

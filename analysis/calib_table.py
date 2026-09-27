@@ -6,7 +6,7 @@ full_<tag>.json) в одну таблицу и пишет analysis/calib_holdout
     python3 analysis/calib_table.py a_orig_yaml:"(a) исходный tram.yaml" \\
         b_orig_json:"(b) tram_calibration.json" c_eval:"(c) лист оценки"
 
-Строка «база» — причинная база «только колесо» (та же карта, выставка и
+Строка «база» - причинная база «только колесо» (та же карта, выставка и
 привязки) из последнего переданного прогона.
 """
 
@@ -50,7 +50,7 @@ def row(label, sp, fu, naive=False):
 
 def fmt(x, nd=4, sign=False):
     if x is None:
-        return "—"
+        return "-"
     return f"{x:+.{nd}f}" if sign else f"{x:.{nd}f}"
 
 
@@ -78,7 +78,7 @@ def main():
         cells = []
         for k in PH:
             v = r["phase"].get(k)
-            cells.append("—" if v is None else
+            cells.append("-" if v is None else
                          f"{fmt(v['mae'])} / {fmt(v['bias'], sign=True)} / "
                          f"{fmt(v['cov2'] and 100 * v['cov2'], 0)}")
         print(f"| {r['label']} | " + " | ".join(cells) + " |")

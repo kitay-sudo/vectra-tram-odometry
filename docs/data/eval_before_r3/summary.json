@@ -17,7 +17,7 @@
   },
   "gnss": "3",
   "frame": "mgrs",
-  "frame_ru": "MGRS (непрерывные UTM зоны начала; x — восток, y — север, z — высота)",
+  "frame_ru": "MGRS (непрерывные UTM зоны начала; x - восток, y - север, z - высота)",
   "runner_frame": "auto",
   "runner_grid": null,
   "judge_grid": "37UCB",

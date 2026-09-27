@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Сравнение карт путей для следования по карте.
 
-Три варианта карты (все — по точке base_link, только обучающие прогоны
+Три варианта карты (все - по точке base_link, только обучающие прогоны
 tools/split.json:train для EVAL-набора):
   gnss       наша карта из GNSS (analysis/build_map.py --source gnss);
   pathgraph  только pathgraph организаторов (за его концами карты нет:
              курсор держится у известной конечной или идёт по прямой);
   hybrid     pathgraph, где он есть, плюс наша карта за его пределами.
-Остановки и конечные у всех трёх — из GNSS тех же прогонов, множитель пути —
+Остановки и конечные у всех трёх - из GNSS тех же прогонов, множитель пути -
 калибровка по тем же прогонам.
 
     python3 tools/map_compare.py build [--set train]          # out/maps/cmp_<set>_<вариант>.npz
@@ -15,10 +15,10 @@ tools/split.json:train для EVAL-набора):
     python3 tools/map_compare.py table --ids train             # таблица по out/mapcmp/*
     python3 tools/map_compare.py run --ids holdout_scored --maps hybrid   # один раз после выбора
 
-Выбор — на train по средней 3D и ошибке в конце (base_link, MGRS 37UCB);
+Выбор - на train по средней 3D и ошибке в конце (base_link, MGRS 37UCB);
 holdout считается один раз для выбранного варианта. Прогоны без GNSS
-пропускаются (эталона нет). Прогон — tools/eval.py (--no-inject --no-gnss-full
---no-doc) с лист ОЦЕНКИ; pathgraph для метрик — _incoming/pathgraph.
+пропускаются (эталона нет). Прогон - tools/eval.py (--no-inject --no-gnss-full
+--no-doc) с лист ОЦЕНКИ; pathgraph для метрик - _incoming/pathgraph.
 """
 
 import argparse
@@ -103,7 +103,7 @@ def cmd_table(a):
         vals = []
         for _, t in cols:
             v = t.get(k)
-            vals.append("—" if v is None else (f"{v:.{nd}f}" if nd else f"{int(round(v))}"))
+            vals.append("-" if v is None else (f"{v:.{nd}f}" if nd else f"{int(round(v))}"))
         print(f"| {name} | " + " | ".join(vals) + " |")
 
 

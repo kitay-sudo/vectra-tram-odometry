@@ -1,14 +1,14 @@
 """Учёт различий трамваев: параметр vehicle (tram_state_estimator/vehicle.py).
 
-Организаторы 26.09: проверка — только вагон 30618, учёт различий трамваев в
+Организаторы 26.09: проверка - только вагон 30618, учёт различий трамваев в
 плюс. Проверяется:
 
   * листы ЖЮРИ и ОЦЕНКИ несут vehicle (по умолчанию 30618), vehicle_ids и
-    vehicle_meas_scale — ровно из блока "vehicles" своей калибровки;
-  * масштаб вагонов листа ОЦЕНКИ подогнан только по train, ЖЮРИ — по всем
+    vehicle_meas_scale - ровно из блока "vehicles" своей калибровки;
+  * масштаб вагонов листа ОЦЕНКИ подогнан только по train, ЖЮРИ - по всем
     записям своего вагона; «общий» масштаб блока равен meas_scale листа;
-  * выбор вагона: известный — его meas_scale; auto — лист как есть;
-    незнакомое значение или негодная таблица — auto с предупреждением;
+  * выбор вагона: известный - его meas_scale; auto - лист как есть;
+    незнакомое значение или негодная таблица - auto с предупреждением;
   * нода и оценка применяют вагон одинаково (tram_node.py, tools/eval_replay.py);
   * вагон меняет только масштаб колёс: скорость ядра на тех же показаниях
     масштабируется ровно на отношение масштабов.
@@ -71,7 +71,7 @@ def test_sheet_carries_vehicle_table_from_calibration(which):
     blk = _calib(which)["vehicles"]
     ids = sorted(k for k in blk if not k.startswith("_"))
     assert ids == ["30618", "30639"]
-    assert node["vehicle"] == "30618" == blk["_default"]      # проверка — только 30618
+    assert node["vehicle"] == "30618" == blk["_default"]      # проверка - только 30618
     assert node["vehicle_ids"] == ids
     assert node["vehicle_meas_scale"] == [blk[k]["meas_scale"] for k in ids]
     assert all(isinstance(x, float) for x in node["vehicle_meas_scale"])
@@ -191,7 +191,7 @@ def test_sheet_without_vehicle_params_is_unchanged():
 
 
 def test_vehicle_only_rescales_wheel_speed():
-    """Вагон — только масштаб колёс: та же запись (фикстура реального прогона
+    """Вагон - только масштаб колёс: та же запись (фикстура реального прогона
     30618, 180 с) с масштабом другого вагона даёт на ходу скорость и путь ядра
     в отношение масштабов больше или меньше."""
     import e2e_replay as E
@@ -260,12 +260,12 @@ def _seg(L, k, s0=1.0, mult=1.0, used=1.0):
 
 
 def test_online_scale_waits_for_segments_then_weights_by_length():
-    """Оценка по умолчанию — весь путь карты на весь путь колёс (Σ L·k / Σ L)."""
+    """Оценка по умолчанию - весь путь карты на весь путь колёс (Σ L·k / Σ L)."""
     ws = V.OnlineWheelScale()
     log = []
     assert ws.factor(log, 1.0) == 1.0
     log.append(_seg(1000.0, 1.010))
-    assert ws.factor(log, 1.0) == 1.0          # один отрезок — мало (min_n = 2)
+    assert ws.factor(log, 1.0) == 1.0          # один отрезок - мало (min_n = 2)
     log.append(_seg(800.0, 1.013))
     assert ws.factor(log, 1.0) == pytest.approx((1010.0 + 810.4) / 1800.0, abs=1e-9)
     log.append(_seg(3000.0, 1.006))
@@ -276,7 +276,7 @@ def test_online_scale_median_and_skip_first_options():
     ws = V.OnlineWheelScale(weighted=False)
     log = [_seg(1000.0, 1.010), _seg(800.0, 1.013), _seg(3000.0, 1.006)]
     assert ws.factor(log, 1.0) == pytest.approx(1.010, abs=1e-9)
-    ws = V.OnlineWheelScale(skip_first=True)   # первый отрезок — от выставки
+    ws = V.OnlineWheelScale(skip_first=True)   # первый отрезок - от выставки
     assert ws.factor(log, 1.0) == pytest.approx((810.4 + 3018.0) / 3800.0, abs=1e-9)
     assert V.OnlineWheelScale.WEIGHTED and not V.OnlineWheelScale.SKIP_FIRST
 
@@ -293,14 +293,14 @@ def test_online_scale_dead_zone_and_cap():
     ws = V.OnlineWheelScale()
     assert ws.factor([_seg(1000.0, 1.004), _seg(1000.0, 1.003)], 1.0) == 1.0
     assert ws.estimate == pytest.approx(1.0035)
-    ws = V.OnlineWheelScale()                  # за пределом ±cap — cap
+    ws = V.OnlineWheelScale()                  # за пределом ±cap - cap
     assert ws.factor([_seg(1000.0, 1.028), _seg(1000.0, 1.029)], 1.0) == \
         pytest.approx(1.0 + V.OnlineWheelScale.CAP)
 
 
 def test_online_scale_uses_position_multiplier_of_the_segment():
     """Множитель пути Position (scale_adapt) на отрезке учитывается: сдвиг
-    привязки меньше, если путь уже шёл с поправкой. s0 карты — любой."""
+    привязки меньше, если путь уже шёл с поправкой. s0 карты - любой."""
     s0 = 0.9987
     ws = V.OnlineWheelScale()
     log = [_seg(1000.0, 1.010, s0=s0, mult=1.004),
@@ -311,7 +311,7 @@ def test_online_scale_uses_position_multiplier_of_the_segment():
 def test_online_scale_restarts_on_new_log_and_ignores_bad_input():
     ws = V.OnlineWheelScale()
     assert ws.factor([_seg(1000.0, 1.01), _seg(1000.0, 1.01)], 1.0) == pytest.approx(1.01)
-    assert ws.factor([], 1.0) == 1.0           # новый журнал — новый прогон
+    assert ws.factor([], 1.0) == 1.0           # новый журнал - новый прогон
     for s0 in (None, 0.0, float("nan"), -1.0):
         assert ws.factor([_seg(1000.0, 1.01)] * 3, s0) == 1.0
     log = [(0.0, float("nan"), 1000.0, 1.0), (0.0, 5.0, 0.0, float("nan")),
@@ -320,8 +320,8 @@ def test_online_scale_restarts_on_new_log_and_ignores_bad_input():
 
 
 def _fixture_runs(prefill, hook=True):
-    """Runner на фикстуре реального прогона (без GNSS) — скорость выходов;
-    журнал привязок заполнен заранее, карта — заглушка с s0 = 1."""
+    """Runner на фикстуре реального прогона (без GNSS) - скорость выходов;
+    журнал привязок заполнен заранее, карта - заглушка с s0 = 1."""
     import types
     import e2e_replay as E
     from tram_state_estimator.runner import Runner
@@ -345,7 +345,7 @@ def test_runner_hook_scales_output_speed_only():
     assert np.allclose(v1, v0 * 1.011, rtol=0, atol=1e-9)
     assert r.wheel_scale.k == pytest.approx(1.011)
     _, v2 = _fixture_runs([_seg(1000.0, 1.003), _seg(1000.0, 1.004)])
-    assert np.array_equal(v2, v0)              # в мёртвой зоне — без поправки
+    assert np.array_equal(v2, v0)              # в мёртвой зоне - без поправки
     _, v3 = _fixture_runs([_seg(1000.0, 1.01), _seg(1000.0, 1.012)], hook=False)
     assert np.array_equal(v3, v0)              # без крючка журнал не влияет
 
@@ -353,7 +353,7 @@ def test_runner_hook_scales_output_speed_only():
 def test_runner_hook_survives_reset_and_restarts_estimate():
     r, _ = _fixture_runs([_seg(1000.0, 1.01), _seg(1000.0, 1.012)])
     ws = r.wheel_scale
-    # копия для прогноза пульса (fork): журнал копии — тот же для её оценки,
+    # копия для прогноза пульса (fork): журнал копии - тот же для её оценки,
     # поправка не сбрасывается
     f = r.fork()
     assert f.wheel_scale is not ws and f.wheel_scale._log is f.pos.scale_log

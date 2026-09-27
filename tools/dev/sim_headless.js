@@ -5,7 +5,7 @@
 // Встроенный скрипт страницы исполняется с заглушками DOM/Canvas/Audio,
 // кадры (requestAnimationFrame) подаются вручную с dt = 50 мс (как ограничено
 // в frame()). Кнопки нажимаются через их обработчики. Ловим исключения и NaN,
-// собираем таблицу метрик страницы (MET) — то, что увидит жюри.
+// собираем таблицу метрик страницы (MET) - то, что увидит жюри.
 // Страница НЕ изменяется: в копию скрипта в памяти добавляется одна строка,
 // выставляющая внутреннее состояние наружу (globalThis.__sim).
 const fs = require('fs');
@@ -108,7 +108,7 @@ code = code.slice(0, tail) +
 try { vm.runInContext(code, sandbox, { filename: 'simulator/index.html#inline' }); }
 catch (e) { errors.push(['init', e.stack]); }
 const S = sandbox.__sim;
-// REC_INPUTS=1: входы оценщика на каждом шаге (notch, 8 показаний, истина v, s) — для прогона Python-ядра
+// REC_INPUTS=1: входы оценщика на каждом шаге (notch, 8 показаний, истина v, s) - для прогона Python-ядра
 const INPUTS = [];
 if (process.env.REC_INPUTS) {
   const es = S.estimator, orig = es.step;

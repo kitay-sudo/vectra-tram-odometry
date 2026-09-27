@@ -4,11 +4,11 @@
 (самотест оценки) и tools/export_replay.py (ошибка вдоль и поперёк пути);
 analysis/calib_eval.py берёт из неё метрики подгонки.
 
-Порядок событий, GNSS только первые 3 с и пары по ближайшей метке <= 0,05 с —
-из analysis/bagio.py и analysis/evaluate.py; Runner, Position и TrackMap —
+Порядок событий, GNSS только первые 3 с и пары по ближайшей метке <= 0,05 с -
+из analysis/bagio.py и analysis/evaluate.py; Runner, Position и TrackMap -
 из пакета tram_state_estimator прямо из репозитория.
 
-Запуск — в образе vectra/tram:dev из корня репозитория:
+Запуск - в образе vectra/tram:dev из корня репозитория:
 
   # метрики (held-out / все прогоны), конфиг ядра json (как evaluate.py) или yaml (как нода)
   python3 tools/core_metrics.py metrics --set val --cfg json --map train
@@ -20,7 +20,7 @@ analysis/calib_eval.py берёт из неё метрики подгонки.
   # скачок метки времени во входе (устойчивость связки)
   python3 tools/core_metrics.py probe
 
-Сырые результаты — out/core/*.json|csv.
+Сырые результаты - out/core/*.json|csv.
 """
 
 import argparse
@@ -56,8 +56,8 @@ MAPS = {"train": ROOT / "analysis" / "cache" / "track_map_train.npz",
 NODE_ONLY = {"wheel_timeout_s", "handle_timeout_s", "init_window_s", "map_file",
              "origin_lat", "origin_lon", "origin_alt", "frame_id",
              "child_frame_id"}
-V_STAND_GNSS = 0.2      # м/с: ниже — фаза «стоянка» по GNSS
-V_FALSE_SS = 0.5        # м/с: STANDSTILL при GNSS выше — ложная стоянка
+V_STAND_GNSS = 0.2      # м/с: ниже - фаза «стоянка» по GNSS
+V_FALSE_SS = 0.5        # м/с: STANDSTILL при GNSS выше - ложная стоянка
 PHASES = ("standstill", "traction", "coast", "brake")
 DUP = "30618_f3b8c99b"  # дубликат 30618_21dd3af3 (MODEL.md 0.1)
 
@@ -68,8 +68,8 @@ CFGS = ("json", "yaml", "json_nocreep", "yaml_nocreep")
 
 
 def load_params(cfg):
-    """json — config/tram_calibration.json (так считает analysis/evaluate.py);
-    yaml — config/tram.yaml (так работает нода). *_nocreep — эксперимент:
+    """json - config/tram_calibration.json (так считает analysis/evaluate.py);
+    yaml - config/tram.yaml (так работает нода). *_nocreep - эксперимент:
     заготовочные c_creep, c_creep_drag обнулены (масштаб колёс уже откалиброван
     по GNSS, крип-заглушка сверху даёт систематический сдвиг)."""
     from dataclasses import replace
@@ -81,7 +81,7 @@ def load_params(cfg):
         with open(PKG / "config" / "tram.yaml", encoding="utf-8") as fh:
             got = yaml.safe_load(fh)["/tram_state_estimator"]["ros__parameters"]
         from dataclasses import fields as _fields
-        core = {f.name for f in _fields(Params)}     # параметры ноды вне ядра — мимо
+        core = {f.name for f in _fields(Params)}     # параметры ноды вне ядра - мимо
         p = Params.from_dict({k: v for k, v in got.items() if k in core})
     if cfg.endswith("_nocreep"):
         p = replace(p, c_creep=0.0, c_creep_drag=0.0)
@@ -105,9 +105,9 @@ def all_ids():
 # ------------------------------------------------------ наивная база
 
 class NaiveRunner:
-    """«Только колесо»: скорость — среднее последних показаний обеих тележек
-    (причинно, без заглядывания вперёд) × meas_scale / 3,6; путь — интеграл на
-    той же сетке 50 мс по меткам сообщений; положение — ТА ЖЕ машинерия
+    """«Только колесо»: скорость - среднее последних показаний обеих тележек
+    (причинно, без заглядывания вперёд) × meas_scale / 3,6; путь - интеграл на
+    той же сетке 50 мс по меткам сообщений; положение - ТА ЖЕ машинерия
     Position/TrackMap, та же выставка по GNSS и та же привязка к остановкам
     (стоянка = наивная скорость < v_standstill дольше 8 с)."""
 
@@ -177,7 +177,7 @@ class NaiveRunner:
 # ------------------------------------------------------ прогон
 
 def replay(a, runners):
-    """Прогон событий bag (порядок записи, GNSS первые 3 с — E.events) через
+    """Прогон событий bag (порядок записи, GNSS первые 3 с - E.events) через
     несколько связок сразу. Возвращает списки выходов каждой связки."""
     outs = [[] for _ in runners]
     for tb, kind, i, th, val in E.events(a):
@@ -205,8 +205,8 @@ def polyline(ref_xy, min_step=1.0):
     """Траектория GNSS, прореженная до шага >= min_step (гасит дрожание на
     стоянке) и продлённая по касательной на EXT м за оба конца (иначе оценка,
     ушедшая за последнюю точку, проецируется в конец и даёт along = 0).
-    kept_of[i] — индекс (в продлённом массиве) последней точки до фикса i.
-    S — дуговая координата, 0 в первой точке GNSS; path — длина пути GNSS."""
+    kept_of[i] - индекс (в продлённом массиве) последней точки до фикса i.
+    S - дуговая координата, 0 в первой точке GNSS; path - длина пути GNSS."""
     keep, last = [], None
     kept_of = np.full(len(ref_xy), -1)
     for i, (x, y) in enumerate(ref_xy):
@@ -230,7 +230,7 @@ def polyline(ref_xy, min_step=1.0):
 
 
 def median5(xy):
-    """Скользящая медиана по 5 точкам по каждой координате (края — как есть)."""
+    """Скользящая медиана по 5 точкам по каждой координате (края - как есть)."""
     out = xy.copy()
     if len(xy) >= 5:
         from numpy.lib.stride_tricks import sliding_window_view
@@ -242,14 +242,14 @@ def median5(xy):
 def along_cross(ref_xy, idx, est_xy, W=1000.0, max_d=60.0):
     """Ошибка вдоль и поперёк эталонной траектории для фиксов idx.
 
-    s_ref — дуговая координата эталонной точки; оценка проецируется на
+    s_ref - дуговая координата эталонной точки; оценка проецируется на
     отрезки траектории в окне ±W м от s_ref с тем же направлением движения
     (встречный проход по тому же месту отсекается). along = s_проекции − s_ref,
-    cross — знаковое расстояние до траектории (+ слева по ходу); cross равен
+    cross - знаковое расстояние до траектории (+ слева по ходу); cross равен
     расстоянию до ближайшей из почти равноудалённых проекций, т. е. с точностью
-    до 5 м — расстоянию до траектории. Оценка дальше max_d от траектории
-    (ушла на чужую ветку) — along/cross не определены (NaN, считаются отдельно)."""
-    # Эталон для разложения вдоль/поперёк — медиана по 5 фиксам (~0,7 с): одиночный
+    до 5 м - расстоянию до траектории. Оценка дальше max_d от траектории
+    (ушла на чужую ветку) - along/cross не определены (NaN, считаются отдельно)."""
+    # Эталон для разложения вдоль/поперёк - медиана по 5 фиксам (~0,7 с): одиночный
     # выброс GNSS иначе даёт «шип» в траектории, на который ложится проекция.
     # 3D-ошибка считается по сырому эталону (как у судьи).
     ref_xy = median5(ref_xy)
@@ -282,7 +282,7 @@ def along_cross(ref_xy, idx, est_xy, W=1000.0, max_d=60.0):
         dmin = float(dist.min())
         if not math.isfinite(dmin) or dmin > max_d:
             continue
-        # Кандидаты — локальные минимумы расстояния вдоль траектории (основания
+        # Кандидаты - локальные минимумы расстояния вдоль траектории (основания
         # перпендикуляров). На петле маршрута тот же участок в том же направлении
         # встречается в окне дважды: из почти равноудалённых (dmin + 5 м)
         # минимумов берётся ближайший ВДОЛЬ пути к эталонной точке.
@@ -587,8 +587,8 @@ def cmd_metrics(args):
                     runs_scored=len(done), runs_skipped_no_gnss=skipped, wall_s=wall,
                     workers=args.workers, V_STAND_GNSS=V_STAND_GNSS, V_FALSE_SS=V_FALSE_SS,
                     params_q_v=load_params(cfg).q_v, params_dt=load_params(cfg).dt,
-                    note="GNSS в связку — только первые 3 с (evaluate.events); пары <= 0,05 с; "
-                         "эталон скорости |master vel| (x,y); положение — ENU от первого master fix.")
+                    note="GNSS в связку - только первые 3 с (evaluate.events); пары <= 0,05 с; "
+                         "эталон скорости |master vel| (x,y); положение - ENU от первого master fix.")
         (OUT / f"metrics_{tag}.json").write_text(
             json.dumps(dict(meta=meta, groups=agg), ensure_ascii=False, indent=1), encoding="utf-8")
         s = agg["selected"]
@@ -605,7 +605,7 @@ def cmd_timing(args):
     p = load_params(args.cfg)
     OUT.mkdir(parents=True, exist_ok=True)
     rep = dict(cfg=args.cfg, map=args.map, bags={}, note="один процесс, последовательно; "
-               "на хосте параллельно работают другие контейнеры — числа предварительные")
+               "на хосте параллельно работают другие контейнеры - числа предварительные")
     allstep, allcb = [], []
 
     def digest(outs):
@@ -675,7 +675,7 @@ def cmd_timing(args):
 
 def inject(a, kind, t0, dur):
     """Копия прогона с отказом ОБЕИХ тележек в окне [t0, t0+dur) по header.stamp:
-    zero — показания 0; drop — сообщений нет; freeze — последнее значение до окна."""
+    zero - показания 0; drop - сообщений нет; freeze - последнее значение до окна."""
     b = {k: v.copy() for k, v in a.items()}
     for key in ("front", "rear"):
         x = b[key]
@@ -837,7 +837,7 @@ def cmd_adapt(args):
             prev[0], prev[1] = float(c.x[3]), float(c.x[4])
             return o
         r._step = timed
-        # Повтор логики _adapt_scale (estimator_core.py) ДО вызова оригинала —
+        # Повтор логики _adapt_scale (estimator_core.py) ДО вызова оригинала -
         # только чтобы записать, чем закончилось каждое окно; поведение не меняется.
         from tram_state_estimator.estimator_core import drive_force, rated_force, resistance
         wins = []
@@ -908,9 +908,9 @@ def cmd_adapt(args):
 
 
 def cmd_lag(args):
-    """Сдвиг по времени «тележки (header.stamp) — скорость GNSS master»:
+    """Сдвиг по времени «тележки (header.stamp) - скорость GNSS master»:
     ошибка среднего двух тележек (линейная интерполяция в момент tg + τ)
-    против |v| GNSS для τ из сетки. τ > 0 — показание тележки относится к
+    против |v| GNSS для τ из сетки. τ > 0 - показание тележки относится к
     более позднему моменту, чем его метка (датчик «отстаёт»)."""
     ids = val_ids() if args.set == "val" else all_ids() if args.set == "all" else args.set.split(",")
     p = load_params("yaml")

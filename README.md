@@ -444,6 +444,7 @@ ros2 run tram_state_estimator tram_estimator --ros-args -p gnss_correction:=fals
 | `wheel_timeout_s` | `1.0` | нет показаний тележек дольше - разомкнутый режим по модели, с |
 | `handle_timeout_s` | `0.5` | нет ручки дольше - параметры модели не адаптируются, с |
 | `pulse_horizon_s` | `0.2` | входы молчат - прогноз модели не дальше этого от последней метки; `0` - выключено |
+| `speed_output_delay_s` | `0.08` | скорость в выходе на столько раньше по времени: эталон скорости проверки организаторов сглажен и запаздывает около 0,1 с; `0` - без сдвига; положение не сдвигается |
 | `start_sort_s` | `0.1` | первые столько секунд входы сортируются по метке (стартовый всплеск bag) |
 | `frame_id`, `child_frame_id` | `map`, `base_link` | имена систем в заголовках выхода |
 | `sheet` | `auto` | лист пакета подкладывается под параметры запуска; путь к листу; `none` - заглушки имитатора |
@@ -533,7 +534,7 @@ EVAL.md - числа отчёта посчитаны на том же коде, 
 
 | Файл | SHA-256 |
 |---|---|
-| `ros2_ws/src/tram_state_estimator/config/tram.yaml` | `a9f187e261e1ecaef475b40b32a87a1248ba2f393b65f35477531450715e09c8` |
+| `ros2_ws/src/tram_state_estimator/config/tram.yaml` | `9950bee716af5b62db8aea1a5c5c3226410499cabb2a16b92c69d4232f1dc97e` |
 | `ros2_ws/src/tram_state_estimator/config/track_map.npz` | `cbef185f2f87f9bed4e486c9b7a195f751cb6c09ddeff45ab2b9da74af85671f` |
 
 Проверить хэши.

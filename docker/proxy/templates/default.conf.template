@@ -1,6 +1,6 @@
 # Обратный прокси демо-сервера (docker compose --profile server).
 #   /        статическая страница симулятора (simulator/)
-#   /ros     websocket rosbridge (сервис bridge:9090) — ws://<host>/ros, wss://<host>/ros
+#   /ros     websocket rosbridge (сервис bridge:9090) - ws://<host>/ros, wss://<host>/ros
 #   /healthz проверка живости
 # HTTPS (443) включает docker/proxy/40-vectra-tls.sh, если смонтированы
 # сертификат и ключ (TLS_DIR, TLS_CERT, TLS_KEY в .env).

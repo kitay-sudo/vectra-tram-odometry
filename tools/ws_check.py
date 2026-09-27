@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""ws_check — проверка моста rosbridge по websocket (как его видит симулятор).
+"""ws_check - проверка моста rosbridge по websocket (как его видит симулятор).
 
 Подключается к URL (ws:// или wss://), подписывается на /result/velocity и
 /result/position (rosbridge v2, JSON), считает сообщения за --seconds и
-печатает частоту и последний выход. Код 0 — пришло хотя бы --min сообщений.
+печатает частоту и последний выход. Код 0 - пришло хотя бы --min сообщений.
 
     python3 tools/ws_check.py ws://localhost:9090
     python3 tools/ws_check.py wss://demo.example.org/ros --seconds 10

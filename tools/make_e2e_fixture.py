@@ -3,15 +3,15 @@
 
 Читает bag из data/<bag_id> (rosbags, типы tram_vehicle_msgs берутся из
 ros2_ws/src/tram_vehicle_msgs/msg) и сохраняет первые --seconds секунд по
-времени записи: входы ноды, GNSS fix и vel обеих антенн (эталон скорости — master/vel,
-контрольный — rover/vel).
-Формат массивов как в analysis/bagio.py: первая колонка tb — время записи в
-bag, вторая th — header.stamp, дальше значения.
+времени записи: входы ноды, GNSS fix и vel обеих антенн (эталон скорости - master/vel,
+контрольный - rover/vel).
+Формат массивов как в analysis/bagio.py: первая колонка tb - время записи в
+bag, вторая th - header.stamp, дальше значения.
 
     python3 tools/make_e2e_fixture.py 30618_b95ca60a --seconds 180 \
         --out ros2_ws/src/tram_state_estimator/test/data/e2e_30618_b95ca60a_180s.npz
 
-Прогон берётся только из holdout_scored (tools/split.json): фикстура — кусок
+Прогон берётся только из holdout_scored (tools/split.json): фикстура - кусок
 отложенной записи. Файл должен быть < 1 МБ и лежать вне out/, analysis/cache
 и *.db3 (они в .gitignore).
 """
@@ -101,7 +101,7 @@ def main():
     meta = {
         "bag": a.bag, "split": "holdout_scored", "seconds": a.seconds,
         "record_start_s": t_first, "columns": COLS,
-        "note": "первые N секунд по времени записи; tb — время записи, th — header.stamp",
+        "note": "первые N секунд по времени записи; tb - время записи, th - header.stamp",
         "made_by": "tools/make_e2e_fixture.py",
     }
     out = Path(a.out)

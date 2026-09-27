@@ -1,7 +1,7 @@
 #!/bin/sh
 # Включает HTTPS на 443, если смонтированы сертификат и ключ (PEM).
-# TLS_CERT / TLS_KEY — пути внутри контейнера (по умолчанию
-# /etc/nginx/certs/fullchain.pem и privkey.pem; каталог — TLS_DIR из .env).
+# TLS_CERT / TLS_KEY - пути внутри контейнера (по умолчанию
+# /etc/nginx/certs/fullchain.pem и privkey.pem; каталог - TLS_DIR из .env).
 set -e
 out=/etc/nginx/conf.d/vectra-tls.conf
 if [ -s "${TLS_CERT}" ] && [ -s "${TLS_KEY}" ]; then
@@ -21,5 +21,5 @@ CONF
   echo "vectra-proxy: HTTPS включён (${TLS_CERT})"
 else
   rm -f "$out"
-  echo "vectra-proxy: сертификата нет (${TLS_CERT}) — только HTTP :80"
+  echo "vectra-proxy: сертификата нет (${TLS_CERT}) - только HTTP :80"
 fi

@@ -1,6 +1,6 @@
 # Коррекция по GNSS: сценарии доступности (tools/eval_gnss.py)
 
-Прогоны: runs (39), лист ros2_ws/src/tram_state_estimator/config/eval/tram.yaml, карта оценочная карта пакета config/eval/track_map.npz (только train, meas_scale 1.001287). Код пакета sha `5a837f53a16d40a7`. «до» — `gnss_correction: false` (GNSS только для выставки, как до 26.09), «после» — `true`. Эталон — base_link по всем точкам GNSS прогона, MGRS 37UCB.
+Прогоны: runs (39), лист ros2_ws/src/tram_state_estimator/config/eval/tram.yaml, карта оценочная карта пакета config/eval/track_map.npz (только train, meas_scale 1.001287). Код пакета sha `5a837f53a16d40a7`. «до» - `gnss_correction: false` (GNSS только для выставки, как до 26.09), «после» - `true`. Эталон - base_link по всем точкам GNSS прогона, MGRS 37UCB.
 
 ## first3: GNSS только первые 3 с от первой точки master (как в проверочных bag)
 

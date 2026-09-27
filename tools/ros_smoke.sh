@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
-# ros_smoke.sh — ROS-смоук ноды: ros2 launch + 30 с bag + проба в ОДНОМ
+# ros_smoke.sh - ROS-смоук ноды: ros2 launch + 30 с bag + проба в ОДНОМ
 # контейнере; проверка частоты, задержки, NaN, frame_id, живости и останова.
 #
 # С хоста (Git Bash / Linux), из корня репозитория:
 #   tools/ros_smoke.sh                           # фикстура теста -> bag (данные не нужны)
 #   tools/ros_smoke.sh --bag 30618_98161270      # 30 с настоящего прогона из data/
 #   tools/ros_smoke.sh --bag 30618_b95ca60a --seconds 60 --build
-# Внутри ROS-окружения (CI, контейнер) — то же самое, без docker:
+# Внутри ROS-окружения (CI, контейнер) - то же самое, без docker:
 #   bash tools/ros_smoke.sh --ws /tmp/ws         # workspace уже собран
 # Опции:
-#   --bag ID      прогон из DATA_DIR (по умолчанию — bag из фикстуры e2e-теста)
-#   --seconds S   сколько секунд проигрывать (30; 0 — весь bag, тогда проверяется
+#   --bag ID      прогон из DATA_DIR (по умолчанию - bag из фикстуры e2e-теста)
+#   --seconds S   сколько секунд проигрывать (30; 0 - весь bag, тогда проверяется
 #                 и то, что проба получила все входы bag)
 #   --build       собрать /repo/ros2_ws/src во временный workspace (иначе /ws образа,
 #                 если исходники совпадают, или --ws)
 #   --ws DIR      готовый workspace (DIR/install/setup.bash)
 #   --tag NAME    каталог результатов out/smoke/NAME (smoke)
-#   --gnss-window S  (только фикстура) GNSS в bag лишь первые S с по header.stamp —
+#   --gnss-window S  (только фикстура) GNSS в bag лишь первые S с по header.stamp -
 #                 сценарий жюри «GNSS только в начале»;
 #                 тогда обязательна проверка: выставка прошла, ср. 3D < 10 м
 #   --repeat N    повторить N раз (новая нода каждый раз); PASS, только если все
 #   пример: tools/ros_smoke.sh --gnss-window 3 --repeat 10 --tag gnss3s
 # Переменные: IMAGE (vectra/tram:compose), DATA_DIR (<repo>/data).
 # Критерии (tools/smoke_verdict.py): >= 19 Гц по меткам и по стенным часам;
-# in2out p99 < 100 мс в установившемся режиме (без первых 2 с — стартовый
+# in2out p99 < 100 мс в установившемся режиме (без первых 2 с - стартовый
 # всплеск bag); выходов >= 95 % узлов сетки; 0 NaN; frame_id map/base_link;
-# нода жива до конца; останов по SIGINT за 15 с (трассировки — справочно).
-# Код выхода 0 — всё PASS.
+# нода жива до конца; останов по SIGINT за 15 с (трассировки - справочно).
+# Код выхода 0 - всё PASS.
 
 if [ ! -d /opt/ros/humble ]; then
   # ---------------- хост: запускаем себя в контейнере ----------------
@@ -38,7 +38,7 @@ if [ ! -d /opt/ros/humble ]; then
     [ "${args[$i]}" = "--tag" ] && tag="${args[$((i + 1))]}"
   done
   if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    echo "[smoke] образа $IMAGE нет — собираю (docker build -f docker/Dockerfile)"
+    echo "[smoke] образа $IMAGE нет - собираю (docker build -f docker/Dockerfile)"
     docker build -f "$here/docker/Dockerfile" -t "$IMAGE" "$here" || exit 1
   fi
   mkdir -p "$here/out/smoke/$tag"
@@ -109,7 +109,7 @@ else
 fi
 log "bag: $SRC, ${SECONDS_PLAY} с, повторов $REPEAT; ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0} LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-0}; CPU в контейнере: $(nproc)"
 
-run_once() {   # $1 — каталог результатов прогона
+run_once() {   # $1 - каталог результатов прогона
   local D="$1" PROBE NODE NPID ALIVE=0 SHUT=1 TRACE t0
   mkdir -p "$D"
   python3 "$REPO/tools/ros_probe.py" --out "$D/summary.json" --npz "$D/raw.npz" \
@@ -139,7 +139,7 @@ run_once() {   # $1 — каталог результатов прогона
   kill -INT -- -$NODE 2>/dev/null
   for _ in $(seq 1 150); do kill -0 $NODE 2>/dev/null || break; sleep 0.1; done
   if kill -0 $NODE 2>/dev/null; then
-    log "launch не остановился за 15 с — SIGKILL"; kill -9 -- -$NODE 2>/dev/null; SHUT=0
+    log "launch не остановился за 15 с - SIGKILL"; kill -9 -- -$NODE 2>/dev/null; SHUT=0
     pkill -9 -f lib/tram_state_estimator/tram_estimator 2>/dev/null
   fi
   wait $NODE 2>/dev/null
@@ -171,13 +171,13 @@ for i in range(1, n + 1):
         continue
     v = json.load(open(f, encoding="utf-8"))
     p = v.get("position") or {}
-    lost = json.dumps(v["harness_loss"]) if v.get("harness_loss") else "—"
+    lost = json.dumps(v["harness_loss"]) if v.get("harness_loss") else "-"
     print(f"| {i} | {v.get('verdict')} | {v['outputs']}/{v['expected']} | "
-          f"{v['in2out_steady_ms'].get('p99')} | {'да' if p.get('aligned') else ('нет' if p else '—')} | "
-          f"{p.get('mean_m', '—')} | {lost} |")
+          f"{v['in2out_steady_ms'].get('p99')} | {'да' if p.get('aligned') else ('нет' if p else '-')} | "
+          f"{p.get('mean_m', '-')} | {lost} |")
     miss = miss + 1 if p and not p.get("aligned") else miss
 if any(os.path.exists(os.path.join(out, f"run{i}", "verdict.json")) for i in range(1, n + 1)):
-    # «НЕ ЗАСЧИТАН» — про обвязку; для жюри прогон без выставки — потеря баллов
+    # «НЕ ЗАСЧИТАН» - про обвязку; для жюри прогон без выставки - потеря баллов
     print()
     print(f"срывов выставки ноды (положения нет): {miss} из {n}")
 PY

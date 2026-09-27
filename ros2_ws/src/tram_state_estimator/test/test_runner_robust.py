@@ -244,7 +244,7 @@ def test_single_stamp_outlier_is_ignored(clean, jump):
 @pytest.mark.parametrize("jump", [5.0, 3600.0, -3600.0])
 def test_bogie_pair_with_glitched_clock_is_not_a_new_run(clean, jump):
     """Обе тележки подряд с одной и той же битой меткой (одни часы): это не
-    новый прогон — подтверждения от другого входа нет. Раньше второе
+    новый прогон - подтверждения от другого входа нет. Раньше второе
     сообщение подтверждало разрыв, и выставка терялась до конца bag."""
     ev, ref = clean
     k = next(i for i in range(len(ev) - 1) if ev[i][0] > 20
@@ -276,7 +276,7 @@ def test_start_burst_going_back_2_7s_does_not_reset():
 
 def test_start_burst_going_forward_is_accepted_at_once():
     """Хвост буфера вразнобой (DATA п. 7): первым может прийти старое
-    сообщение, а следующие — на 2–6 с новее. В первые SETTLE_S прогона
+    сообщение, а следующие - на 2–6 с новее. В первые SETTLE_S прогона
     такой скачок вперёд не откладывается и не считается провалом."""
     ev = stream(30.0)
     head = [(0.0, "on_wheel", (1, T0 - 5.5, 0.0)), (0.0, "on_handle", (T0 - 5.4, 0))]
@@ -296,9 +296,9 @@ def _bag2(shift, **kw):
 
 def like_fresh(out, ref):
     """Выход после сброса = выход новой связки на том же потоке: метки,
-    скорость, путь — все; положение — с момента, когда новая выставка
+    скорость, путь - все; положение - с момента, когда новая выставка
     готова (до неё у сброшенной связки запасная выставка прошлого прогона,
-    у новой — относительная одометрия)."""
+    у новой - относительная одометрия)."""
     keys = ("stamp", "v", "s", "sigma_v")
     if len(out) != len(ref) or not all(a[k] == b[k] for a, b in zip(out, ref)
                                        for k in keys):
@@ -323,14 +323,14 @@ def test_second_bag_resets_and_realigns_like_a_fresh_runner(clean, shift):
     assert r.resets == 1 and r.gaps == 0 and "разрыв" in r.reset_reason
     assert most <= Runner.MAX_STEPS
     # отложенные первые сообщения нового прогона исполнены: ни одно не
-    # потеряно, дальше — в точности новая связка
+    # потеряно, дальше - в точности новая связка
     ref2, _ = run(Runner(P), ev2)
     assert like_fresh(out2, ref2) and len(out2) > 700
     assert r.pos.ready and r.pos.init_window == 3.0 and r._pos_prev is None
     assert r.rejected_stamps == 0
     T = arr(out2, "stamp")
     assert T.min() >= T0 + shift and np.all(np.diff(T) > 0)
-    # до выставки нового прогона — запасная: конец первого прогона
+    # до выставки нового прогона - запасная: конец первого прогона
     assert math.hypot(out2[0]["x"] - out1[-1]["x"], out2[0]["y"] - out1[-1]["y"]) < 1.0
 
 
@@ -368,10 +368,10 @@ def test_input_gap_inside_run_keeps_state(clean, gap):
     assert all(o["pos_ready"] and not o["pos_fallback"] for o in outs[100:])
     d = _xy_err(outs, ref)
     # разомкнутый прогноз на выбеге с ручкой 0: вагон на рельсах, ошибка
-    # только вдоль пути — отставание выбега от 10 м/с за время провала
+    # только вдоль пути - отставание выбега от 10 м/с за время провала
     assert d[:, 1].max() < 4.0 * gap
     assert np.abs(verr(outs, t_from=17.0 + gap + 5.0)).max() < 0.3
-    # как main: все узлы провала до метки сообщения, потом его значение —
+    # как main: все узлы провала до метки сообщения, потом его значение -
     # только не больше MAX_STEPS за вызов
     like_main = Runner(P)
     like_main.MAX_STEPS, like_main.FWD_JUMP_S = 10 ** 6, 1e9
@@ -382,10 +382,10 @@ def test_input_gap_inside_run_keeps_state(clean, gap):
 @pytest.mark.parametrize("jump", [-100.0, 3600.0])
 def test_clock_jump_inside_run_keeps_alignment(clean, jump):
     """Часы всех входов скачком уходят на −100 с или +1 ч посреди прогона и
-    дальше идут так (перезапуск часов). Подтверждённый разрыв — сброс, но
+    дальше идут так (перезапуск часов). Подтверждённый разрыв - сброс, но
     GNSS нового прогона нет (у жюри он только в первые секунды): положение
     идёт по запасной выставке прошлого прогона. Раньше: x = s, y = 0 до конца
-    (ошибка сотни метров — километры)."""
+    (ошибка сотни метров - километры)."""
     ev, ref = clean
     ev2 = [(t, m, ((a[0], a[1] + jump, a[2]) if m == "on_wheel" else
                    (a[0] + jump,) + a[1:])) if t >= 25.0 else (t, m, a)
@@ -404,7 +404,7 @@ def test_clock_jump_inside_run_keeps_alignment(clean, jump):
 
 def test_single_input_new_base_needs_more_messages():
     """Остался один вход (только тележки, без ручки и GNSS): новая база
-    подтверждается CONFIRM_SOLO сообщениями; сбой пары тележек — нет."""
+    подтверждается CONFIRM_SOLO сообщениями; сбой пары тележек - нет."""
     ev = stream(30.0, handle=False, with_gnss=False)
     r = Runner(P)
     run(r, ev)

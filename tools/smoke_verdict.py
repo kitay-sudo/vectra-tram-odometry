@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""smoke_verdict — таблица PASS/FAIL для одного прогона tools/ros_smoke.sh.
+"""smoke_verdict - таблица PASS/FAIL для одного прогона tools/ros_smoke.sh.
 
     python3 tools/smoke_verdict.py <out>/summary.json --alive 1 --shut 1 --trace 0 \
         [--fixture test/data/e2e_*.npz --raw <out>/raw.npz --need-position]
 
 Критерии: >= 19 Гц по меткам и стенным часам; in2out p99 < 100 мс в
-установившемся режиме; >= 95 % узлов сетки; /result/position — не меньше 95 %
+установившемся режиме; >= 95 % узлов сетки; /result/position - не меньше 95 %
 узлов сетки и не больше, чем /result/velocity (до якоря нода положение не
 публикует); 0 NaN; frame_id map/base_link; нода жива; останов по SIGINT;
-положение в системе судьи — MGRS от угла 37UCB непрерывно, точка base_link:
+положение в системе судьи - MGRS от угла 37UCB непрерывно, точка base_link:
 x 98 800…103 700 м (линия E 398,8…403,7 км), z 140…180 м (уровень рельса). С
---fixture — положение против эталона base_link по GNSS фикстуры (пары
+--fixture - положение против эталона base_link по GNSS фикстуры (пары
 master+rover, tf антенн; e2e_replay.reference) в системе выхода (refgeo):
 ошибка без вычета скачка на границе 100-км квадратов MGRS, как у судьи
-(развёрнутая — справочно); в системе "mgrs" выход и эталон должны быть в
+(развёрнутая - справочно); в системе "mgrs" выход и эталон должны быть в
 одном квадрате (фикстура целиком в 37UCB). С --need-position положение
 обязательно: выставка прошла и средняя 3D < 10 м (сценарий «GNSS только
 первые секунды»).
@@ -54,7 +54,7 @@ def position(raw, fixture):
     j = np.clip(np.searchsorted(T, t_ref), 1, len(T) - 1)
     j = np.where(np.abs(T[j - 1] - t_ref) < np.abs(T[j] - t_ref), j - 1, j)
     ok = np.abs(T[j] - t_ref) <= 0.05
-    # /result/position публикуется только после выставки (pos_valid); признак выставки — y и z ненулевые
+    # /result/position публикуется только после выставки (pos_valid); признак выставки - y и z ненулевые
     aligned = bool(np.any(X[-20:, 1] != 0.0) or np.any(X[-20:, 2] != 0.0))
     if not ok.any():
         return {"aligned": aligned, "pairs": 0}
@@ -136,7 +136,7 @@ def main():
         if a.need_position:
             rows.append(("выставка прошла, ср. 3D < 10 м против GNSS фикстуры", val, ok))
         if pos.get("frame") == "mgrs" and len(pos.get("squares", [])) == 1:
-            # кусок в одном квадрате: пара в разных квадратах — ошибка ~100 км у судьи
+            # кусок в одном квадрате: пара в разных квадратах - ошибка ~100 км у судьи
             rows.append(("MGRS: выход и эталон в одном 100-км квадрате",
                          f"пар в разных квадратах {pos['square_mismatch']} из {pos['pairs']}",
                          pos["square_mismatch"] == 0))
@@ -144,7 +144,7 @@ def main():
             ("трассировки при останове (справочно)", str(a.trace)),
             ("CPU ноды, % ядра", str(R.get("node_process", {}).get("cpu_pct_1core"))),
             ("RSS ноды, МБ (первый/последний/макс)", str(R.get("node_process", {}).get("rss_mb_first_last_max"))),
-            ("точность по GNSS из bag (санити; положение — против АНТЕННЫ master: ~10 м — плечо до base_link, не ошибка)",
+            ("точность по GNSS из bag (санити; положение - против АНТЕННЫ master: ~10 м - плечо до base_link, не ошибка)",
              json.dumps({k: v for k, v in R.get("accuracy_sanity_vs_bag_gnss", {}).items() if k != "note"},
                         ensure_ascii=False))]
     if pos is not None and not a.need_position:
@@ -153,7 +153,7 @@ def main():
     for name, val, ok in rows:
         print(f"| {name} | {val} | {'PASS' if ok else 'FAIL'} |")
     for name, val in info:
-        print(f"| {name} | {val} | — |")
+        print(f"| {name} | {val} | - |")
     passed = all(r[2] for r in rows)
     loss = {}
     if a.bag_meta and os.path.exists(a.bag_meta):
@@ -161,7 +161,7 @@ def main():
         loss = {k: f"{got.get(k, 0)}/{n}" for k, n in bag_counts(a.bag_meta).items()
                 if got.get(k, 0) < n}
         print(f"| проба получила все входы bag (обвязка, справочно) | "
-              f"{'да' if not loss else 'потеряно: ' + json.dumps(loss)} | — |")
+              f"{'да' if not loss else 'потеряно: ' + json.dumps(loss)} | - |")
     verdict = "PASS" if passed else ("НЕ ЗАСЧИТАН" if loss else "FAIL")
     note = (" (проба потеряла начало bag: гонка обнаружения DDS на старте проигрывания)"
             if loss and not passed else "")

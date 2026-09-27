@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""bag_gnss_filter — копия rosbag2 с урезанным GNSS (проверка ноды через ROS).
+"""bag_gnss_filter - копия rosbag2 с урезанным GNSS (проверка ноды через ROS).
 
 Все сообщения копируются как есть (сырые байты, те же моменты записи и
 метки); у топиков /sensing/gnss/* остаются только сообщения первых S секунд
-по времени записи от первого сообщения GNSS master fix — как, по ответу
+по времени записи от первого сообщения GNSS master fix - как, по ответу
 организаторов, в проверочных bag («GNSS гарантирован в первые секунды», потом
-топики молчат). --gnss-first 0 — без GNSS вовсе.
+топики молчат). --gnss-first 0 - без GNSS вовсе.
 
     source /opt/ros/humble/setup.bash
     python3 tools/bag_gnss_filter.py /data/30618_e9a34502 out/bags/30618_e9a34502_gnss3 \\
@@ -28,7 +28,7 @@ def main():
     ap.add_argument("src", help="каталог исходного bag")
     ap.add_argument("dst", help="каталог нового bag (перезаписывается)")
     ap.add_argument("--gnss-first", type=float, default=3.0,
-                    help="секунд GNSS от первого master fix по времени записи (0 — без GNSS)")
+                    help="секунд GNSS от первого master fix по времени записи (0 - без GNSS)")
     a = ap.parse_args()
     import rosbag2_py
 

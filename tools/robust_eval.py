@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""robust_eval — офлайн-проверка защиты входов и времени связки Runner на
+"""robust_eval - офлайн-проверка защиты входов и времени связки Runner на
 реальных прогонах (docs/ROBUST.md): проверка входов, разрывы времени, сетка,
 кратная dt, приведение показаний к шагу.
 
@@ -11,7 +11,7 @@
     python3 tools/robust_eval.py compare --set train --variants main,same --sheets json
 
 Варианты связки:
-  main    связка без защиты входов и времени — out/robust/runner_main.py
+  main    связка без защиты входов и времени - out/robust/runner_main.py
           (выгрузка runner.py из коммита до неё);
   same    текущая связка с сеткой от первой метки (t += dt) и без
           приведения: проверка, что защита входов и времени на реальных
@@ -22,14 +22,14 @@
             показаний к шагу.
   Прежние имена wp23 и wp23_6 (так они подписаны в docs/internal/ROBUST_WORKLOG.md)
   принимаются как синонимы grid и grid_age.
-Листы: json — config/tram_calibration.json (как analysis/evaluate.py; это
-источник листа жюри, A(u,v) подогнана по всем 122 bag — на holdout значимы
-только разности вариантов); evaldraft — черновик оценочного листа (только
+Листы: json - config/tram_calibration.json (как analysis/evaluate.py; это
+источник листа жюри, A(u,v) подогнана по всем 122 bag - на holdout значимы
+только разности вариантов); evaldraft - черновик оценочного листа (только
 split train), out/robust/eval_draft_calibration.json;
-json_nocreep — json с c_creep = c_creep_drag = 0 (крип убран по данным).
-Карта: analysis/cache/track_map_train.npz (только обучающие прогоны). GNSS —
-первые 3 с (analysis/evaluate.events), эталон — |v| GNSS master (и rover).
-Набор holdout — 15 чистых отложенных (tools/split.json: holdout_scored),
+json_nocreep - json с c_creep = c_creep_drag = 0 (крип убран по данным).
+Карта: analysis/cache/track_map_train.npz (только обучающие прогоны). GNSS -
+первые 3 с (analysis/evaluate.events), эталон - |v| GNSS master (и rover).
+Набор holdout - 15 чистых отложенных (tools/split.json: holdout_scored),
 средние взвешены по числу пар скорости.
 
 Результат: out/robust/<set>_<sheets>.json и таблицы в stdout.
@@ -65,8 +65,8 @@ V_STAND = 0.2
 SHIFTS = np.round(np.arange(-0.2, 0.2001, 0.005), 3)
 
 
-# после слияния calib — лист ОЦЕНКИ пакета (только split train); снимок
-# out/robust/eval_draft_calibration.json — только если листа ещё нет
+# после слияния calib - лист ОЦЕНКИ пакета (только split train); снимок
+# out/robust/eval_draft_calibration.json - только если листа ещё нет
 EVAL_DRAFT = (ROOT / "ros2_ws" / "src" / "tram_state_estimator" / "config" / "eval"
               / "tram_calibration.json")
 if not EVAL_DRAFT.exists():
@@ -74,10 +74,10 @@ if not EVAL_DRAFT.exists():
 
 
 def params(sheet):
-    """json — config/tram_calibration.json: источник листа жюри tram.yaml,
+    """json - config/tram_calibration.json: источник листа жюри tram.yaml,
     таблица A(u,v) подогнана по ВСЕМ 122 bag, включая отложенные (DATA.md
     §4): абсолютные числа на holdout оптимистичны, значимы разности
-    вариантов. evaldraft — черновик оценочного листа (калибровка только по
+    вариантов. evaldraft - черновик оценочного листа (калибровка только по
     split train) в out/robust/eval_draft_calibration.json; ключи, которых
     нет в Params этой версии ядра, отбрасываются."""
     if sheet.startswith("evaldraft"):
@@ -112,7 +112,7 @@ def main_runner():
 
 class LegacyGrid(Runner):
     """Новая связка (защита входов и времени), но сетка как в main:
-    t += dt от первой метки. Отличие от main — только в отброшенном."""
+    t += dt от первой метки. Отличие от main - только в отброшенном."""
     grid_align = False
     age_comp = False
 
@@ -222,7 +222,7 @@ def one(job):
 
 def deltas(base, other):
     """Разница выходов двух вариантов: на общих метках (±1 мс), а если сетки
-    сдвинуты (узлы кратны dt) — линейной интерполяцией другого на метки базы."""
+    сдвинуты (узлы кратны dt) - линейной интерполяцией другого на метки базы."""
     Tb, Vb, Xb = base
     To, Vo, Xo = other
     j = np.clip(np.searchsorted(To, Tb), 1, len(To) - 1)
@@ -299,7 +299,7 @@ def cmd_compare(args):
           f"{'train' if MAP.exists() else 'НЕТ'}; набор {args.set}: {len(bags)} bag")
     summary = {}
     for s in sheets:
-        print(f"\n### Лист {s} ({len(bags)} прогонов, веса — пары скорости)\n")
+        print(f"\n### Лист {s} ({len(bags)} прогонов, веса - пары скорости)\n")
         print("| вариант | MAE | RMSE | смещение | разгон | выбег | торм. | стоянка "
               "| MAE rover | сдвиг, мс | узел−GNSS мед/макс, мс | узел=GNSS | ср. 3D, м "
               "| сбросы+ядро, провалы | отбр. меток/знач. |")

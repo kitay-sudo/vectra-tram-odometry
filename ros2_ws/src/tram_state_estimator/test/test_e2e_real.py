@@ -6,13 +6,13 @@
 лежит в квадрате MGRS 37U CB (UTM E 399,0…399,6 км, западнее границы
 квадратов 400 км), поэтому на нём видно соглашение о границе квадратов.
 
-Пороги — санитарные: MAE скорости < 0,08 м/с, средняя 3D < 10 м,
+Пороги - санитарные: MAE скорости < 0,08 м/с, средняя 3D < 10 м,
 20 Гц, ни одного NaN. Положение сравнивается в той системе, в которой
 публикует Runner (refgeo.detect): тест не зависит от параметра projection.
-Эталон — точка base_link по tf антенн (как у судьи); выход в точке
+Эталон - точка base_link по tf антенн (как у судьи); выход в точке
 master от него на 9,87 м вдоль пути и на 3 м выше (test_output_point_is_base_link).
 В пары идут только выходы, которые нода публикует в /result/position
-(pos_valid), ошибка — без вычета скачка на границе квадратов MGRS, как у судьи.
+(pos_valid), ошибка - без вычета скачка на границе квадратов MGRS, как у судьи.
 Это не отчётные числа точности: лист и карта здесь боевые (config/, построены
 по всем данным, этот прогон в них входит). Отчётные числа считает
 tools/eval.py на оценочных листе и карте.
@@ -73,9 +73,9 @@ def test_refgeo_self_check(fx):
 
 
 def test_refgeo_error_is_judge_like():
-    """Основная ошибка — полная разность, как у судьи; скачок ±100 км на
+    """Основная ошибка - полная разность, как у судьи; скачок ±100 км на
     границе квадратов вычитается только в справочной ошибке, только по x и
-    только когда оба — выход и эталон — у края квадрата."""
+    только когда оба - выход и эталон - у края квадрата."""
     ref = np.array([[99999.0, 84941.0, 174.0],     # эталон у границы, квадрат CB
                     [99007.7, 84941.4, 174.2],     # эталон в 1 км от границы
                     [50000.0, 84941.0, 174.0]])
@@ -132,9 +132,9 @@ def test_position_mean_3d(run_map, fx):
 
 def test_no_placeholder_position_in_reference_pairs(run_map):
     """Каждое ОПУБЛИКОВАННОЕ положение, которое судья сопоставит с GNSS
-    (±0,05 с), — правдоподобное. Прежний Runner до выставки публиковал
+    (±0,05 с), - правдоподобное. Прежний Runner до выставки публиковал
     заглушку (s, 0, 0): в относительной системе это рядом с началом, а в
-    абсолютной MGRS — 130 км от эталона (на этой фикстуре первая точка master,
+    абсолютной MGRS - 130 км от эталона (на этой фикстуре первая точка master,
     метка 853,60, попадает на выход 853,598 до выставки; одна такая пара из
     1824 добавляет к средней 3D за 3 мин 71,5 м). Поток position: без якоря
     pos_valid=False, и нода /result/position не публикует."""
@@ -146,13 +146,13 @@ def test_no_placeholder_position_in_reference_pairs(run_map):
 
 def test_output_frame_is_mgrs_by_default(run_map):
     """Организаторы 25.09: «плоские координаты именно в MGRS». По умолчанию
-    нода публикует абсолютные MGRS: x — easting, y — northing, z — высота."""
+    нода публикует абсолютные MGRS: x - easting, y - northing, z - высота."""
     outs, m = run_map
     assert m["p_frame"].startswith("mgrs"), m
     x = np.array([o["x"] for o in outs[-100:]])
     z = np.array([o["z"] for o in outs[-100:]])
     assert np.all(np.abs(x) < 100000.0)
-    assert np.all(z > 100.0), "z — абсолютная высота (здесь около 150 м)"
+    assert np.all(z > 100.0), "z - абсолютная высота (здесь около 150 м)"
 
 
 # Кусок фикстуры целиком западнее границы квадратов (UTM E 399,0…399,6 км):
@@ -166,7 +166,7 @@ def test_output_frame_is_mgrs_by_default(run_map):
 ], ids=["mgrs-37UCB", "mgrs-wrap", "mgrs-37UDB", "utm", "enu"])
 def test_projection_switch(fx, over, expect, xr):
     """Параметр projection/mgrs_grid переключает систему без правки кода; в
-    каждой системе точность та же. Эталон — независимая refgeo. Средняя 3D —
+    каждой системе точность та же. Эталон - независимая refgeo. Средняя 3D -
     по опубликованным положениям, без развёртки на границе квадратов (как у
     судьи): выход в чужом соглашении о квадратах дал бы ~100 км."""
     outs = E.replay(fx, use_map=True, gnss="window", **over)
@@ -199,10 +199,10 @@ def test_map_free_fallback_line(fx, run_map):
 
 def test_map_free_fallback_default(fx, run_map):
     """map_file: "" с режимом по умолчанию ("hold"): после окна выставки положение стоит в якоре. Проверка: выходы конечны,
-    20 Гц, положение публикуется, после окна не меняется, якорь — у GNSS окна.
+    20 Гц, положение публикуется, после окна не меняется, якорь - у GNSS окна.
     GNSS только для выставки (gnss_correction: false): у фикстуры часть точек
     первых 3 с по времени записи имеет метку после окна, и коррекция по ним
-    сдвигает якорь на миллиметры (ниже — отдельно)."""
+    сдвигает якорь на миллиметры (ниже - отдельно)."""
     outs = E.replay(fx, use_map=False, gnss="window", gnss_correction=False)
     m = E.metrics(outs, fx)
     _, node = E.sheet()
@@ -224,13 +224,13 @@ def test_map_free_fallback_default(fx, run_map):
 
 
 def test_output_point_is_base_link(fx, run_map):
-    """Выход — base_link (ось передней тележки, уровень рельса), как эталон
+    """Выход - base_link (ось передней тележки, уровень рельса), как эталон
     судьи и pathgraph. Тот же прогон с output_point master ближе к антенне
-    master, чем к base_link; разница — ~9,87 м вдоль пути и 3 м по высоте."""
+    master, чем к base_link; разница - ~9,87 м вдоль пути и 3 м по высоте."""
     outs, m = run_map
     assert m["p_mean3d"] < MEAN3D_MAX
     mm = E.metrics(outs, fx, point="master")
-    assert mm["p_mean3d"] > m["p_mean3d"] + 5.0, (m, mm)       # к антенне — дальше
+    assert mm["p_mean3d"] > m["p_mean3d"] + 5.0, (m, mm)       # к антенне - дальше
     om = E.replay(fx, use_map=True, gnss="window", output_point="master")
     a, b = E.metrics(om, fx, point="master"), E.metrics(om, fx)
     assert a["p_mean3d"] < MEAN3D_MAX and b["p_mean3d"] > a["p_mean3d"] + 5.0, (a, b)
@@ -244,7 +244,7 @@ def test_output_point_is_base_link(fx, run_map):
 def test_gnss_whole_slice_does_not_change_position(fx, run_map):
     """GNSS идёт весь кусок (как в демо и, возможно, у жюри): при
     gnss_correction: false после окна выставки он не влияет ни на что. С
-    коррекцией (по умолчанию) — test_gnss_correction.py: сетка и
+    коррекцией (по умолчанию) - test_gnss_correction.py: сетка и
     скорость те же, положение ближе к GNSS."""
     outs = E.replay(fx, use_map=True, gnss="all", gnss_correction=False)
     m = E.metrics(outs, fx)

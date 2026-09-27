@@ -4,12 +4,12 @@
 [GNSS], которые можно использовать для коррекции». Проверяется:
 
   * при gnss_correction: false выход бит-в-бит как у версии без коррекции
-    (GNSS только для выставки), при GNSS только в окне — бит-в-бит и с
+    (GNSS только для выставки), при GNSS только в окне - бит-в-бит и с
     коррекцией;
   * GNSS не двигает сетку и не влияет на скорость;
   * скачки GNSS (одиночные и по нескольку эпох, по статусу 2 и 0) отбрасываются,
-    метки не по часам входов — тоже; устойчивая невязка после пропуска GNSS
-    исправляется; вес точки — по статусу;
+    метки не по часам входов - тоже; устойчивая невязка после пропуска GNSS
+    исправляется; вес точки - по статусу;
   * одна антенна, выставка по GNSS посреди прогона, σ после поправки;
   * мусор на входе GNSS не роняет связку.
 ROS не требуется.
@@ -42,7 +42,7 @@ ACC = 1.0                            # м/с²
 # выставки) на фикстуре e2e_30618_b95ca60a_180s: sha256 e2e_replay.digest при
 # GNSS в окне и весь кусок (одинаковые), с картой пакета и без. Записано в
 # образе пакета (numpy 1.21.5); в другом окружении числа могут отличаться в
-# последнем бите — тогда сверка с записью пропускается.
+# последнем бите - тогда сверка с записью пропускается.
 MAIN_DIGEST = {True: "815fe46efa96989fd2436026fe490b4a7612f0dad1dd3419f7a3801c643a5999",
                False: "e885a6c6f7ad110457afcc5358ead3aafd98a543183126e8b635d5a5c673a7fd"}
 MAIN_NUMPY = "1.21.5"
@@ -82,9 +82,9 @@ def s_true(t):
 def feed(r, t0, t1, wheel_gain=1.0, gnss=lambda t: t <= 2.0, fix=None, rover=True,
          status=2, extra=None, prof=None):
     """Поток как в bag: тележки ~9,4 Гц, ручка 20 Гц, GNSS эпохи 10 Гц, пока
-    gnss(t). fix(t) -> (dE, dN, status, stamp_shift) — искажение эпохи (по
-    умолчанию нет). extra(t, r) — вызывается на каждой эпохе (мусор и т. п.).
-    Колёса показывают V·wheel_gain. prof — (v(t), s(t), ручка(t)) вместо
+    gnss(t). fix(t) -> (dE, dN, status, stamp_shift) - искажение эпохи (по
+    умолчанию нет). extra(t, r) - вызывается на каждой эпохе (мусор и т. п.).
+    Колёса показывают V·wheel_gain. prof - (v(t), s(t), ручка(t)) вместо
     разгона до V (например, stop_profile)."""
     v_true_, s_true_, notch_ = prof or (
         v_true, s_true, lambda t: 3 if T_START < t < T_START + V / ACC else 0)
@@ -114,7 +114,7 @@ def feed(r, t0, t1, wheel_gain=1.0, gnss=lambda t: t <= 2.0, fix=None, rover=Tru
 
 
 def along_err(o, r, s_fn=None):
-    """Ошибка вдоль пути (м, + — впереди) выхода o против истины: путь на
+    """Ошибка вдоль пути (м, + - впереди) выхода o против истины: путь на
     восток, выход в MGRS от 37UCB (x = E − 300 000)."""
     return o["x"] + 300000.0 - (E0 + (s_fn or s_true)(o["stamp"]))
 
@@ -169,7 +169,7 @@ MAIN_CFG = dict(vehicle="auto", wheel_scale_online=False)
 
 
 def test_flag_off_is_bit_identical_to_main():
-    """gnss_correction: false — выход как у версии без коррекции: GNSS весь
+    """gnss_correction: false - выход как у версии без коррекции: GNSS весь
     кусок = GNSS в окне, и (в окружении записи, без карты) sha256 равен
     записанному выходу той версии."""
     fx = E.load_fixture()
@@ -185,7 +185,7 @@ def test_flag_off_is_bit_identical_to_main():
 
 def test_first3_with_correction_is_identical():
     """GNSS только в окне выставки (метки точек в пределах окна): коррекция
-    ничего не меняет — бит-в-бит с выключенной."""
+    ничего не меняет - бит-в-бит с выключенной."""
     outs = {}
     for flag in (True, False):
         r = runner(gnss_correction=flag)
@@ -198,8 +198,8 @@ def test_first3_with_correction_is_identical():
 def test_first3_by_record_time_on_real_fixture_is_tiny():
     """Реальная фикстура, GNSS первые 3 с по времени записи (как в оценке):
     первая точка пришла из стартового всплеска bag с меткой на 2,4 с раньше,
-    и 23 точки этих 3 с имеют метку уже после окна выставки — их берёт
-    коррекция. Разница — сантиметры; сетка и скорость те же."""
+    и 23 точки этих 3 с имеют метку уже после окна выставки - их берёт
+    коррекция. Разница - сантиметры; сетка и скорость те же."""
     fx = E.load_fixture()
     a = E.replay(fx, use_map=True, gnss="window", gnss_correction=False)
     b = E.replay(fx, use_map=True, gnss="window", gnss_correction=True)
@@ -245,7 +245,7 @@ def test_gnss_never_moves_the_grid():
 
 def test_drift_is_corrected_by_mid_route_burst():
     """Колёса врут на +1 % (путь убегает на 1 м за 100 м); пачка GNSS на 6 с
-    через минуту: невязка ~5 м в воротах — после 3 согласных эпох положение
+    через минуту: невязка ~5 м в воротах - после 3 согласных эпох положение
     возвращается к истине, σ после поправки меньше."""
     r = runner()
     outs = feed(r, 0.0, 75.0, wheel_gain=1.01, gnss=lambda t: t <= 2.0 or 62.0 <= t <= 68.0)
@@ -253,7 +253,7 @@ def test_drift_is_corrected_by_mid_route_burst():
     assert abs(along_err(before[-1], r)) > 4.0             # ~1 % от 530 м
     right_after = [o for o in outs if 68.2 <= o["stamp"] <= 68.3]
     assert abs(along_err(right_after[0], r)) < 1.0
-    assert abs(final_err(outs, r)) < 1.5                   # и дальше — тот же 1 % от 70 м
+    assert abs(final_err(outs, r)) < 1.5                   # и дальше - тот же 1 % от 70 м
     assert r.pos.n_corr > 0
     s_before = before[-1]["sigma_s"]
     after = [o for o in outs if 68.5 <= o["stamp"] <= 69.0]
@@ -261,9 +261,9 @@ def test_drift_is_corrected_by_mid_route_burst():
 
 
 def test_large_drift_needs_lasting_rtk():
-    """Колёса врут на +2 %: через минуту невязка ~11 м — вне ворот (для
-    колёс это невероятно). Пачка на 6 с — короче gnss_persist_s: не верим
-    (так же выглядит сбой GNSS). Пачка на 15 с — несогласие держится,
+    """Колёса врут на +2 %: через минуту невязка ~11 м - вне ворот (для
+    колёс это невероятно). Пачка на 6 с - короче gnss_persist_s: не верим
+    (так же выглядит сбой GNSS). Пачка на 15 с - несогласие держится,
     оценка ставится по GNSS."""
     short = runner()
     outs = feed(short, 0.0, 75.0, wheel_gain=1.02, gnss=lambda t: t <= 2.0 or 62.0 <= t <= 68.0)
@@ -284,7 +284,7 @@ def test_off_flag_ignores_mid_route_burst():
 @pytest.mark.parametrize("n_epochs,status", [(1, 2), (3, 2), (5, 2), (5, 0), (20, 0)])
 def test_gnss_jump_is_rejected(n_epochs, status):
     """GNSS весь прогон; на n_epochs эпох он прыгает на 40 м (вбок и вперёд).
-    Оценка по колёсам непрерывна: скачок — сбой GNSS, положение не уходит."""
+    Оценка по колёсам непрерывна: скачок - сбой GNSS, положение не уходит."""
     r = runner()
     j0 = 40.0
 
@@ -301,7 +301,7 @@ def test_gnss_jump_is_rejected(n_epochs, status):
 
 def test_long_rtk_jump_is_not_followed():
     """RTK прыгает вперёд на 12 м и держится 8 с (так в 30618_b95ca60a):
-    сразу после согласной эпохи — это скачок GNSS, не переставляем."""
+    сразу после согласной эпохи - это скачок GNSS, не переставляем."""
     r = runner()
     outs = feed(r, 0.0, 60.0, gnss=lambda t: True,
                 fix=lambda t: (12.0, 0.0, 2, 0.0) if 30.0 <= t < 38.0 else (0.0, 0.0, 2, 0.0))
@@ -310,7 +310,7 @@ def test_long_rtk_jump_is_not_followed():
 
 
 def test_stamp_off_input_clock_is_rejected():
-    """Метка GNSS на 1 с не по часам тележек (в данных — участки по минутам):
+    """Метка GNSS на 1 с не по часам тележек (в данных - участки по минутам):
     точка не берётся (иначе ошибка v·1 с = 10 м)."""
     r = runner()
     outs = feed(r, 0.0, 60.0, gnss=lambda t: t <= 2.0 or 30.0 <= t <= 40.0,
@@ -322,7 +322,7 @@ def test_stamp_off_input_clock_is_rejected():
 
 def test_status_weighting():
     """Одна и та же невязка 3 м: RTK (статус 2) тянет почти целиком, без
-    поправок (статус 0) — едва."""
+    поправок (статус 0) - едва."""
     shifts = {}
     for st in (2, 0):
         r = runner()
@@ -334,7 +334,7 @@ def test_status_weighting():
 
 
 def test_single_antenna_fix():
-    """После окна идёт только master: base_link — перенос вдоль курса карты
+    """После окна идёт только master: base_link - перенос вдоль курса карты
     на 9,87 м; дрейф исправляется."""
     r = runner()
     outs = feed(r, 0.0, 75.0, wheel_gain=1.01, rover=False,
@@ -355,7 +355,7 @@ def test_alignment_mid_route_when_no_gnss_at_start():
 
 
 def test_realign_when_window_had_no_heading():
-    """Окно выставки: только master и стоим вне карты — курса нет. Пара
+    """Окно выставки: только master и стоим вне карты - курса нет. Пара
     после окна (gnss_correction) выставляет заново: курс есть, положение
     идёт по пути."""
     r = Runner(_tram())                                   # без карты
@@ -368,14 +368,14 @@ def test_realign_when_window_had_no_heading():
 
 def test_garbage_gnss_after_window_does_not_crash():
     """NaN, бесконечность, строки, (0, 0), широта за 90°, статус −1, чужая
-    антенна — связка жива, положение не портится."""
+    антенна - связка жива, положение не портится."""
     bad = [(math.nan, 37.0, 150.0, 2), (math.inf, 37.0, 150.0, 2), ("x", "y", "z", 2),
            (0.0, 0.0, 0.0, 2), (95.0, 37.0, 150.0, 2), (55.8, 37.6, 150.0, -1),
            (55.8, 37.6, None, 2), (-55.8, 200.0, 1e9, 2), (80.0, -170.0, 150.0, 2)]
 
     def extra(t, r):
         if t < 5.0:
-            return []                   # окно выставки — не про коррекцию
+            return []                   # окно выставки - не про коррекцию
         out = []
         for i, (la, lo, al, st) in enumerate(bad):
             out += r.on_fix(t + 0.001 * i, ("master", "rover", "foo")[i % 3], la, lo, al, st)
@@ -440,7 +440,7 @@ def _map_turn(x_turn=400.0, R_c=50.0, L_north=600.0):
 
 def test_cursor_on_opposite_track_is_relocated_by_rtk_pair():
     """Курсор оказался на встречном пути (курс против движения): чистая пара
-    RTK смотрит против курса пути — вдоль не поправляем, а после
+    RTK смотрит против курса пути - вдоль не поправляем, а после
     gnss_persist_s согласных эпох курсор переставляется в точку GNSS на путь
     с курсом пары."""
     def run(correction):
@@ -460,7 +460,7 @@ def test_cursor_on_opposite_track_is_relocated_by_rtk_pair():
 def test_off_map_branch_is_followed_by_rtk_pair():
     """Карта сворачивает налево, а трамвай едет прямо (пути нет в карте):
     без GNSS курсор уходит по карте на север; с GNSS весь прогон пара RTK
-    держится против курса курсора gnss_persist_s — курсор ставится в точку
+    держится против курса курсора gnss_persist_s - курсор ставится в точку
     GNSS вне карты с курсом пары и едет прямо."""
     def run(correction):
         r = Runner(_tram(), track_map=_map_turn(), gnss_correction=correction)
@@ -477,7 +477,7 @@ def test_off_map_branch_is_followed_by_rtk_pair():
 def test_short_rtk_offset_in_a_burst_is_not_followed():
     """Пачка RTK на 5 с со сдвигом 15 м вдоль пути (сбой GNSS, как
     30618_49fe4c54 на 320 с), а колёса точны: невязка вне ворот держится
-    меньше gnss_persist_s — не верим; положение не уходит."""
+    меньше gnss_persist_s - не верим; положение не уходит."""
     r = runner()
     outs = feed(r, 0.0, 75.0, gnss=lambda t: t <= 2.0 or 60.0 <= t <= 65.0,
                 fix=lambda t: (15.0, 0.0, 2, 0.0) if t > 3.0 else (0.0, 0.0, 2, 0.0))
@@ -487,9 +487,9 @@ def test_short_rtk_offset_in_a_burst_is_not_followed():
 
 def test_broken_pair_is_not_used():
     """База пары 40 м (одна антенна сбита, неизвестно какая): эпоха не
-    берётся вовсе — ни парой, ни одной антенной (30618_616ec56b, 570 с)."""
+    берётся вовсе - ни парой, ни одной антенной (30618_616ec56b, 570 с)."""
     r = runner()
-    # rover сбит на 28 м вперёд, master — на 4 м назад вдоль пути
+    # rover сбит на 28 м вперёд, master - на 4 м назад вдоль пути
     orig = r.on_fix
 
     def on_fix(stamp, antenna, lat, lon, alt, status=0, cov=None):
@@ -539,7 +539,7 @@ def _stop_map(x_stop, L=3000.0):
 def test_weak_correction_keeps_stop_anchoring():
     """Колёса врут на +1,2 %; на 400 м пути пачка GNSS без RTK (статус 0):
     малая поправка (≈1 м из ~5 м невязки). На остановке у 1600 м ошибка
-    ~18 м — привязка к остановке должна случиться, как и без коррекции:
+    ~18 м - привязка к остановке должна случиться, как и без коррекции:
     слабая поправка окно привязки не сужает (раньше отсчёт окна начинался
     от поправки: окно ±17 м, привязки нет, ошибка оставалась)."""
     x_stop = 1600.0
@@ -554,10 +554,10 @@ def test_weak_correction_keeps_stop_anchoring():
         res[flag] = (r, outs, along_err(before[-1], r, prof[1]))
     r0, _, e0 = res[False]
     r1, outs1, e1 = res[True]
-    assert e0 > 15.0 and e1 > 15.0, (e0, e1)          # до остановки — дрейф колёс
+    assert e0 > 15.0 and e1 > 15.0, (e0, e1)          # до остановки - дрейф колёс
     assert r1.pos.n_corr >= 1 and abs(e0 - e1) > 0.3  # поправка без RTK была
     assert r0.pos.anchors == 1
-    assert r1.pos.anchors == 1                         # и привязка — тоже
+    assert r1.pos.anchors == 1                         # и привязка - тоже
     assert abs(along_err(outs1[-1], r1, prof[1])) < 3.0
 
 
@@ -567,7 +567,7 @@ def test_nonrtk_bias_burst_is_not_followed(status, bias):
     """Пачка без RTK (статус 0 или 1) на 8 с со сдвигом 6–15 м вдоль пути
     через 2,4 км точных колёс: σ_s уже большая, невязка в воротах, но без
     RTK большая поправка не делается (смещение таких точек держится
-    минутами) — ошибка как без коррекции (раньше: 5–15 м)."""
+    минутами) - ошибка как без коррекции (раньше: 5–15 м)."""
     fix = (lambda t: (bias, 0.0, status, 0.0) if t >= 250.0 else (0.0, 0.0, 2, 0.0))
     gnss = (lambda t: t <= 2.0 or 250.0 <= t <= 258.0)
     r0 = runner(gnss_correction=False)
@@ -580,8 +580,8 @@ def test_nonrtk_bias_burst_is_not_followed(status, bias):
 
 def test_rover_only_epoch_takes_master_status():
     """Rover меряется от master (подвижная база): у rover статус 2, у master
-    0 — эпоха только с rover не RTK. Пачка пар (master статус 0), через 5 с
-    — пачка, где master пропал, а rover со сдвигом 10 м и статусом 2:
+    0 - эпоха только с rover не RTK. Пачка пар (master статус 0), через 5 с
+    - пачка, где master пропал, а rover со сдвигом 10 м и статусом 2:
     поправки больше gnss_jump_m нет (раньше такая эпоха считалась RTK и
     после 3 эпох ставила положение на 10 м вперёд)."""
     r = runner()
@@ -651,7 +651,7 @@ def test_online_wheel_scale_ignores_mid_route_gnss():
     зависеть от GNSS. Колёса врут на +1,2 %, три остановки через 700 м:
     при GNSS только в окне масштаб включается (≈ 0,988); при GNSS весь
     прогон (RTK) положение поправляется, а скорость на каждом шаге та же,
-    что при GNSS в окне, — масштаб учится по копии положения без поправок."""
+    что при GNSS в окне, - масштаб учится по копии положения без поправок."""
     from tram_state_estimator import vehicle as VH
     stops = [700.0, 1400.0, 2100.0]
     prof, t_end = _multi_stop_profile(stops)
@@ -659,8 +659,8 @@ def test_online_wheel_scale_ignores_mid_route_gnss():
     P = np.c_[E0 + x, np.full(len(x), N0), np.full(len(x), ALT_RAIL)]
     st = [(*_latlon(E0 + xs, N0), math.pi / 2, 1.0) for xs in stops]
     res = {}
-    # «first3» — ровно точки окна выставки (±3 с от первой: эпохи до 3,013 с),
-    # «full» — те же и все после окна
+    # «first3» - ровно точки окна выставки (±3 с от первой: эпохи до 3,013 с),
+    # «full» - те же и все после окна
     for name, gnss in (("first3", lambda t: t <= 3.05), ("full", lambda t: True)):
         tm = TrackMap.from_polylines([P], crs="utm", zone=37, bidirectional=False, stops=st)
         r = VH.wheel_scale_hook(Runner(_tram(), track_map=tm), True)
@@ -669,9 +669,9 @@ def test_online_wheel_scale_ignores_mid_route_gnss():
     assert r3.pos.anchors >= 2 and r3._ws_pos is None      # без GNSS после окна копии нет
     assert r3.wheel_scale.k < 0.995                        # масштаб колёс включился
     assert rf.pos.n_corr > 0 and rf._ws_pos is not None
-    assert max(abs(a["x"] - b["x"]) for a, b in zip(o3, of)) > 1.0   # положение — за GNSS
+    assert max(abs(a["x"] - b["x"]) for a, b in zip(o3, of)) > 1.0   # положение - за GNSS
     assert [o["stamp"] for o in o3] == [o["stamp"] for o in of]
-    assert [o["v"] for o in o3] == [o["v"] for o in of]              # скорость — нет
+    assert [o["v"] for o in o3] == [o["v"] for o in of]              # скорость - нет
     assert rf.wheel_scale.k == r3.wheel_scale.k
     # и после сброса (новый прогон) копии нет, пока нет GNSS после окна
     rf.reset("тест")

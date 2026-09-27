@@ -1,12 +1,12 @@
-"""Эталон положения для оценки — НЕЗАВИСИМО от кода ноды.
+"""Эталон положения для оценки - НЕЗАВИСИМО от кода ноды.
 
-Эталон судьи — GNSS master, «плоские координаты MGRS» (ответ организаторов
-25.09): x — восток, y — север, z — высота (REP-103). Здесь соглашения
+Эталон судьи - GNSS master, «плоские координаты MGRS» (ответ организаторов
+25.09): x - восток, y - север, z - высота (REP-103). Здесь соглашения
 написаны отдельно от tram_state_estimator/geodesy.py другими алгоритмами,
 чтобы ошибка в проекции ноды была видна в метриках, а не сокращалась:
 
     utm       UTM по рядам Снайдера (USGS PP 1395, с. 61), абсолютные E, N,
-              z — высота; зона — по первой точке (для MGRS-сравнения
+              z - высота; зона - по первой точке (для MGRS-сравнения
               используются непрерывные E, N);
     mgrs      то же, но каждая точка в своём 100-км квадрате (E mod 100 км);
     enu       строгий ENU WGS84 от первой точки: явные формулы ECEF и поворота;
@@ -60,7 +60,7 @@ def zone_of(lon):
 
 
 def utm_snyder(lat, lon, zone=None):
-    """UTM (E, N) по Снайдеру; zone=None — по первой долготе."""
+    """UTM (E, N) по Снайдеру; zone=None - по первой долготе."""
     lat, lon = np.asarray(lat, float), np.asarray(lon, float)
     if zone is None:
         zone = zone_of(np.ravel(lon)[0])
@@ -94,7 +94,7 @@ def mgrs_wrap(lat, lon, alt, o):
 
 
 def square_code(E, N, zone, lat):
-    """Код 100-км квадрата — отдельная запись той же схемы AA (WGS84)."""
+    """Код 100-км квадрата - отдельная запись той же схемы AA (WGS84)."""
     cols = ["ABCDEFGH", "JKLMNPQR", "STUVWXYZ"][(zone - 1) % 3]
     rows = "ABCDEFGHJKLMNPQRSTUV"
     band = "CDEFGHJKLMNPQRSTUVWX"[min(int((lat + 80.0) // 8), 19)]
@@ -104,7 +104,7 @@ def square_code(E, N, zone, lat):
 
 
 def grid_origin(code, N_hint):
-    """Юго-западный угол квадрата вида '37UDB' (строка — ближайший к N_hint повтор)."""
+    """Юго-западный угол квадрата вида '37UDB' (строка - ближайший к N_hint повтор)."""
     zone = int("".join(ch for ch in code if ch.isdigit()))
     col, row = code[-2], code[-1]
     cols = ["ABCDEFGH", "JKLMNPQR", "STUVWXYZ"][(zone - 1) % 3]
@@ -121,7 +121,7 @@ REF = {"enu": enu, "equirect": equirect, "utm": utm_abs, "mgrs": mgrs_wrap}
 
 def reference(mfix, convention="utm"):
     """Эталон по массиву master fix (bagio: tb, th, lat, lon, alt, status, ...):
-    начало/зона — первая годная точка; возвращает (метки th, N×3)."""
+    начало/зона - первая годная точка; возвращает (метки th, N×3)."""
     m = mfix[np.isfinite(mfix[:, 2]) & np.isfinite(mfix[:, 3]) & np.isfinite(mfix[:, 4])
              & (mfix[:, 5] >= 0)]
     o = (float(m[0, 2]), float(m[0, 3]), float(m[0, 4]))

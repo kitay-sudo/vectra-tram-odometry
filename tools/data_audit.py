@@ -37,7 +37,7 @@ import warnings
 
 import numpy as np
 
-# пустые срезы и деление на 0 в коротких прогонах дают NaN — это ожидаемо
+# пустые срезы и деление на 0 в коротких прогонах дают NaN - это ожидаемо
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 np.seterr(all="ignore")
 
@@ -258,9 +258,9 @@ def topic_stats(d, t0, t_end):
         big = off > 0.5
         s["off_gt05"] = int(big.sum())
         s["off_gt05_last_s"] = float((tb[nz][big].max() - t0) / 1e9) if big.any() else 0.0
-        # g — отклонение смещения «запись − метка» от медианы топика:
-        # g > 0,5 — метка старше обычного (хвост буфера на старте или сдвиг −1 с),
-        # g < −0,5 — метка «из будущего» (сдвиг +1 с)
+        # g - отклонение смещения «запись − метка» от медианы топика:
+        # g > 0,5 - метка старше обычного (хвост буфера на старте или сдвиг −1 с),
+        # g < −0,5 - метка «из будущего» (сдвиг +1 с)
         g = off - np.median(off)
         trel = (tb[nz] - t0) / 1e9
         start = trel <= 2.0
@@ -371,8 +371,8 @@ def analyze(bag_id):
 
     # ------------------------------------------------ задержки входов в порядке записи
     # Так их увидит нода, которая шагает по header.stamp в порядке прихода
-    # (runner._advance): «опоздавшее» сообщение — метка меньше уже достигнутой,
-    # «прыжок» — метка сразу на > 0,5 с впереди уже достигнутой.
+    # (runner._advance): «опоздавшее» сообщение - метка меньше уже достигнутой,
+    # «прыжок» - метка сразу на > 0,5 с впереди уже достигнутой.
     ev_tb = np.concatenate([A[k]["tb"] for k in INPUTS])
     ev_th = np.concatenate([A[k]["th"] for k in INPUTS])
     if len(ev_tb) > 10:
@@ -679,7 +679,7 @@ def analyze(bag_id):
         row["start_xy"] = f"{x[0]:.0f},{y[0]:.0f}"
         row["end_xy"] = f"{x[-1]:.0f},{y[-1]:.0f}"
         dx_ = x[-1] - x[0]
-        row["dir"] = "В→З" if dx_ < -2000 else ("З→В" if dx_ > 2000 else "—")
+        row["dir"] = "В→З" if dx_ < -2000 else ("З→В" if dx_ > 2000 else "-")
         if "sp" in M and len(M["sp"]) > 50:
             ve = np.interp(M["t"], M["tv"], M["ve"]); vn = np.interp(M["t"], M["tv"], M["vn"])
             mv = (np.hypot(ve, vn) > 2.0) & (M["st"] >= 0)
@@ -1026,7 +1026,7 @@ def plots(out, rows, extras, route_of, canon, hist):
     ax.plot([], [], "k-", label="30618"); ax.plot([], [], "k--", label="30639")
     ax.set_aspect("equal"); ax.grid(alpha=0.3); ax.legend(fontsize=8)
     ax.set_xlabel("восток, км от 55.80484N 37.42050E"); ax.set_ylabel("север, км")
-    ax.set_title("GNSS master, уникальные записи (цвет — кластер маршрута)")
+    ax.set_title("GNSS master, уникальные записи (цвет - кластер маршрута)")
     fig.tight_layout(); fig.savefig(out / "routes.png", dpi=110); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(10, 4))

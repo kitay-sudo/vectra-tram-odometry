@@ -2,8 +2,8 @@
 """Сводная таблица по всем прогонам out/ros_e2e/*/summary.json (Markdown).
 
 Дополнительно, по кэшу bag (analysis/cache/<bag>.npz): ошибка скорости выхода
-против GNSS master/vel — и для прогонов, где GNSS не проигрывался; для
-прогонов без выставки (y = z = 0, x = путь) — ошибка пути x против
+против GNSS master/vel - и для прогонов, где GNSS не проигрывался; для
+прогонов без выставки (y = z = 0, x = путь) - ошибка пути x против
 накопленного пути GNSS с момента первого выхода.
 
     python3 tools/dev/ros_e2e_table.py [tag ...]
@@ -111,7 +111,7 @@ def main():
     print("| " + " | ".join(cols) + " |")
     print("|" + "---|" * len(cols))
     for r in rows:
-        print("| " + " | ".join(str(r[c]) if r[c] not in (None, "") else "—" for c in cols) + " |")
+        print("| " + " | ".join(str(r[c]) if r[c] not in (None, "") else "-" for c in cols) + " |")
     (OUT / "table.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
 
 

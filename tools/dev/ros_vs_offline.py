@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""ros_vs_offline — совпадают ли выходы ноды в ROS с офлайн-прогоном Runner.
+"""ros_vs_offline - совпадают ли выходы ноды в ROS с офлайн-прогоном Runner.
 
 Докстринг tram_node.py утверждает: «числа оценки и работа ноды совпадают».
 Скрипт берёт сырые ряды пробы (out/ros_e2e/<tag>/raw.npz) и прогоняет ту же
 связку Runner офлайн по кэшу bag (analysis/cache/<bag>.npz) в двух вариантах:
-  node_view  — как видит нода при полном ros2 bag play: все front/rear/cmd и
+  node_view  - как видит нода при полном ros2 bag play: все front/rear/cmd и
                ВСЕ GNSS fix (нода сама отбрасывает их после окна выставки,
                но метки GNSS двигают сетку шагов);
-  eval_view  — как analysis/evaluate.py: GNSS только первые 3 с.
-Параметры — config/tram.yaml (как у ноды), карта — config/track_map.npz.
-Сравнение — по ближайшей метке времени.
+  eval_view  - как analysis/evaluate.py: GNSS только первые 3 с.
+Параметры - config/tram.yaml (как у ноды), карта - config/track_map.npz.
+Сравнение - по ближайшей метке времени.
 
     python3 tools/dev/ros_vs_offline.py <tag> <bag_id> [--no-gnss] [--topics front,rear]
 """

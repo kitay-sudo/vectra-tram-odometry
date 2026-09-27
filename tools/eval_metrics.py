@@ -1,16 +1,16 @@
 """Метрики оценки «как у судьи» (для tools/eval.py). Только numpy.
 
-Пары «выход — эталон» — по ближайшей метке времени в пределах TOL = 0,05 с
-(README датасета, раздел 5.1). Эталон скорости — |v| GNSS master по (x, y)
+Пары «выход - эталон» - по ближайшей метке времени в пределах TOL = 0,05 с
+(README датасета, раздел 5.1). Эталон скорости - |v| GNSS master по (x, y)
 (основной) и rover (дополнительный): официального эталона скорости нет,
-источников четыре — 2 тележки и 2 GNSS. Эталон положения — точка base_link
+источников четыре - 2 тележки и 2 GNSS. Эталон положения - точка base_link
 по GNSS (организаторы 25.09: ось поворота передней тележки на уровне рельса;
 антенны в base_link: master (−9,873; 0; 3,0), rover (2,563; 0; 3,0)):
-пара master+rover одной эпохи (±0,05 с) — base_link = master + 9,873/12,436 ·
-(rover − master), z − 3,0; без пары — master + 9,873 м вдоль курса эталонной
-траектории, z = высота master − 3,0 (reference). Система судьи — плоские MGRS
+пара master+rover одной эпохи (±0,05 с) - base_link = master + 9,873/12,436 ·
+(rover − master), z − 3,0; без пары - master + 9,873 м вдоль курса эталонной
+траектории, z = высота master − 3,0 (reference). Система судьи - плоские MGRS
 от угла квадрата 37UCB непрерывно (как pathgraph организаторов). Прежний
-эталон (антенна master) — ref_point="master".
+эталон (антенна master) - ref_point="master".
 
 Разложение вдоль/поперёк пути (along_cross) перенесено без изменений из
 tools/core_metrics.py (независимая реализация метрик), чтобы числа
@@ -25,14 +25,14 @@ import eval_geo as G
 import eval_pathgraph as PGM
 
 TOL = 0.05
-V_STAND_GNSS = 0.2      # м/с: ниже — фаза «стоянка» по GNSS
-V_FALSE_SS = 0.5        # м/с: стоянка оценки при GNSS выше — ложная стоянка
+V_STAND_GNSS = 0.2      # м/с: ниже - фаза «стоянка» по GNSS
+V_FALSE_SS = 0.5        # м/с: стоянка оценки при GNSS выше - ложная стоянка
 PHASES = ("standstill", "traction", "coast", "brake")
 PHASES_RU = dict(standstill="стоянка", traction="тяга", coast="выбег", brake="торможение")
 STANDSTILL = 5          # estimator_core.STANDSTILL (сверяется в eval_replay)
 FRAMES = ("mgrs", "utm", "enu", "equirect")
 FRAMES_RU = {
-    "mgrs": "MGRS (непрерывные UTM зоны начала; x — восток, y — север, z — высота)",
+    "mgrs": "MGRS (непрерывные UTM зоны начала; x - восток, y - север, z - высота)",
     "utm": "UTM зоны начала (то же, что mgrs, без учёта квадратов)",
     "enu": "строгий ENU WGS84 от первой точки master",
     "equirect": "прежний equirect от первой точки master (как core_metrics)",
@@ -42,9 +42,9 @@ FRAMES_RU = {
 # ------------------------------------------------------------------ системы координат
 
 class Frame:
-    """Система, в которой считаются ошибки. Для mgrs/utm — непрерывные UTM
+    """Система, в которой считаются ошибки. Для mgrs/utm - непрерывные UTM
     зоны начала минус (E, N) первой точки master (метры, без потери точности
-    в float); z — абсолютная высота. Для enu/equirect — от первой точки master."""
+    в float); z - абсолютная высота. Для enu/equirect - от первой точки master."""
 
     def __init__(self, name, origin):
         self.name = name
@@ -73,7 +73,7 @@ class Frame:
 
 def nearest(t_out, t_ref, tol=TOL):
     """Индекс ближайшего выхода для каждой метки эталона и признак |Δt| ≤ tol.
-    t_out — по возрастанию."""
+    t_out - по возрастанию."""
     t_ref = np.asarray(t_ref, float)
     if len(t_out) == 0:
         return np.zeros(len(t_ref), int), np.zeros(len(t_ref), bool)
@@ -104,7 +104,7 @@ def phases(a, tg, vg):
 
 
 def _rows(x, ncol):
-    """Массив прогона как (n, ≥ncol); пустой или неполный — (0, ncol)."""
+    """Массив прогона как (n, ≥ncol); пустой или неполный - (0, ncol)."""
     x = np.asarray(x, float)
     if x.ndim != 2 or x.shape[1] < ncol:
         return np.zeros((0, ncol))
@@ -135,8 +135,8 @@ EXT = 1000.0   # м: продление траектории за концы, ч
 
 def polyline(ref_xy, min_step=1.0):
     """Траектория GNSS, прореженная до шага >= min_step и продлённая на EXT м
-    за оба конца. kept_of[i] — индекс последней точки до фикса i. S — дуговая
-    координата (0 в первой точке GNSS); path — длина пути GNSS."""
+    за оба конца. kept_of[i] - индекс последней точки до фикса i. S - дуговая
+    координата (0 в первой точке GNSS); path - длина пути GNSS."""
     keep, last = [], None
     kept_of = np.full(len(ref_xy), -1)
     for i, (x, y) in enumerate(ref_xy):
@@ -174,9 +174,9 @@ def along_cross(ref_xy, idx, est_xy, W=1000.0, max_d=60.0):
     Эталон сглажен медианой по 5 фиксам, прорежен до 1 м и продлён за концы.
     Оценка проецируется на отрезки в окне ±W м от эталонной точки с тем же
     направлением движения; из почти равноудалённых оснований перпендикуляров
-    берётся ближайшее вдоль пути. along = s_проекции − s_эталона (+ — оценка
-    впереди), cross — знаковое расстояние (+ слева по ходу). Дальше max_d от
-    траектории (чужая ветка) — NaN. Возвращает along, cross, s_ref, path."""
+    берётся ближайшее вдоль пути. along = s_проекции − s_эталона (+ - оценка
+    впереди), cross - знаковое расстояние (+ слева по ходу). Дальше max_d от
+    траектории (чужая ветка) - NaN. Возвращает along, cross, s_ref, path."""
     ref_xy = median5(np.asarray(ref_xy, float))
     P, seg, L, S, kept_of, path = polyline(ref_xy)
     n = len(idx)
@@ -301,14 +301,14 @@ TAN_DT, TAN_MIN = 1.0, 1.0  # с, м: касательная траектори�
 def reference(a, point="base_link"):
     """Эталон положения: dict(t, lat, lon, alt, yaw, paired, zone).
 
-    Строки — фиксы master (как в core_metrics: без фильтрации по status,
-    неконечные отброшены). point "master" — сама антенна. point "base_link":
-    с парой rover (ближайшая метка ±0,05 с, база 5–25 м) — по tf на отрезке
+    Строки - фиксы master (как в core_metrics: без фильтрации по status,
+    неконечные отброшены). point "master" - сама антенна. point "base_link":
+    с парой rover (ближайшая метка ±0,05 с, база 5–25 м) - по tf на отрезке
     master→rover (кузов жёсткий, base_link на оси тележки и на кривой),
-    z — по той же доле между высотами антенн минус 3,0; без пары — master +
-    9,873 м вдоль курса (касательная траектории master за ±1 с, на стоянке —
+    z - по той же доле между высотами антенн минус 3,0; без пары - master +
+    9,873 м вдоль курса (касательная траектории master за ±1 с, на стоянке -
     курс ближайшей пары), z = высота master − 3,0; без курса строка
-    отбрасывается. yaw — курс (рад от оси x против часовой, UTM) для выбора
+    отбрасывается. yaw - курс (рад от оси x против часовой, UTM) для выбора
     пути pathgraph своего направления."""
     m = _rows(a["mfix"], 5)
     m = m[np.isfinite(m[:, 2]) & np.isfinite(m[:, 3]) & np.isfinite(m[:, 4])]
@@ -366,7 +366,7 @@ def reference(a, point="base_link"):
 
 
 def reference_geo(a, point="master"):
-    """Эталон положения: метки и (lat, lon, alt) точки point (по умолчанию —
+    """Эталон положения: метки и (lat, lon, alt) точки point (по умолчанию -
     master fix, как прежде; оценка берёт base_link через reference)."""
     r = reference(a, point)
     return r["t"], r["lat"], r["lon"], r["alt"]
@@ -377,8 +377,8 @@ JUDGE_GRID = "37UCB"        # соглашение судьи: от угла 37U
 
 
 def _conv(E, N, conv):
-    """Плоские координаты MGRS по соглашению conv: "" — перенос по точке,
-    код квадрата — непрерывно от его юго-западного угла."""
+    """Плоские координаты MGRS по соглашению conv: "" - перенос по точке,
+    код квадрата - непрерывно от его юго-западного угла."""
     if not conv:
         return G.wrap(E, N)
     _, gE, gN = G.grid_origin(conv)
@@ -398,12 +398,12 @@ def published(O):
 def score_position(O, a, frame, judge_grid=JUDGE_GRID, full=True, boundary_grid=BOUNDARY_GRID,
                    ref_point="base_link", pg=None):
     """Положение оценки против эталона ref_point (reference: base_link по
-    GNSS, как у судьи, или антенна master). O["GEO"] — (lat, lon, alt) выхода
-    (переведённые из системы Runner'а), O["XYZ"] — сырые x, y, z выхода (для
-    «взгляда судьи»), O["PV"] — положение опубликовано. Фикс сопоставляется
+    GNSS, как у судьи, или антенна master). O["GEO"] - (lat, lon, alt) выхода
+    (переведённые из системы Runner'а), O["XYZ"] - сырые x, y, z выхода (для
+    «взгляда судьи»), O["PV"] - положение опубликовано. Фикс сопоставляется
     с ближайшим ОПУБЛИКОВАННЫМ положением в пределах 0,05 с; без него фикс
-    непарный (p_unpaired). frame — Frame. pg — eval_pathgraph.Pathgraph (или
-    None): поперечная ошибка и путь вдоль pathgraph. p_gap_steps — шагов
+    непарный (p_unpaired). frame - Frame. pg - eval_pathgraph.Pathgraph (или
+    None): поперечная ошибка и путь вдоль pathgraph. p_gap_steps - шагов
     выхода без опубликованного положения после первого опубликованного.
     Возвращает (row, samples)."""
     PV = published(O)
@@ -463,7 +463,7 @@ def score_position(O, a, frame, judge_grid=JUDGE_GRID, full=True, boundary_grid=
                                     {G.square_letters(float(Er[-1]), float(Nr[-1]), frame.zone)})
         # матрица соглашений на границе квадратов: наш выход (перенос по точке
         # или непрерывно от boundary_grid) × эталон судьи (то же); координаты
-        # выхода — непрерывная оценка, переведённая по нашему соглашению
+        # выхода - непрерывная оценка, переведённая по нашему соглашению
         dzp = Xp[:, 2] - P[idx, 2]
         for on, oc in (("wrap", ""), ("grid", boundary_grid)):
             xo, yo = _conv(Ee, Ne, oc)
@@ -472,7 +472,7 @@ def score_position(O, a, frame, judge_grid=JUDGE_GRID, full=True, boundary_grid=
                 dd = np.sqrt((xo - xj) ** 2 + (yo - yj) ** 2 + dzp ** 2)
                 row[f"bx_{on}_{jn}_3d_mean"] = _nanstat(np.mean, dd)
                 row[f"bx_{on}_{jn}_km"] = int(np.sum(dd > 1000.0))
-        # если выход — правильный MGRS с переносом по точке, а судья тоже переносит
+        # если выход - правильный MGRS с переносом по точке, а судья тоже переносит
         # по точке: пары с другим квадратом дают ~100 км
         wx_r, wy_r = G.wrap(Er, Nr)
         wx_e, wy_e = G.wrap(Ee, Ne)
@@ -530,10 +530,10 @@ SUMS = ("v_ref", "v_pairs", "v_unpaired", "v_nan", "v_out_nan", "p_ref", "p_pair
 
 def totals(rows):
     """Итог по прогонам. Средние взвешены числом пар скорости (v_pairs): для
-    MAE, смещения и RMSE это совпадает с пулом всех пар; для средней 3D — «средняя по прогонам с весом пар скорости».
-    Максимумы — по всем прогонам; дрейф — по прогонам длиннее 100 м. Доли
-    пар — по суммам (пар / меток эталона). Прогоны без пар скорости (упал
-    на старте, нет выхода) в средние не входят — их число runs_empty."""
+    MAE, смещения и RMSE это совпадает с пулом всех пар; для средней 3D - «средняя по прогонам с весом пар скорости».
+    Максимумы - по всем прогонам; дрейф - по прогонам длиннее 100 м. Доли
+    пар - по суммам (пар / меток эталона). Прогоны без пар скорости (упал
+    на старте, нет выхода) в средние не входят - их число runs_empty."""
     n_in = len([r for r in rows if r is not None])
     rows = [r for r in rows if r and r.get("v_pairs", 0) > 0]
     if not rows:

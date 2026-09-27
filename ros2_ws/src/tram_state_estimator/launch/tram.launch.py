@@ -5,9 +5,9 @@
     ros2 launch tram_state_estimator tram.launch.py params_file:=/путь/лист.yaml
     ros2 launch tram_state_estimator tram.launch.py vehicle:=30639
 
-Параметры — config/tram.yaml (лист вагона, откалиброванный по данным).
-vehicle — вагон (30618 | 30639 | auto, docs/VEHICLES.md); пусто (по
-умолчанию) — как в листе (30618).
+Параметры - config/tram.yaml (лист вагона, откалиброванный по данным).
+vehicle - вагон (30618 | 30639 | auto, docs/VEHICLES.md); пусто (по
+умолчанию) - как в листе (30618).
 Нода перезапускается при падении (respawn): последний рубеж устойчивости,
 битые входы и разрывы времени отсекаются в самой ноде.
 """
@@ -46,6 +46,6 @@ def generate_launch_description():
             description="лист параметров вагона (yaml ROS 2)"),
         DeclareLaunchArgument(
             "vehicle", default_value="",
-            description="вагон: 30618 | 30639 | auto; пусто — как в листе"),
+            description="вагон: 30618 | 30639 | auto; пусто - как в листе"),
         OpaqueFunction(function=_estimator),
     ])

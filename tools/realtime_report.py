@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""realtime_report — итог замера tools/measure_realtime.sh: summary.json и таблица.
+"""realtime_report - итог замера tools/measure_realtime.sh: summary.json и таблица.
 
 Читает из каталога замера summary_probe.json и raw.npz (tools/ros_probe.py) и
 docker_stats.csv (опрос docker stats контейнера ноды), пишет summary.json и
@@ -108,7 +108,7 @@ def main():
 
     span = float(vel[-1, 0] - vel[0, 0]) if len(vel) > 1 else 0.0
     # разрывы по стенным часам: выходы ноды и входы /vehicle/* (как их отдал плеер).
-    # Если разрыв выхода совпадает с разрывом входов, пауза — в самой записи bag.
+    # Если разрыв выхода совпадает с разрывом входов, пауза - в самой записи bag.
     inp = z["inp"]
     veh = np.sort(inp[np.isin(inp[:, 0], (0, 1, 2)), 1]) if len(inp) else np.zeros(0)
     gaps = {"output_top5_s": [round(float(x), 3) for x in np.sort(np.diff(vel[:, 0]))[-5:][::-1]]
@@ -126,14 +126,14 @@ def main():
         ("задержка in2out ≤ 100 мс (p99, установившийся режим)",
          f"p50 {st.get('p50')} / p95 {st.get('p95')} / p99 {st.get('p99')} / max {st.get('max')} мс",
          st.get("n", 0) > 0 and st["p99"] <= 100),
-        ("пик задержки ≤ 250 мс (установившийся режим; старт bag — справочно)",
+        ("пик задержки ≤ 250 мс (установившийся режим; старт bag - справочно)",
          f"устан.: > 250 мс {L.get('in2out_vehicle_steady_over_250ms')} из {st.get('n')}; весь прогон: max {al.get('max')} мс, > 250 мс {L.get('in2out_vehicle_over_250ms')}",
          al.get("n", 0) > 0 and (L.get("in2out_vehicle_steady_over_250ms", 0) == 0)),
         ("CPU ≤ 2 ядра", f"среднее {res.get('cores_mean')} ядра, max {res.get('cpu_pct_1core', {}).get('max')} % ядра",
          res.get("cpu_pct_1core", {}).get("max", 1e9) <= 200),
         ("ОЗУ ≤ 0,5 ГБ", f"RSS max {res.get('rss_first_last_max_mb', [None] * 3)[2]} МБ; лимит контейнера {a.memory}; OOM: {a.oom}",
          (res.get("rss_first_last_max_mb", [0, 0, 1e9])[2] <= 512) and a.oom != "true"),
-        # короткий bag (< ~90 с после прогрева): наклон не считается — «н/д», не FAIL
+        # короткий bag (< ~90 с после прогрева): наклон не считается - «н/д», не FAIL
         ("без утечки памяти", f"наклон RSS после 60 с {slope} МБ/мин; половины {res.get('rss_mean_halves_after_60s_mb')}"
          if slope is not None else "н/д: после прогрева 60 с меньше 30 замеров RSS (bag короче ~90 с)",
          None if slope is None else slope < 0.5),
@@ -142,7 +142,7 @@ def main():
     ]
     verdict = lambda ok: "н/д" if ok is None else ("PASS" if ok else "FAIL")
     # разрывы выхода > 0,3 с: совпадает ли каждый с разрывом входов /vehicle/*
-    # (±0,1 с по времени начала) — тогда пауза в самой записи bag
+    # (±0,1 с по времени начала) - тогда пауза в самой записи bag
     big = []
     if len(vel) > 5 and len(veh) > 5:
         dv, dveh = np.diff(vel[:, 0]), np.diff(veh)

@@ -1,8 +1,8 @@
 // Аудит JS-порта: атрибуция расхождения с текущим ядром по отдельным фичам.
 // Порождает варианты js-port/est.js (сам файл не меняется) в out/sim/port_variants/:
-//   v1_bhf    — brake_hold_frac = 1 (текущее значение по умолчанию): тормозная
+//   v1_bhf    - brake_hold_frac = 1 (текущее значение по умолчанию): тормозная
 //               сила не гаснет ниже v_ed_fade
-//   v2_adapt  — v1 + окно адаптации k по drive_force (без предела сцепления)
+//   v2_adapt  - v1 + окно адаптации k по drive_force (без предела сцепления)
 //               и гейт по невязке k_meas (как в estimator_core._adapt_scale)
 // Сверка: node tools/dev/compare_port.js out/sim/rec_current.json out/sim/port_variants/est_v2_adapt.js
 const fs = require('fs');

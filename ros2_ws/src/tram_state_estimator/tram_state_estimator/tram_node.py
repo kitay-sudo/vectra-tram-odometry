@@ -1,6 +1,6 @@
-"""Нода резервной оценки скорости и положения трамвая — по контракту ТЗ.
+"""Нода резервной оценки скорости и положения трамвая - по контракту ТЗ.
 
-Входы (только они — в основном контуре):
+Входы (только они - в основном контуре):
     /vehicle/front_bogie_velocity   tram_vehicle_msgs/VelocitySensor  (км/ч)
     /vehicle/rear_bogie_velocity    tram_vehicle_msgs/VelocitySensor  (км/ч)
     /vehicle/driver_position_cmd    tram_vehicle_msgs/DriverControllerCommand
@@ -12,14 +12,14 @@ GNSS в середине маршрута (gnss_correction, по умолчан�
     /result/velocity   tram_vehicle_msgs/VelocitySensor   скорость, м/с
     /result/position   nav_msgs/Odometry                  x, y, z, м: по умолчанию
                        плоские координаты MGRS от угла квадрата 37UCB непрерывно
-                       (x — восток, y — север, z — высота уровня рельса) точки
-                       base_link (ось передней тележки); frame_id "map" — эта
+                       (x - восток, y - север, z - высота уровня рельса) точки
+                       base_link (ось передней тележки); frame_id "map" - эта
                        система, child_frame_id "base_link"; см. параметры
                        projection, mgrs_grid, output_point
     /result/acceleration geometry_msgs/AccelStamped        ускорение, м/с²
     /tram/estimator_status tram_msgs/EstimatorStatus       состояние оценщика
 
-Время — header.stamp входных сообщений (время из bag), не часы ноды. Ядро
+Время - header.stamp входных сообщений (время из bag), не часы ноды. Ядро
 шагает на сетке p.dt по этим меткам (runner.Runner); каждый шаг публикуется с
 меткой своего момента. Та же связка работает в офлайн-оценке
 (tools/eval_replay.py), поэтому числа оценки и работа ноды совпадают.
@@ -32,19 +32,20 @@ GNSS в середине маршрута (gnss_correction, по умолчан�
     падении (respawn);
   * пульс: если входы молчат, таймер по монотонным часам публикует прогноз
     на копии связки (состояние не меняется) не дальше pulse_horizon_s от
-    последней метки (0,2 с; почему короткий — _extrapolate); метки выхода
+    последней метки (0,2 с; почему короткий - _extrapolate); метки выхода
     не идут назад; темп проигрывания (play -r) оценивается по приросту
     меток;
   * старт: первые start_sort_s с по часам прихода сообщения сортируются по
     метке, сетка начинается с самой ранней.
 
-Консоль: при запуске — блок настроек (лист, вагон, карта, система выхода,
-GNSS, шаг); во время работы — строка состояния раз в STATUS_EVERY_S с
+Консоль: при запуске - блок настроек (лист, вагон, карта, система выхода,
+GNSS, шаг); во время работы - строка состояния раз в STATUS_EVERY_S с
 времени bag и предупреждения только о настоящих отклонениях (с ограничением
-частоты); при останове — итог (входы, выходы, отброшенное, сбросы, время
+частоты); при останове - итог (входы, выходы, отброшенное, сбросы, время
 шага). Логирование на оценку не влияет.
 """
 
+from collections import deque
 import hashlib
 import math
 import os
@@ -92,8 +93,8 @@ Z_MAP_SD = 1.0          # м: высота из карты (усреднённы
 YAW_MAP_SD = 0.05       # рад: курс по оси пути карты (~3°)
 LAT_V_SD = 0.05         # м/с: боковая скорость на рельсах ≈ 0
 ANG_RATE_SD = 0.02      # рад/с: крен и тангаж почти не меняются
-R_CURVE_MIN = 20.0      # м: наименьший радиус кривой трамвая — предел рыскания
-FALLBACK_SD = 10.0      # м: запасная выставка после сброса — путь, потерянный,
+R_CURVE_MIN = 20.0      # м: наименьший радиус кривой трамвая - предел рыскания
+FALLBACK_SD = 10.0      # м: запасная выставка после сброса - путь, потерянный,
                         # пока новое ядро догоняло скорость (~1 с на 10 м/с)
 # параметры коррекции по GNSS: имена совпадают с аргументами runner.Position
 GNSS_PARAMS = ("gnss_correction", "gnss_sigma_rtk_m", "gnss_sigma_sbas_m",
@@ -102,7 +103,7 @@ GNSS_PARAMS = ("gnss_correction", "gnss_sigma_rtk_m", "gnss_sigma_sbas_m",
                "gnss_stop_skip_m", "gnss_persist_s")
 # консоль
 STATUS_EVERY_S = 10.0   # с времени bag между строками состояния
-NO_POS_WARN_S = 10.0    # с после окна выставки без положения — предупреждение
+NO_POS_WARN_S = 10.0    # с после окна выставки без положения - предупреждение
 WARN_THROTTLE_S = 5.0   # с: одно и то же предупреждение не чаще
 # режимы ядра (estimator_core.MODE_NAMES) по-русски, как на странице симулятора
 MODE_RU = ("выбег", "тяга", "торможение", "смена режима", "срыв сцепления",
@@ -110,7 +111,7 @@ MODE_RU = ("выбег", "тяга", "торможение", "смена реж�
 
 
 def fix_var(m):
-    """Заявленная дисперсия положения NavSatFix по горизонтали, м²; None —
+    """Заявленная дисперсия положения NavSatFix по горизонтали, м²; None -
     не заявлена (COVARIANCE_TYPE_UNKNOWN или нули, как в данных кейса)."""
     try:
         if int(m.position_covariance_type) <= 0:
@@ -123,7 +124,7 @@ def fix_var(m):
 
 
 def package_info():
-    """(версия из package.xml, отпечаток кода) для строки запуска. Отпечаток —
+    """(версия из package.xml, отпечаток кода) для строки запуска. Отпечаток -
     sha256 модулей пакета по имени и содержимому, первые 16 знаков: так же
     считается «Код пакета: sha» в шапке docs/EVAL.md."""
     ver = "?"
@@ -199,7 +200,7 @@ def use_package_sheet(node):
     for k, v in vals.items():
         if k not in ov:
             if isinstance(v, list) and any(isinstance(x, float) for x in v):
-                v = [float(x) for x in v]        # [0, 0.5] — один тип
+                v = [float(x) for x in v]        # [0, 0.5] - один тип
             ov[k] = Parameter(k, value=v)
             n += 1
     if not given:
@@ -247,29 +248,29 @@ class TramEstimatorNode(Node):
         P("handle_timeout_s", 0.5)
         P("init_window_s", 3.0)
         P("map_file", "")
-        P("origin_lat", float("nan"))      # NaN — начало в первой точке GNSS
+        P("origin_lat", float("nan"))      # NaN - начало в первой точке GNSS
         P("origin_lon", float("nan"))
         P("origin_alt", float("nan"))
         P("frame_id", "map")
         P("child_frame_id", "base_link")
         # выходная система /result/position (docs/POSITION_FRAME.md):
-        # mgrs | utm | enu | equirect; mgrs_grid "37UCB" — непрерывно от угла
+        # mgrs | utm | enu | equirect; mgrs_grid "37UCB" - непрерывно от угла
         # этого квадрата (так записана карта организаторов pathgraph: x
-        # переходит 100 000 на E = 400 км плавно), "" — каждая точка в своём
+        # переходит 100 000 на E = 400 км плавно), "" - каждая точка в своём
         # 100-км квадрате (Autoware)
         P("projection", "mgrs")
         P("mgrs_grid", "37UCB")
-        P("utm_zone", 0)                   # 0 — по точке выставки
+        P("utm_zone", 0)                   # 0 - по точке выставки
         P("mgrs_guard_m", 0.0)             # только при mgrs_grid "": не публиковать у края квадрата
-        # точка выхода: base_link (ось передней тележки, уровень рельса — как
+        # точка выхода: base_link (ось передней тележки, уровень рельса - как
         # эталон судьи и pathgraph) | master (антенна); антенны в base_link, м
         P("output_point", "base_link")
         P("antenna_master_x", -9.873)
         P("antenna_rover_x", 2.563)
         P("antenna_z", 3.0)
         P("scale_adapt", True)             # онлайн-масштаб пути по остановкам
-        # вагон (docs/VEHICLES.md): 30618 | 30639 — масштаб колёс этого вагона
-        # из таблицы листа; auto — общий лист; незнакомое — auto с предупреждением.
+        # вагон (docs/VEHICLES.md): 30618 | 30639 - масштаб колёс этого вагона
+        # из таблицы листа; auto - общий лист; незнакомое - auto с предупреждением.
         # dynamic_typing: `-p vehicle:=30639` и launch дают целое, а не строку
         P("vehicle", "30618", descriptor=ParameterDescriptor(dynamic_typing=True))
         P("vehicle_ids", ["30618", "30639"],
@@ -284,21 +285,21 @@ class TramEstimatorNode(Node):
         P("keep_offset_z", True)           # если медиана статуса окна ≤
         P("keep_offset_max_status", -1)    # этого: −1 никогда, 1 без RTK, 2 всегда
         P("terminal_hold", "terminals")    # тупик карты: terminals | off | any
-        # коррекция по GNSS после окна выставки; false — GNSS только для
+        # коррекция по GNSS после окна выставки; false - GNSS только для
         # выставки (точки после окна отбрасываются)
         P("gnss_correction", True)
         P("gnss_sigma_rtk_m", 0.5)         # σ точки при NavSatFix.status 2 (RTK)
         P("gnss_sigma_sbas_m", 1.5)        # status 1
         P("gnss_sigma_fix_m", 5.0)         # status 0 (без поправок: смещение до ~16 м)
         P("gnss_gate", 3.0)                # ворота невязки, σ
-        P("gnss_jump_m", 3.0)              # поправка больше — только после подтверждения
-        P("gnss_confirm_n", 3)             # эпох RTK подряд, согласных между собой (без RTK — только малые)
+        P("gnss_jump_m", 3.0)              # поправка больше - только после подтверждения
+        P("gnss_confirm_n", 3)             # эпох RTK подряд, согласных между собой (без RTK - только малые)
         P("gnss_min_interval_s", 1.0)      # поправки не чаще
         P("gnss_max_skew_s", 0.3)          # метка GNSS против метки последнего входа
         P("gnss_prior_rel", 0.003)         # априори поправки: рост σ на метр пути
         P("gnss_scale_adapt", False)       # масштаб пути по отрезкам между поправками
         P("gnss_stop_skip_m", 0.0)         # после поправки столько м без привязки к остановке
-        P("gnss_persist_s", 10.0)          # неправдоподобная невязка RTK держится столько — верим
+        P("gnss_persist_s", 10.0)          # неправдоподобная невязка RTK держится столько - верим
         g = lambda n: self.get_parameter(n).value
 
         params = declare_core_params(self, include_dt=True)
@@ -369,7 +370,7 @@ class TramEstimatorNode(Node):
         self._log_start(params, tmap, path, g)
 
     def _log_start(self, params, tmap, path, g):
-        """Блок настроек при запуске. Первая строка («оценщик запущен») —
+        """Блок настроек при запуске. Первая строка («оценщик запущен») -
         признак готовности для скриптов и инструкции жюри."""
         ver, sha = package_info()
         grid = g("mgrs_grid")
@@ -404,12 +405,17 @@ class TramEstimatorNode(Node):
         P = self.declare_parameter
         g = lambda n: self.get_parameter(n).value               # noqa: E731
         P("sheet", "auto")                  # auto | путь к листу | none
-        P("pulse_horizon_s", 0.2)           # с от последней метки; 0 — без пульса
-        P("pulse_margin_s", 0.1)            # с: узел просрочен — прогноз (ручка есть)
+        P("pulse_horizon_s", 0.2)           # с от последней метки; 0 - без пульса
+        P("pulse_margin_s", 0.1)            # с: узел просрочен - прогноз (ручка есть)
         P("pulse_margin_nohandle_s", 0.03)  # с: то же без ручки (сетка от 10 Гц)
         P("pulse_period_s", 0.01)           # с: период таймера по монотонным часам
         P("start_sort_s", 0.1)              # с: сортировка стартового всплеска
+        P("speed_output_delay_s", 0.08)     # с: скорость в выходе на столько раньше по времени
         self.pulse_h = float(g("pulse_horizon_s"))
+        # эталон скорости проверки (/localization/kinematic_state) сглажен и запаздывает
+        # относительно тележек около 0,1 с; с меткой t выдаётся скорость на t - сдвиг
+        self.speed_delay = max(0.0, float(g("speed_output_delay_s")))
+        self._v_hist = deque(maxlen=200)
         self.margin = float(g("pulse_margin_s"))
         self.margin_nh = float(g("pulse_margin_nohandle_s"))
         self._sorter = StartSorter(float(g("start_sort_s")))
@@ -478,7 +484,7 @@ class TramEstimatorNode(Node):
         self._errors = 0
 
     RATE_WIN_S = 2.0        # с монотонных часов: окно оценки темпа
-    RATE_HOLE_S = 1.0       # с тишины: пауза, а не темп — окно начинается заново
+    RATE_HOLE_S = 1.0       # с тишины: пауза, а не темп - окно начинается заново
 
     def _rate_update(self, now, stamp):
         """Темп проигрывания для пульса: прирост наибольшей метки за окно
@@ -529,7 +535,7 @@ class TramEstimatorNode(Node):
         выданные прогнозом, второй раз не публикуются (метки не идут назад).
         Поэтому горизонт короткий: после паузы записи входы приходят с
         опозданием, и вход с меткой занятого прогнозом узла ждёт первого
-        нового узла — до горизонта по меткам (запись 30618_af7496f0 с паузой
+        нового узла - до горизонта по меткам (запись 30618_af7496f0 с паузой
         входов 0,95 с, docs/EVAL.md §7)."""
         r = self.runner
         if self.pulse_h <= 0.0 or r.t is None or self._stamp_ref is None:
@@ -579,7 +585,7 @@ class TramEstimatorNode(Node):
 
     def _console(self, o, pulse):
         """Строка состояния раз в STATUS_EVERY_S с времени bag и события
-        выставки. Ошибка здесь не должна влиять на выход — глотается."""
+        выставки. Ошибка здесь не должна влиять на выход - глотается."""
         try:
             t = float(o["stamp"])
             if self.t_first is None:
@@ -587,7 +593,7 @@ class TramEstimatorNode(Node):
                 self._st_next = t + STATUS_EVERY_S
                 self.get_logger().info(
                     f"входы пошли: первый выход на метке {t:.2f}; это t+0, "
-                    "дальше время bag — от неё")
+                    "дальше время bag - от неё")
             self.t_last = t
             self._st_n += 1
             self._st_pulse += int(pulse)
@@ -655,7 +661,7 @@ class TramEstimatorNode(Node):
 
     def _emit(self, outs, call_us=0.0, pulse=False):
         """Публикует шаги по порядку меток; возвращает число опубликованных.
-        step_time_us — время вызова связки (шаг ядра и карты), делённое на
+        step_time_us - время вызова связки (шаг ядра и карты), делённое на
         число шагов этого вызова."""
         n = 0
         per_us = call_us / max(1, len(outs))
@@ -671,6 +677,23 @@ class TramEstimatorNode(Node):
                 self.step_us_max = max(self.step_us_max, per_us)
             self._console(o, pulse)
         return n
+
+    def _delayed_speed(self, t, v):
+        """Скорость на момент t - speed_output_delay_s по уже выданным шагам
+        (линейная интерполяция); при сдвиге 0 и на первом шаге - сама v."""
+        h = self._v_hist
+        if h and t < h[-1][0]:
+            h.clear()                            # новая запись: метки пошли заново
+        h.append((t, v))
+        tq = t - self.speed_delay
+        if self.speed_delay <= 0.0 or len(h) < 2:
+            return v
+        t1, v1 = t, v
+        for t0, v0 in reversed(h):
+            if t0 <= tq:
+                return v0 if t1 <= t0 else v0 + (tq - t0) / (t1 - t0) * (v1 - v0)
+            t1, v1 = t0, v0
+        return h[0][1]
 
     def _publish(self, o, step_us):
         st = to_msg(o["stamp"])
@@ -692,9 +715,10 @@ class TramEstimatorNode(Node):
         ss2 = float(o["sigma_s"]) ** 2
         th = float(self.runner.p.theta_max)
 
+        v_out = self._delayed_speed(float(o["stamp"]), v_)
         v = VelocitySensor()
         v.header.stamp, v.header.frame_id = st, self.child
-        v.velocity = v_
+        v.velocity = v_out
         self.pub_v.publish(v)
 
         od = Odometry()
@@ -706,9 +730,9 @@ class TramEstimatorNode(Node):
         if yaw is not None:
             od.pose.pose.orientation.z = math.sin(yaw / 2.0)
             od.pose.pose.orientation.w = math.cos(yaw / 2.0)
-        # Ни одной нулевой диагонали. x, y — σ пути ядра (изотропно);
-        # z — высота карты; крен — возвышение рельса; тангаж — уклон линии
-        # (theta_max); курс — ось пути карты. Положение публикуется только с
+        # Ни одной нулевой диагонали. x, y - σ пути ядра (изотропно);
+        # z - высота карты; крен - возвышение рельса; тангаж - уклон линии
+        # (theta_max); курс - ось пути карты. Положение публикуется только с
         # якорем GNSS (pos_valid), поэтому x, y, z известны всегда; без курса
         # (якорь есть, выставка не полная) неизвестен только курс.
         pc = od.pose.covariance
@@ -717,9 +741,9 @@ class TramEstimatorNode(Node):
         pc[21] = ROLL_SD ** 2
         pc[28] = th ** 2
         pc[35] = YAW_MAP_SD ** 2 if yaw is not None else UNKNOWN_VAR
-        od.twist.twist.linear.x = v_
-        # twist в base_link: вдоль — σ_v ядра; поперёк и вверх — рельсы
-        # (вверх — скорость по уклону); угловые: крен и тангаж почти
+        od.twist.twist.linear.x = v_out
+        # twist в base_link: вдоль - σ_v ядра; поперёк и вверх - рельсы
+        # (вверх - скорость по уклону); угловые: крен и тангаж почти
         # постоянны, рыскание не оценивается (0) и ограничено v / R_min.
         tc = od.twist.covariance
         tc[0] = sv2

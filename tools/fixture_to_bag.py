@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""fixture_to_bag — rosbag2 (sqlite3) из фикстуры e2e-теста, без данных кейса.
+"""fixture_to_bag - rosbag2 (sqlite3) из фикстуры e2e-теста, без данных кейса.
 
-Фикстура test/data/e2e_*.npz — кусок отложенного прогона (входы, GNSS fix и vel
+Фикстура test/data/e2e_*.npz - кусок отложенного прогона (входы, GNSS fix и vel
 обеих антенн) с временем записи tb и header.stamp th. Отсюда собирается bag с
 теми же топиками, типами, метками и моментами записи, что в исходном прогоне:
 его можно проигрывать `ros2 bag play` в CI и из чистого клона, где data/ нет.
@@ -73,10 +73,10 @@ def main():
     ap.add_argument("--fixture", default=FIXTURE)
     ap.add_argument("--out", required=True, help="каталог bag (перезаписывается)")
     ap.add_argument("--seconds", type=float, default=0.0,
-                    help="только первые N с по времени записи (0 — вся фикстура)")
+                    help="только первые N с по времени записи (0 - вся фикстура)")
     ap.add_argument("--gnss-window", type=float, default=0.0,
                     help="GNSS (fix и vel) только первые S с по header.stamp от первой "
-                         "точки master, как, возможно, в bag жюри (0 — весь)")
+                         "точки master, как, возможно, в bag жюри (0 - весь)")
     a = ap.parse_args()
 
     import rosbag2_py

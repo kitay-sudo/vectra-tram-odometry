@@ -12,7 +12,7 @@
         таблице привода и масштабе колёс «общий» / «свой вагон»
     python3 analysis/calib_vehicle_study.py online  # «что если»: онлайн-масштаб
         пути по привязкам к остановкам (Position.mult, лист ОЦЕНКИ, vehicle
-        auto, карта ОЦЕНКИ) умножить и на скорость — MAE и смещение по
+        auto, карта ОЦЕНКИ) умножить и на скорость - MAE и смещение по
         вагонам и датам (первый «что если»)
     python3 analysis/calib_vehicle_study.py grid    # перебор онлайн-масштаба
         колёс (vehicle.OnlineWheelScale, параметр ноды wheel_scale_online):
@@ -112,7 +112,7 @@ def study_drive(delay, tau):
         tot = {k: float(np.sqrt(np.sum(n * np.array([r[k] for r in rows]) ** 2) / n.sum()))
                for k in ("rmse_all", "rmse_own")}
         res[v] = dict(folds=rows, **tot)
-        print(f"{v}: СКО ускорения на отложенных частях — общий {tot['rmse_all']:.4f}, "
+        print(f"{v}: СКО ускорения на отложенных частях - общий {tot['rmse_all']:.4f}, "
               f"свой {tot['rmse_own']:.4f} м/с²")
     return res
 
@@ -122,7 +122,7 @@ _P = None           # лист текущего прогона (наследуе
 
 def _speed_run(b):
     """Скорость полной связки (как tools/eval.py: Runner ноды, GNSS первые
-    3 с, без карты — карта на скорость не влияет) против |v| GNSS master."""
+    3 с, без карты - карта на скорость не влияет) против |v| GNSS master."""
     import eval_metrics as EM
     import eval_replay as ER
     a = bagio.load(b)
@@ -202,9 +202,9 @@ def seg_scale(log, s0, nlog):
     остановкам: у отрезка k = (L·s0·mult + δ) / (L·s0) (как Position.
     _adapt_scale, но без ворот ±1 % и отключения); медиана отрезков длиннее
     SEG_MIN_L с |k − 1| < SEG_MAX_DEV, не меньше SEG_MIN_N отрезков, в пределах
-    ±SEG_CAP. nlog — длина журнала привязок на каждом выходе."""
+    ±SEG_CAP. nlog - длина журнала привязок на каждом выходе."""
     ks = []
-    used = 1.0          # mult, с которым курсор шёл по отрезку (в журнале — после привязки)
+    used = 1.0          # mult, с которым курсор шёл по отрезку (в журнале - после привязки)
     for (_ds, d, L, mult) in log:
         k = (L * s0 * used + d) / (L * s0) if L > 0 else float("nan")
         ks.append(k if L >= SEG_MIN_L and abs(k - 1.0) < SEG_MAX_DEV else float("nan"))
@@ -320,7 +320,7 @@ GRID.append(("n2 мз0.5 cap3", dict(min_n=2, deadband=0.005, cap=0.03)))
 # без первого отрезка (от выставки по GNSS, а не от остановки) и/или оценка
 # Σ L·k / Σ L вместо медианы (варианты появились после разбора отложенного
 # 30618_21dd3af3: медиана двух отрезков = среднее, первый отрезок 473 м с
-# k 0,9835 дал поправку −0,8 % на 1,7 км; выбор — только по train)
+# k 0,9835 дал поправку −0,8 % на 1,7 км; выбор - только по train)
 for _sf in (False, True):
     for _w in (False, True):
         if not (_sf or _w):
@@ -332,7 +332,7 @@ for _sf in (False, True):
 
 
 def k_series(log, s0, kw):
-    """Поправка скорости после каждой записи журнала привязок (0..N) — тем же
+    """Поправка скорости после каждой записи журнала привязок (0..N) - тем же
     классом, что в ноде, на растущем журнале (причинно)."""
     from tram_state_estimator import vehicle as V
     ws = V.OnlineWheelScale(**kw)
@@ -345,8 +345,8 @@ def k_series(log, s0, kw):
 
 
 def _grid_run(b):
-    """Связка как в eval.py (лист и карта ОЦЕНКИ, vehicle — вагон записи,
-    GNSS 3 с), без онлайн-масштаба; поправки перебора — после связки, по
+    """Связка как в eval.py (лист и карта ОЦЕНКИ, vehicle - вагон записи,
+    GNSS 3 с), без онлайн-масштаба; поправки перебора - после связки, по
     журналу привязок на каждом выходе (как делает нода: скорость выхода ×
     поправка на этом шаге)."""
     import eval_metrics as EM

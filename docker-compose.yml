@@ -1,4 +1,4 @@
-# Vectra — резервная одометрия трамвая (ROS 2 Humble). Одна команда на всё:
+# Vectra - резервная одометрия трамвая (ROS 2 Humble). Одна команда на всё:
 #
 #   docker compose up --build            # живое демо: нода + bag + проба + мост + страница
 #                                        # (--build: образ из текущих исходников, не старый)
@@ -6,12 +6,12 @@
 #   docker compose run --rm eval         # офлайн-оценка tools/eval.py (нужны данные)
 #   docker compose --profile server up -d   # публичный сервер: + обратный прокси :80/:443
 #
-# Настройки — в .env (шаблон .env.example): DATA_DIR, BAG, ROS_DOMAIN_ID,
+# Настройки - в .env (шаблон .env.example): DATA_DIR, BAG, ROS_DOMAIN_ID,
 # PUBLIC_HOST, порты. Подробно: docs/JURY.md (§ Docker) и docs/DEPLOY.md.
 #
 # DDS между контейнерами: ROS-сервисы в сети проекта (bridge) с одинаковым
 # ROS_DOMAIN_ID и ROS_LOCALHOST_ONLY=0, discovery FastDDS по multicast внутри
-# сети; проверено на Docker Desktop 28.3 (Windows 11) — мост в отдельном
+# сети; проверено на Docker Desktop 28.3 (Windows 11) - мост в отдельном
 # контейнере получает /result/* на 20 Гц. player и probe при этом живут в
 # сетевом и IPC-пространстве estimator ("как на одной машине", DDS по
 # loopback/SHM): так задержка вход -> выход та же, что у жюри на одном хосте
@@ -21,7 +21,7 @@
 
 name: vectra-tram
 
-# Образ собирает только estimator (и test, eval — для run без up). Остальные
+# Образ собирает только estimator (и test, eval - для run без up). Остальные
 # сервисы берут тот же готовый образ: если build стоит у всех, up --build
 # собирает один тег параллельно пять раз, и Docker Desktop с хранилищем
 # образов containerd падает на «image ... already exists».
@@ -50,14 +50,14 @@ services:
   estimator:
     <<: *ros
     # только launch: он подставляет лист config/tram.yaml и карту (ros2 run
-    # без --params-file берёт умолчания — см. docs/JURY.md)
+    # без --params-file берёт умолчания - см. docs/JURY.md)
     command: ros2 launch tram_state_estimator tram.launch.py
     ipc: shareable
     stop_signal: SIGINT
     stop_grace_period: 15s
     # restart здесь НЕ ставится: player и probe живут в сетевом, IPC и PID
     # пространствах этого контейнера. Перезапущенный контейнер получает новые
-    # пространства, а player/probe остаются в старых (без DDS, probe — Exited).
+    # пространства, а player/probe остаются в старых (без DDS, probe - Exited).
     # Упавшую ноду перезапускает сам launch (respawn); если упал
     # весь контейнер: docker compose up -d --force-recreate
 
@@ -103,7 +103,7 @@ services:
     <<: *ros-run
     # rosbridge v2 (JSON по websocket) для симулятора: ws://<хост>:9090.
     # По умолчанию только для чтения (публичный домен): docker/bridge.sh;
-    # ROSBRIDGE_OPEN=1 — без ограничений (отладка на своей машине)
+    # ROSBRIDGE_OPEN=1 - без ограничений (отладка на своей машине)
     environment:
       <<: *ros-env
       ROSBRIDGE_OPEN: ${ROSBRIDGE_OPEN:-0}
@@ -117,7 +117,7 @@ services:
   web:
     <<: *ros-run
     # статическая страница симулятора (python http.server). Внешних ресурсов
-    # у страницы нет: CSS и шрифты локальные, работает без интернета —
+    # у страницы нет: CSS и шрифты локальные, работает без интернета -
     # см. docs/DEPLOY.md
     command: python3 -m http.server 8080 --bind 0.0.0.0 --directory /repo/simulator
     ports:
@@ -155,7 +155,7 @@ services:
       <<: *ros-env
       FAST: ${FAST:-0}
       # проверки времени шага по стенным часам (маркер timing) «мигают» под
-      # нагрузкой CPU — по умолчанию не входят; отдельно: run --rm test -m timing
+      # нагрузкой CPU - по умолчанию не входят; отдельно: run --rm test -m timing
       NO_TIMING: ${NO_TIMING:-1}
     entrypoint: ["/entrypoint.sh", "bash", "/repo/docker/run_tests.sh"]
     command: []

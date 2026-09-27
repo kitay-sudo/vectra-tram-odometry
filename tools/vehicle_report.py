@@ -1,11 +1,11 @@
 """Таблица «по вагонам» из нескольких прогонов tools/eval.py (docs/VEHICLES.md).
 
-Каждый прогон eval.py — свой вариант параметра vehicle (`--set vehicle=…`) в
+Каждый прогон eval.py - свой вариант параметра vehicle (`--set vehicle=…`) в
 своём каталоге --out. Скрипт читает их runs.json и печатает markdown: по
-группам вагонов (и по датам записи, если --by-date) — скорость MAE и
+группам вагонов (и по датам записи, если --by-date) - скорость MAE и
 смещение, положение ср. 3D, конец (ср. / медиана / макс), дрейф 3D по концу
 (% пути: медиана / ср. / макс), вдоль пути RMSE. Средние скорости и 3D
-взвешены числом пар скорости прогона (как eval.py); конец и дрейф — по прогонам.
+взвешены числом пар скорости прогона (как eval.py); конец и дрейф - по прогонам.
 
     python3 tools/vehicle_report.py auto=out/vehicle/auto 30618=out/vehicle/v30618 \\
         match=out/vehicle/match [--by-date] [--json out/vehicle/report.json]
@@ -50,7 +50,7 @@ def group(runs, ids, est="model"):
     def stat(k, fn):
         x = _fin([r.get(k) for r in rows])
         return float(fn(x)) if x else float("nan")
-    # вдоль RMSE — пул: корень из взвешенного среднего квадратов
+    # вдоль RMSE - пул: корень из взвешенного среднего квадратов
     ar = np.array([r.get("along_rmse", np.nan) for r in rows], float)
     m = np.isfinite(ar)
     return dict(runs=len(rows), v_pairs=int(w.sum()), v_mae=wavg("v_mae"), v_bias=wavg("v_bias"),
@@ -64,7 +64,7 @@ def group(runs, ids, est="model"):
 
 def fmt(x, nd):
     if x is None or not math.isfinite(x):
-        return "—"
+        return "-"
     s = f"{x:+.{nd}f}" if nd < 0 else f"{x:.{nd}f}"
     return s.replace(".", ",").replace("-", "−")
 

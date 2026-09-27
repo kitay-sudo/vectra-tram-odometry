@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""ros_probe — внешний измеритель ноды tram_estimator (ROS 2 end-to-end).
+"""ros_probe - внешний измеритель ноды tram_estimator (ROS 2 end-to-end).
 
 Отдельная rclpy-нода. Слушает ВХОДЫ ноды (/vehicle/*, GNSS fix) и ВЫХОДЫ
-(/result/velocity, /result/position, /tram/estimator_status), всё best-effort —
+(/result/velocity, /result/position, /tram/estimator_status), всё best-effort -
 как судья. Для каждого сообщения запоминает момент приёма (monotonic, стенные
 часы процесса) и header.stamp. По ходу прогона раз в 1 с снимает CPU% и RSS
 процесса ноды (psutil). В конце пишет JSON-сводку (и, по желанию, сырые ряды в
 .npz) и печатает краткий итог.
 
-Метрики задержки (все — в стенном времени пробы, т.е. включают доставку DDS):
+Метрики задержки (все - в стенном времени пробы, т.е. включают доставку DDS):
   in2out  для каждого входа: от приёма входа до приёма ПЕРВОГО выхода, который
           пришёл после него и имеет stamp >= stamp входа. Это выход, в котором
           показание входа уже учтено (runner шагает до stamp, потом кладёт
-          показание — оно попадает в следующий шаг сетки). Главная метрика
+          показание - оно попадает в следующий шаг сетки). Главная метрика
           «вход → результат».
   age     для каждого выхода: от приёма самого нового (по stamp) входа со
           stamp <= stamp выхода, пришедшего до выхода, до приёма выхода.
   proc    для каждого выхода: от приёма последнего входа перед ним до приёма
-          выхода — «чистая» обработка ноды + один лишний переход DDS.
+          выхода - «чистая» обработка ноды + один лишний переход DDS.
 
 Запуск (внутри контейнера с собранными tram_vehicle_msgs/tram_msgs):
     python3 tools/ros_probe.py --out out/ros_e2e/x/summary.json \
@@ -450,9 +450,9 @@ def analyse(pr, a):
                 continue
             lat0, lon0, alt0 = F[i0, 1:4]
             if refgeo is not None:
-                # система выхода ноды (MGRS / UTM / ENU / equirect) — по самому
-                # выходу; ошибка — без вычета скачка на границе 100-км квадратов
-                # MGRS, как у судьи; развёрнутая — справочно
+                # система выхода ноды (MGRS / UTM / ENU / equirect) - по самому
+                # выходу; ошибка - без вычета скачка на границе 100-км квадратов
+                # MGRS, как у судьи; развёрнутая - справочно
                 fr = refgeo.frames(F[ok, 1], F[ok, 2], F[ok, 3], origin=(lat0, lon0, alt0))
                 frame, _ = refgeo.detect(X[j[ok]], fr)
                 d3, d3u, mism = refgeo.errors(X[j[ok]], fr[frame], frame)
@@ -469,10 +469,10 @@ def analyse(pr, a):
                                   "mean_m_unwrapped": round(float(d3u.mean()), 2),
                                   "square_mismatch": int(mism)}
         acc["note"] = ("санити-проверка по GNSS master из bag в системе выхода ноды "
-                       "(определяется по выходу); mean_m/max_m/end_m — ошибка как у судьи, "
-                       "без вычета скачка на границе 100-км квадратов MGRS; mean_m_unwrapped — "
-                       "с вычетом (справочно); square_mismatch — пар по разные стороны "
-                       "границы квадратов; для относительных систем начало — первый "
+                       "(определяется по выходу); mean_m/max_m/end_m - ошибка как у судьи, "
+                       "без вычета скачка на границе 100-км квадратов MGRS; mean_m_unwrapped - "
+                       "с вычетом (справочно); square_mismatch - пар по разные стороны "
+                       "границы квадратов; для относительных систем начало - первый "
                        "master fix, принятый нодой: probe_first_fix верен, если нода запущена до bag")
     R["accuracy_sanity_vs_bag_gnss"] = acc
     return R
@@ -492,14 +492,14 @@ def save_npz(pr, path):
 
 
 def _num(x, nd=1):
-    return "—" if x is None else f"{x:.{nd}f}"
+    return "-" if x is None else f"{x:.{nd}f}"
 
 
 def brief(R):
     """Итог пробы таблицей: критерии ТЗ (частота, задержка, CPU, ОЗУ) и
-    санити выхода. «OK» / «НЕТ» — только для критериев с порогом ТЗ.
-    Задержка оценивается без первых 2 с bag: там хвост буфера записи — метки
-    на 2–6 с старше момента записи приходят пачкой (docs/JURY.md §6); с ними —
+    санити выхода. «OK» / «НЕТ» - только для критериев с порогом ТЗ.
+    Задержка оценивается без первых 2 с bag: там хвост буфера записи - метки
+    на 2–6 с старше момента записи приходят пачкой (docs/JURY.md §6); с ними -
     строка «вместе со стартом bag», справочно."""
     o = R["outputs"].get("velocity", {}) or {}
     op = R["outputs"].get("position", {}) or {}
@@ -517,28 +517,28 @@ def brief(R):
     rate = o.get("rate_stamp_hz")
 
     def ok(cond):
-        return "—" if cond is None else ("OK" if cond else "НЕТ")
+        return "-" if cond is None else ("OK" if cond else "НЕТ")
 
     rows = [
         ("частота /result/velocity ≥ 10 Гц",
          f"{_num(rate)} Гц по меткам, {_num(o.get('rate_wall_hz'))} по стенным; "
-         f"{o.get('count', 0)} из {o.get('expected_by_stamp', '—')} узлов сетки",
+         f"{o.get('count', 0)} из {o.get('expected_by_stamp', '-')} узлов сетки",
          ok(None if rate is None else rate >= 10.0)),
         ("/result/position (Odometry)",
          f"{op.get('count', 0)} выходов, {_num(op.get('rate_stamp_hz'))} Гц; frame_id "
-         f"{','.join((R.get('frame_ids') or {}).get('position', {}) or ['—'])} -> "
-         f"{','.join((R.get('frame_ids') or {}).get('position_child', {}) or ['—'])}", "—"),
+         f"{','.join((R.get('frame_ids') or {}).get('position', {}) or ['-'])} -> "
+         f"{','.join((R.get('frame_ids') or {}).get('position_child', {}) or ['-'])}", "-"),
         ("задержка in2out ≤ 100 мс (p99)",
          f"p50 {_num(steady.get('p50'))} / p99 {_num(steady.get('p99'))} мс "
          "(без первых 2 с bag)",
          ok(None if steady.get("p99") is None else steady["p99"] <= 100.0)),
         ("пик задержки ≤ 250 мс",
          f"max {_num(steady.get('max'))} мс; > 250 мс: "
-         f"{L.get('in2out_vehicle_steady_over_250ms', '—')} из {steady.get('n', '—')}",
+         f"{L.get('in2out_vehicle_steady_over_250ms', '-')} из {steady.get('n', '-')}",
          ok(None if steady.get("max") is None else steady["max"] <= 250.0)),
         ("вместе со стартом bag (справочно)",
          f"in2out(vehicle): p99 {_num(full.get('p99'))}, max {_num(full.get('max'))} мс; "
-         f"> 250 мс: {L.get('in2out_vehicle_over_250ms', '—')} из {full.get('n', '—')}", "—"),
+         f"> 250 мс: {L.get('in2out_vehicle_over_250ms', '-')} из {full.get('n', '-')}", "-"),
         ("CPU ≤ 2 ядра",
          f"ср. {_num(cpu.get('mean'))} % ядра, макс {_num(cpu.get('max'))} %",
          ok(None if cpu.get("max") is None else cpu["max"] <= 200.0)),
@@ -553,12 +553,12 @@ def brief(R):
     ]
     if acc.get("v_mae") is not None:
         rows.append(("скорость против GNSS bag (справочно)",
-                     f"MAE {_num(acc.get('v_mae'), 3)} м/с по {acc.get('v_pairs')} парам", "—"))
+                     f"MAE {_num(acc.get('v_mae'), 3)} м/с по {acc.get('v_pairs')} парам", "-"))
     pp = acc.get("pos_probe_first_fix") or {}
     if pp.get("mean_m") is not None:
         rows.append(("положение против антенны master (справочно)",
-                     f"ср. {_num(pp.get('mean_m'), 2)} м ({pp.get('frame')}); около 10 м — плечо "
-                     "антенны до base_link", "—"))
+                     f"ср. {_num(pp.get('mean_m'), 2)} м ({pp.get('frame')}); около 10 м - плечо "
+                     "антенны до base_link", "-"))
     w0 = max(len(r[0]) for r in rows)
     w1 = max(len(r[1]) for r in rows)
     span = g(R.get("probe"), "wall_span_s")
@@ -630,11 +630,11 @@ def main():
     ap.add_argument("--npz", default="", help="сырые ряды .npz (необязательно)")
     ap.add_argument("--rate", type=float, default=1.0, help="скорость проигрывания (для отчёта)")
     ap.add_argument("--tag", default="")
-    ap.add_argument("--duration", type=float, default=0.0, help="макс. длительность, с (0 — без)")
+    ap.add_argument("--duration", type=float, default=0.0, help="макс. длительность, с (0 - без)")
     ap.add_argument("--idle", type=float, default=0.0,
-                    help="выйти после стольких секунд тишины после первого сообщения (0 — нет)")
+                    help="выйти после стольких секунд тишины после первого сообщения (0 - нет)")
     ap.add_argument("--report-every", type=float, default=0.0,
-                    help="промежуточная сводка раз в столько секунд (0 — только в конце)")
+                    help="промежуточная сводка раз в столько секунд (0 - только в конце)")
     ap.add_argument("--proc-match", default="tram_estimator",
                     help="имя исполняемого файла ноды для psutil")
     a = ap.parse_args()

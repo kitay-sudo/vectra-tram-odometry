@@ -10,7 +10,7 @@
     docker run --rm -v E:/MY-PROJECT/TrackVector:/repo -w /repo vectra/tram:dev \
         bash -c "python3 tools/dev/position_study.py all"
 
-Подкоманды (результаты — out/position/):
+Подкоманды (результаты - out/position/):
     inventory  GNSS по прогонам: антенны, статус, база, старт на ходу, задержки меток
     timing     сдвиг меток GNSS относительно меток тележек (взаимная корреляция скоростей)
     frames     чувствительность к проекции: исходный equirect / ENU WGS84 / UTM
@@ -264,7 +264,7 @@ def cmd_inventory():
 # ------------------------------------------------------------------ timing
 def _timing_one(b):
     """Сдвиг tau: скорость GNSS с меткой t соответствует колёсам с меткой t + tau.
-    Ищется минимум СКО |v_gnss(t)| - v_wheel(t + tau)·s по tau (s — масштаб, МНК)."""
+    Ищется минимум СКО |v_gnss(t)| - v_wheel(t + tau)·s по tau (s - масштаб, МНК)."""
     a = bagio.load(b)
     if len(a["mvel"]) < 500 or len(a["front"]) < 500:
         return None
@@ -298,7 +298,7 @@ def _timing_one(b):
             if e < bb[0]:
                 bb = (e, float(tau))
         out[f"tau_{k}"] = bb[1]
-    # тот же сдвиг во времени записи bag (tb) — на случай, если судья берёт его
+    # тот же сдвиг во времени записи bag (tb) - на случай, если судья берёт его
     tb = g[sel, 0]
     bb = (np.inf, 0.0)
     for tau in taus:
@@ -345,7 +345,7 @@ def _frames_one(b):
     d_ut = np.linalg.norm(P_ut[:, :2] - P_en[:, :2], axis=1)
     d_ut_eq = np.linalg.norm(P_ut[:, :2] - P_eq[:, :2], axis=1)
     rr = np.hypot(P_en[:, 0], P_en[:, 1])
-    # ориентир: «город» — фиксированное начало (центр карты build_map.py)
+    # ориентир: «город» - фиксированное начало (центр карты build_map.py)
     return dict(bag=b, max_r_km=float(rr.max() / 1000),
                 eq_vs_enu_mean=float(d_eq.mean()), eq_vs_enu_max=float(d_eq.max()),
                 eq_vs_enu_xy_mean=float(d_eq2.mean()),
@@ -494,7 +494,7 @@ def cmd_coverage():
         print(f"  {r['bag']}: " + " ".join(f"{k}={r[k]:.3f}" for k in r if k.startswith("cov_"))
               + f" max_off={r['longest_off_3m_m']:.0f} м")
     # leave-one-group-out по всем прогонам с GNSS: карта из остальных групп,
-    # клетка карты — не менее 2 разных прогонов (как в build_map.py)
+    # клетка карты - не менее 2 разных прогонов (как в build_map.py)
     grp = json.loads((OUT / "dup_groups.json").read_text(encoding="utf-8"))
     tracks = {}
     for b in ids_all():
@@ -574,8 +574,8 @@ def cut_time(a, v_min=8.0, after=300.0):
 
 
 def _events(a, drop_rover=False, init_s=INIT_S, t_cut=None):
-    """Поток событий как в analysis/evaluate.py (GNSS — первые init_s с по
-    времени записи). t_cut — отбросить всё, что раньше (старт на ходу)."""
+    """Поток событий как в analysis/evaluate.py (GNSS - первые init_s с по
+    времени записи). t_cut - отбросить всё, что раньше (старт на ходу)."""
     if t_cut is not None:
         a = {k: v[v[:, 1] >= t_cut] if len(v) else v for k, v in a.items()}
     ev = []
@@ -621,7 +621,7 @@ def _to_strict_enu(tmap):
 
 
 def _strict_origin(r):
-    """Начало выставки — строгий ENU (исходный runner.Enu — equirect)."""
+    """Начало выставки - строгий ENU (исходный runner.Enu - equirect)."""
     from tram_state_estimator import runner as rmod
 
     class StrictEnu(rmod.Enu):
@@ -661,8 +661,8 @@ def make_runner(variant, tmap):
         # сдвиг вдоль пути при привязке / путь с прошлой привязки -> масштаб колёс
         class PositionS(Position):
             """Масштаб = (s0·L_prior + Σ(L_i·scale_i + δ_i)) / (L_prior + ΣL_i):
-            δ_i — сдвиг вдоль пути при привязке к остановке, L_i — путь колёс с
-            прошлой привязки. L_prior — «априорный» путь (сжатие к s0), ±1 %."""
+            δ_i - сдвиг вдоль пути при привязке к остановке, L_i - путь колёс с
+            прошлой привязки. L_prior - «априорный» путь (сжатие к s0), ±1 %."""
             L_prior, max_dev, gate_k, gate_c = 1000.0, 0.01, 0.03, 5.0
 
             def on_stop(self, s):
@@ -694,8 +694,8 @@ def make_runner(variant, tmap):
         return _strict_origin(r) if strict else r
 
     class PositionV2(Position):
-        """Выставка «на ходу»: начало ENU — первая точка master; курс — по парам
-        master/rover одной эпохи (метка), иначе по карте в точке; якорь — ПОСЛЕДНЯЯ
+        """Выставка «на ходу»: начало ENU - первая точка master; курс - по парам
+        master/rover одной эпохи (метка), иначе по карте в точке; якорь - ПОСЛЕДНЯЯ
         точка master окна с путём колёс на её метку (без заморозки по moved)."""
 
         def __init__(self, *a_, runner=None, **k):
@@ -737,7 +737,7 @@ def make_runner(variant, tmap):
                     self._pairs.append((rx - mx, ry - my))
             if not self._m:
                 return
-            # якорь — последняя точка master
+            # якорь - последняя точка master
             last = max(self._m)
             mx, my, mz, s_fix = self._m[last]
             first = min(self._m)
@@ -782,7 +782,7 @@ def make_runner(variant, tmap):
                 return float(self.map.head[i])
             if not self.wide or d[i] > 30.0:
                 return None
-            # стоянка на конечной вне карты (карта — только точки на ходу > 1 м/с):
+            # стоянка на конечной вне карты (карта - только точки на ходу > 1 м/с):
             # берём самую «езженую» точку в пределах (ближайшая + 5 м)
             c = np.flatnonzero(d <= d[i] + 5.0)
             return float(self.map.head[c[int(np.argmax(self.map.weight[c]))]])
@@ -846,18 +846,18 @@ def run_variants(variants, ids):
                 print(f"  {v}/{b}: {st}")
 
 
-# partner      — исходный код пакета как есть (карта train)
-# nomap        — без карты: прямая вдоль начального курса
-# norover      — нет rover в окне выставки (выставка не состоится)
-# v2           — выставка «на ходу» (якорь — последняя точка master, курс по парам одной эпохи)
-# v2_norover   — v2 без rover: курс по ближайшей точке карты (< 3 м)
-# v2w_norover  — то же, поиск курса по карте до 30 м (стоянка на конечной вне карты)
-# enu          — строгий ENU WGS84 в выставке и привязке карты, множитель 0,99777
-# enu_s1       — строгий ENU, множитель пути 1,0
-# v3_scale     — исходный код + онлайн-масштаб пути по привязкам к остановкам
-# v3b_scale    — то же, осторожные настройки
-# enu_v3b      — строгий ENU + v3b_scale (рекомендуемая связка)
-# *_cut        — запись обрезана: старт на ходу (> 8 м/с, после 300 с)
+# partner      - исходный код пакета как есть (карта train)
+# nomap        - без карты: прямая вдоль начального курса
+# norover      - нет rover в окне выставки (выставка не состоится)
+# v2           - выставка «на ходу» (якорь - последняя точка master, курс по парам одной эпохи)
+# v2_norover   - v2 без rover: курс по ближайшей точке карты (< 3 м)
+# v2w_norover  - то же, поиск курса по карте до 30 м (стоянка на конечной вне карты)
+# enu          - строгий ENU WGS84 в выставке и привязке карты, множитель 0,99777
+# enu_s1       - строгий ENU, множитель пути 1,0
+# v3_scale     - исходный код + онлайн-масштаб пути по привязкам к остановкам
+# v3b_scale    - то же, осторожные настройки
+# enu_v3b      - строгий ENU + v3b_scale (рекомендуемая связка)
+# *_cut        - запись обрезана: старт на ходу (> 8 м/с, после 300 с)
 VARIANTS = ["partner", "nomap", "norover", "v2", "v2_norover", "v2w_norover", "enu", "enu_s1",
             "v3_scale", "v3b_scale", "enu_v3b", "partner_cut", "v2_cut", "v2_norover_cut", "nomap_cut"]
 
@@ -881,7 +881,7 @@ STRICT = "master@m0 ENU WGS84"
 
 
 def ref_variants(a, t_cut=None, full=True):
-    """Эталоны судьи при разных соглашениях. Наш вывод — equirect от первой
+    """Эталоны судьи при разных соглашениях. Наш вывод - equirect от первой
     точки master (или строгий ENU у вариантов enu*). dict имя -> (метки, N×3)."""
     m, r = a["mfix"], a["rfix"]
     if t_cut is not None:
@@ -905,8 +905,8 @@ def ref_variants(a, t_cut=None, full=True):
     out["master@среднее всего прогона"] = (m[:, 1], P - P.mean(0))
     if len(r):
         R_ = equirect(r[:, 2], r[:, 3], r[:, 4], o)
-        out["master@r0 (начало — первая точка rover)"] = (m[:, 1], P - R_[0])
-        out["rover@r0 (эталон — rover)"] = (r[:, 1], R_ - R_[0])
+        out["master@r0 (начало - первая точка rover)"] = (m[:, 1], P - R_[0])
+        out["rover@r0 (эталон - rover)"] = (r[:, 1], R_ - R_[0])
         mm = a["mfix"] if t_cut is None else a["mfix"][a["mfix"][:, 1] >= t_cut]
         aa = dict(mfix=mm, rfix=r)
         im, ir = pair_master_rover(aa)
@@ -1090,7 +1090,7 @@ def cmd_branches(which="val", thr_end=30.0):
         s_ref = np.r_[0, np.cumsum(np.hypot(*np.diff(Pk[:, :2], axis=0).T))]
         row = dict(bag=b, end_err=float(d2[-1]), max_err=float(d2.max()),
                    mean_err=float(np.mean(d2)), path_km=float(s_ref[-1] / 1000))
-        # вдоль/поперёк в точке максимума ошибки: вдоль — дрейф масштаба, поперёк — ветка
+        # вдоль/поперёк в точке максимума ошибки: вдоль - дрейф масштаба, поперёк - ветка
         km = int(np.argmax(d2))
         k1 = min(km + 5, len(Pk) - 1)
         k_ = max(km - 5, 0)
@@ -1138,7 +1138,7 @@ def cmd_branches(which="val", thr_end=30.0):
             ax[1].plot(Xk[:, 0], Xk[:, 1], "r--", lw=1.5)
             ax[1].set_xlim(cx - 150, cx + 150)
             ax[1].set_ylim(cy - 150, cy + 150)
-            ax[1].set_title("окрестность расхождения (цвет — вес карты)")
+            ax[1].set_title("окрестность расхождения (цвет - вес карты)")
             ax[1].set_aspect("equal")
         ax[0].set_aspect("equal")
         ax[0].legend(fontsize=7)

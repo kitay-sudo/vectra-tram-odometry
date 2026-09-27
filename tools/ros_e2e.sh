@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ros_e2e.sh — воспроизводимый end-to-end прогон ноды tram_estimator в ОДНОМ
+# ros_e2e.sh - воспроизводимый end-to-end прогон ноды tram_estimator в ОДНОМ
 # контейнере: нода (ros2 launch) + ros2 bag play + tools/ros_probe.py.
 #
 # С хоста (Git Bash / Linux), из корня репозитория:
@@ -12,7 +12,7 @@
 #   tools/ros_e2e.sh --bag X --pause 60:5                        # пауза плеера на 5 с на 60-й с
 #   tools/ros_e2e.sh --bag X --inject "zero_stamp_first"         # tools/ros_inject.py
 # Опции:
-#   --bag ID        прогон из data/ (можно несколько — подряд в одну ноду)
+#   --bag ID        прогон из data/ (можно несколько - подряд в одну ноду)
 #   --rate R        скорость ros2 bag play (1.0)
 #   --topics "..."  проигрывать только эти топики
 #   --late S        запустить ноду через S с после старта проигрывания
@@ -24,15 +24,15 @@
 #   --tag NAME      каталог результатов out/ros_e2e/NAME
 #   --mem LIMIT     ограничение памяти контейнера (docker --memory), напр. 2g
 #   --cpus N        ограничение CPU контейнера (docker --cpus), напр. 2
-#   --timeout S     жёсткий лимит на одно проигрывание bag (сек, 0 — нет)
+#   --timeout S     жёсткий лимит на одно проигрывание bag (сек, 0 - нет)
 #   --no-shutdown-test  не проверять останов ноды по SIGINT
-#   --node MODE     launch (по умолчанию) | run — `ros2 run` без --params-file
+#   --node MODE     launch (по умолчанию) | run - `ros2 run` без --params-file
 #   --node-args ".." для --node run: аргументы после --ros-args (-p x:=1 ...;
 #                   @SHARE@ = share пакета, напр. --params-file @SHARE@/config/tram.yaml)
 #   --build         собрать пакеты из /repo/ros2_ws/src во временный ws
 #                   (иначе используется сборка образа /ws, если исходники совпадают)
 # Переменные: IMAGE (vectra/tram:compose, как у ros_smoke.sh и measure_realtime.sh;
-#   если образа нет — собирается из docker/Dockerfile), DATA_DIR (<repo>/data).
+#   если образа нет - собирается из docker/Dockerfile), DATA_DIR (<repo>/data).
 # Результат: out/ros_e2e/<tag>/{summary.json,raw.npz,node.log,bag.log,probe.log,run.log}
 # (без set -u: setup.bash ROS обращается к неустановленным переменным)
 
@@ -42,7 +42,7 @@ if [ ! -d /opt/ros/humble ]; then
   IMAGE="${IMAGE:-vectra/tram:compose}"
   DATA_DIR="${DATA_DIR:-$here/data}"
   if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    echo "[e2e] образа $IMAGE нет — собираю (docker build -f docker/Dockerfile)"
+    echo "[e2e] образа $IMAGE нет - собираю (docker build -f docker/Dockerfile)"
     docker build -f "$here/docker/Dockerfile" -t "$IMAGE" "$here" || exit 1
   fi
   tag="e2e"; mem=""; cpus=""
@@ -120,10 +120,10 @@ fi
 export PYTHONUNBUFFERED=1 RCUTILS_LOGGING_BUFFERED_STREAM=0
 # Job control: без него неинтерактивный bash запускает фоновые процессы с
 # SIGINT=SIG_IGN, и ros2 launch не реагирует на SIGINT (проверено). С set -m у
-# каждого фонового процесса своя группа — SIGINT группе = Ctrl+C в терминале.
+# каждого фонового процесса своя группа - SIGINT группе = Ctrl+C в терминале.
 set -m
 log "ROS_DOMAIN_ID=$ROS_DOMAIN_ID ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-} bags=${BAGS[*]} rate=$RATE late=$LATE loop=$LOOP pause=$PAUSE topics='${TOPICS}' inject='${INJECT}'"
-log "CPU: $(nproc) ядер в контейнере; параллельно могут работать другие контейнеры — тайминги предварительные"
+log "CPU: $(nproc) ядер в контейнере; параллельно могут работать другие контейнеры - тайминги предварительные"
 
 python3 /repo/tools/ros_probe.py --out "$OUT/summary.json" --npz "$OUT/raw.npz" \
   --rate "$RATE" --tag "$TAG" >"$OUT/probe.log" 2>&1 &
@@ -184,7 +184,7 @@ for B in "${BAGS[@]}"; do
   while kill -0 $PLAY 2>/dev/null; do
     sleep 1
     if [ "$TIMEOUT" != "0" ] && [ $(( $(date +%s) - t0 )) -ge "$TIMEOUT" ]; then
-      log "timeout ${TIMEOUT} с — останавливаю плеер"; kill -INT $PLAY; sleep 2; kill -9 $PLAY 2>/dev/null
+      log "timeout ${TIMEOUT} с - останавливаю плеер"; kill -INT $PLAY; sleep 2; kill -9 $PLAY 2>/dev/null
     fi
   done
   wait $PLAY 2>/dev/null
@@ -201,7 +201,7 @@ if [ -n "$NODE" ]; then
   if [ -n "$NPID" ]; then
     log "нода жива (pid $NPID): $(ps -o %cpu=,rss=,etime= -p "$NPID" | awk '{printf "cpu=%s%% rss=%.0fMB etime=%s", $1, $2/1024, $3}')"
   else
-    log "ПРОЦЕСС НОДЫ НЕ НАЙДЕН — упала?"
+    log "ПРОЦЕСС НОДЫ НЕ НАЙДЕН - упала?"
   fi
 fi
 
@@ -214,7 +214,7 @@ if [ $SHUT -eq 1 ] && [ -n "$NODE" ]; then
   kill -INT -- -$NODE 2>/dev/null
   for _ in $(seq 1 150); do kill -0 $NODE 2>/dev/null || break; sleep 0.1; done
   if kill -0 $NODE 2>/dev/null; then
-    log "launch не завершился за 15 с — SIGKILL"; kill -9 $NODE; pkill -9 -f tram_estimator
+    log "launch не завершился за 15 с - SIGKILL"; kill -9 $NODE; pkill -9 -f tram_estimator
   fi
   wait $NODE 2>/dev/null; rc=$?
   log "launch завершился: код $rc за $(awk "BEGIN{printf \"%.2f\", $(date +%s.%N) - $t0}") с"

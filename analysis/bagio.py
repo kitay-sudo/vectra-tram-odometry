@@ -1,15 +1,15 @@
 """Чтение прогонов rosbag2 без ROS и кэш в numpy.
 
 Каждый прогон читается один раз и сохраняется в <кэш>/<bag_id>.npz
-(по умолчанию analysis/cache; другой каталог — переменная TRAM_CACHE или
+(по умолчанию analysis/cache; другой каталог - переменная TRAM_CACHE или
 set_cache()). Дальше анализ, калибровка и оценка работают с кэшем.
 
-Данные — data/<bag_id>/ (другой каталог — TRAM_DATA). Типы сообщений
+Данные - data/<bag_id>/ (другой каталог - TRAM_DATA). Типы сообщений
 tram_vehicle_msgs берутся из пакета в репозитории
 (ros2_ws/src/tram_vehicle_msgs/msg), а не из распакованного dataset/.
 
-Для каждого топика хранятся две метки времени: tb — время записи в bag,
-th — header.stamp сообщения (с).
+Для каждого топика хранятся две метки времени: tb - время записи в bag,
+th - header.stamp сообщения (с).
 """
 
 import os
@@ -111,12 +111,12 @@ def _one(bag_id):
         np.savez_compressed(tmp, **arr)
         os.replace(tmp, f)
         return bag_id, "ok"
-    except Exception as e:          # noqa: BLE001 — отчёт по прогону, не падаем
+    except Exception as e:          # noqa: BLE001 - отчёт по прогону, не падаем
         return bag_id, f"ERROR {e!r}"
 
 
 def build_cache(workers=None, ids=None):
-    """Строит кэш для прогонов ids (по умолчанию — всех из data/); готовые
+    """Строит кэш для прогонов ids (по умолчанию - всех из data/); готовые
     файлы не трогает."""
     from concurrent.futures import ProcessPoolExecutor
     CACHE.mkdir(parents=True, exist_ok=True)
