@@ -622,8 +622,14 @@ class TramEstimatorNode(Node):
         pos = (f"x {float(o['x']):.1f} y {float(o['y']):.1f} z {float(o['z']):.1f} "
                f"±{float(o['sigma_s']):.1f} м" if o.get("pos_valid", True)
                else "положения нет")
+        # режим тяги и торможения ядро берёт по знаку ручки; ручка рядом, потому
+        # что в части записей вагон разгоняется при «тормозной» позиции
+        mode_s = MODE_RU[mode] if 0 <= mode < len(MODE_RU) else str(mode)
+        notch = getattr(self.runner, "notch", None)
+        if isinstance(notch, (int, float)) and math.isfinite(notch):
+            mode_s += f" (ручка {notch:+.0f})"
         return (f"t+{t - self.t_first:.0f} с | {self._st_n / span:.1f} Гц | "
-                f"{MODE_RU[mode] if 0 <= mode < len(MODE_RU) else mode} | "
+                f"{mode_s} | "
                 f"v {v:.2f} м/с ({v * 3.6:.1f} км/ч) ±{float(o['sigma_v']):.2f} | "
                 f"{pos} | тележки {na}/{na + nr} | "
                 f"{', '.join(flags) if flags else 'норма'}")
