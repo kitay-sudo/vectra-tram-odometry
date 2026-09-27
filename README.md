@@ -155,7 +155,6 @@ docker compose up --build
 | [docs/SANDBOX.md](docs/SANDBOX.md) | песочница: что в ней настоящее, таблица сценариев, слабые места |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | демо на ноутбуке и на публичном сервере |
 | [docs/TZ_REQUIREMENTS.md](docs/TZ_REQUIREMENTS.md) | выжимка ТЗ: входы, выходы, критерии, обязательные артефакты |
-| [docs/ORGANIZER_ANSWERS.md](docs/ORGANIZER_ANSWERS.md) | ответы организаторов и что из них следует для решения |
 | [docs/DATASET_README.md](docs/DATASET_README.md) | README датасета от организаторов (контракт судьи) |
 | [simulator/README.md](simulator/README.md), [js-port/README.md](js-port/README.md) | симулятор и JS-порт ядра |
 
@@ -1063,7 +1062,7 @@ ros2 topic echo /tram/estimator_status --field mode
 |---|---|
 | ТЗ кейса «Резервная одометрия по модели» (PDF организаторов) | входы и выходы, критерии оценки, обязательные артефакты; выжимка - [docs/TZ_REQUIREMENTS.md](docs/TZ_REQUIREMENTS.md) |
 | README датасета от организаторов | топики, типы сообщений, контракт судьи - [docs/DATASET_README.md](docs/DATASET_README.md) |
-| Ответы организаторов в чате и канале поддержки, 25-26.09.2026 | система координат судьи (MGRS, `base_link`, ошибка по x, y, z), км/ч, tf антенн, GNSS для коррекции, проверка на вагоне 30618 - [docs/ORGANIZER_ANSWERS.md](docs/ORGANIZER_ANSWERS.md) |
+| Ответы организаторов в чате и канале поддержки, 25-26.09.2026 | система координат судьи (MGRS, `base_link`, ошибка по x, y, z), км/ч, tf антенн, GNSS для коррекции, проверка на вагоне 30618 |
 | pathgraph организаторов (25.09.2026) | ось линии в двух направлениях, MGRS 37UCB, `z` - уровень рельса; точки входят в карту пакета |
 | Датасет кейса: 122 записи rosbag2, вагоны 30618 и 30639 | калибровка модели, карта путей, оценка |
 | REP-103, REP-105 (ROS) | оси и имена систем координат |

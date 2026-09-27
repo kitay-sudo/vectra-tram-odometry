@@ -19,7 +19,7 @@
 | Группа | Документы |
 |---|---|
 | проверка и запуск | [JURY.md](JURY.md), [DEPLOY.md](DEPLOY.md) |
-| задание и соответствие | [TZ_REQUIREMENTS.md](TZ_REQUIREMENTS.md), [TZ_COMPLIANCE.md](TZ_COMPLIANCE.md), [ORGANIZER_ANSWERS.md](ORGANIZER_ANSWERS.md) |
+| задание и соответствие | [TZ_REQUIREMENTS.md](TZ_REQUIREMENTS.md), [TZ_COMPLIANCE.md](TZ_COMPLIANCE.md) |
 | данные | [DATASET_README.md](DATASET_README.md) (файл организаторов), [DATA.md](DATA.md) |
 | модель и результаты | [../MODEL.md](../MODEL.md), [EVAL.md](EVAL.md), [POSITION_FRAME.md](POSITION_FRAME.md), [VEHICLES.md](VEHICLES.md), [ROBUST.md](ROBUST.md) |
 | симулятор | [SANDBOX.md](SANDBOX.md), [../simulator/README.md](../simulator/README.md) |

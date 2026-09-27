@@ -209,7 +209,7 @@ GNSS после выставки на скорость не влияет, а п�
 |---|---|
 | `simulator/js/est.js`, `simulator/js/runner.js` | копии `js-port/est.js`, `js-port/runner.js` байт в байт (`node js-port/sync.js`) |
 | `simulator/js/sheet.js` | лист жюри для песочницы (`js-port/gen_sheet.py`) |
-| `simulator/js/track.js` | линия (pathgraph) и остановки (`simulator/tools/gen_track.py`). Это прореженная копия pathgraph организаторов - данных, которые организаторы выдали участникам для задачи (`docs/ORGANIZER_ANSWERS.md`). Без файла песочница работает на линии-заглушке (подписано на экране), `sandbox_report.js --write` без него не пишет таблицу |
+| `simulator/js/track.js` | линия (pathgraph) и остановки (`simulator/tools/gen_track.py`). Это прореженная копия pathgraph организаторов - данных, которые организаторы выдали участникам для задачи. Без файла песочница работает на линии-заглушке (подписано на экране), `sandbox_report.js --write` без него не пишет таблицу |
 | `simulator/js/plant.js` | имитатор: 2 тележки, сцепление, колёса, датчики, отказы |
 | `simulator/js/sandbox.js` | водитель, сценарии, движок (имитатор → связка → ядро), метрики, объяснение простым языком; работает и в Node |
 | `simulator/js/sandbox_ui.js` | экран песочницы |
