@@ -649,7 +649,7 @@ def git_head():
             return h + ("+dirty" if dirty.stdout.strip() else "")
     except Exception:            # noqa: BLE001
         pass
-    return os.environ.get("TRAM_GIT_REV")     # в контейнере .git worktree не виден
+    return os.environ.get("TRAM_GIT_REV")     # git недоступен (нет .git в томе контейнера)
 
 
 # ------------------------------------------------------------------ главный проход

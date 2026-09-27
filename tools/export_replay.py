@@ -42,7 +42,7 @@ equirect — берётся из настроек Runner и проверяетс
                                           (грузится <script src> и с file://)
   simulator/replays/index.js            — список прогонов с итоговыми метриками
 
-  docker run --rm --cpus 2 -v <worktree>:/repo \
+  docker run --rm --cpus 2 -v <репозиторий>:/repo \
       -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro \
       -v E:/MY-PROJECT/TrackVector/analysis/cache:/repo/analysis/cache:ro \
       -w /repo vectra/tram:dev python3 tools/export_replay.py \
