@@ -45,6 +45,7 @@ GNSS, шаг); во время работы — строка состояния 
 шага). Логирование на оценку не влияет.
 """
 
+from collections import deque
 import hashlib
 import math
 import os
@@ -409,7 +410,12 @@ class TramEstimatorNode(Node):
         P("pulse_margin_nohandle_s", 0.03)  # с: то же без ручки (сетка от 10 Гц)
         P("pulse_period_s", 0.01)           # с: период таймера по монотонным часам
         P("start_sort_s", 0.1)              # с: сортировка стартового всплеска
+        P("speed_output_delay_s", 0.08)     # с: скорость в выходе на столько раньше по времени
         self.pulse_h = float(g("pulse_horizon_s"))
+        # эталон скорости проверки (/localization/kinematic_state) сглажен и запаздывает
+        # относительно тележек около 0,1 с; с меткой t выдаётся скорость на t - сдвиг
+        self.speed_delay = max(0.0, float(g("speed_output_delay_s")))
+        self._v_hist = deque(maxlen=200)
         self.margin = float(g("pulse_margin_s"))
         self.margin_nh = float(g("pulse_margin_nohandle_s"))
         self._sorter = StartSorter(float(g("start_sort_s")))
@@ -672,6 +678,23 @@ class TramEstimatorNode(Node):
             self._console(o, pulse)
         return n
 
+    def _delayed_speed(self, t, v):
+        """Скорость на момент t - speed_output_delay_s по уже выданным шагам
+        (линейная интерполяция); при сдвиге 0 и на первом шаге - сама v."""
+        h = self._v_hist
+        if h and t < h[-1][0]:
+            h.clear()                            # новая запись: метки пошли заново
+        h.append((t, v))
+        tq = t - self.speed_delay
+        if self.speed_delay <= 0.0 or len(h) < 2:
+            return v
+        t1, v1 = t, v
+        for t0, v0 in reversed(h):
+            if t0 <= tq:
+                return v0 if t1 <= t0 else v0 + (tq - t0) / (t1 - t0) * (v1 - v0)
+            t1, v1 = t0, v0
+        return h[0][1]
+
     def _publish(self, o, step_us):
         st = to_msg(o["stamp"])
         v_ = float(o["v"])
@@ -692,9 +715,10 @@ class TramEstimatorNode(Node):
         ss2 = float(o["sigma_s"]) ** 2
         th = float(self.runner.p.theta_max)
 
+        v_out = self._delayed_speed(float(o["stamp"]), v_)
         v = VelocitySensor()
         v.header.stamp, v.header.frame_id = st, self.child
-        v.velocity = v_
+        v.velocity = v_out
         self.pub_v.publish(v)
 
         od = Odometry()
@@ -717,7 +741,7 @@ class TramEstimatorNode(Node):
         pc[21] = ROLL_SD ** 2
         pc[28] = th ** 2
         pc[35] = YAW_MAP_SD ** 2 if yaw is not None else UNKNOWN_VAR
-        od.twist.twist.linear.x = v_
+        od.twist.twist.linear.x = v_out
         # twist в base_link: вдоль — σ_v ядра; поперёк и вверх — рельсы
         # (вверх — скорость по уклону); угловые: крен и тангаж почти
         # постоянны, рыскание не оценивается (0) и ограничено v / R_min.

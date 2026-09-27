@@ -533,7 +533,7 @@ EVAL.md - числа отчёта посчитаны на том же коде, 
 
 | Файл | SHA-256 |
 |---|---|
-| `ros2_ws/src/tram_state_estimator/config/tram.yaml` | `a9f187e261e1ecaef475b40b32a87a1248ba2f393b65f35477531450715e09c8` |
+| `ros2_ws/src/tram_state_estimator/config/tram.yaml` | `b3f2758188959ede8d66df80cc2846091b3bc439723f71ae7dfeae5c2624df8a` |
 | `ros2_ws/src/tram_state_estimator/config/track_map.npz` | `cbef185f2f87f9bed4e486c9b7a195f751cb6c09ddeff45ab2b9da74af85671f` |
 
 Проверить хэши.
