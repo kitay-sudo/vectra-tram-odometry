@@ -16,7 +16,7 @@ z — уровень рельса (высота base_link), tang — курс, c
 STOP_R м к оси, курс совпадает (±45°), слиты в пределах STOP_JOIN м.
 
     docker run --rm -v <repo>:/repo -v <repo>/_incoming:/repo/_incoming:ro -w /repo \
-        vectra/tram:integration python3 simulator/tools/gen_track.py
+        vectra/tram:compose python3 simulator/tools/gen_track.py
 """
 import argparse
 import glob

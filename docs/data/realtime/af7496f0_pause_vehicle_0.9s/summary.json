@@ -1,0 +1,382 @@
+{
+ "probe": {
+  "rate_arg": 1.0,
+  "tag": "int3_fullgnss",
+  "wall_span_s": 272.1
+ },
+ "inputs": {
+  "front": 2570,
+  "rear": 2580,
+  "cmd": 5306,
+  "mfix": 2653,
+  "rfix": 2553,
+  "vehicle_stamp_range": [
+   1786387611.6876433,
+   1786387878.1335096
+  ]
+ },
+ "outputs": {
+  "velocity": {
+   "count": 5369,
+   "rate_wall_hz": 20.27,
+   "rate_stamp_hz": 20.0,
+   "stamp_step_median_s": 0.05,
+   "expected_by_stamp": 5369,
+   "unique_stamps": 5369,
+   "stamp_zero": 0,
+   "stamp_backward": 0,
+   "stamp_duplicate": 0,
+   "stamp_step_not_dt": 0,
+   "stamp_max_forward_jump_s": 0.05,
+   "stamp_minus_wallclock_days": -47.4,
+   "wall_gap_s": {
+    "n": 5368,
+    "mean": 0.0493,
+    "p50": 0.0499,
+    "p95": 0.0518,
+    "p99": 0.0526,
+    "max": 0.7912
+   },
+   "wall_gaps_over_100ms": 3,
+   "wall_gaps_over_250ms": 1,
+   "wall_gap_top5_s": [
+    0.791,
+    0.128,
+    0.12,
+    0.058,
+    0.056
+   ],
+   "min_msgs_in_1s_window": 6,
+   "burst_size_max": 15,
+   "bursts_ge3": 8,
+   "stamps_outside_input_range": 20
+  },
+  "position": {
+   "count": 5345,
+   "rate_wall_hz": 20.19,
+   "rate_stamp_hz": 20.0,
+   "stamp_step_median_s": 0.05,
+   "expected_by_stamp": 5345,
+   "unique_stamps": 5345,
+   "stamp_zero": 0,
+   "stamp_backward": 0,
+   "stamp_duplicate": 0,
+   "stamp_step_not_dt": 0,
+   "stamp_max_forward_jump_s": 0.05,
+   "stamp_minus_wallclock_days": -47.4,
+   "wall_gap_s": {
+    "n": 5344,
+    "mean": 0.0495,
+    "p50": 0.0499,
+    "p95": 0.0518,
+    "p99": 0.0526,
+    "max": 0.7909
+   },
+   "wall_gaps_over_100ms": 3,
+   "wall_gaps_over_250ms": 1,
+   "wall_gap_top5_s": [
+    0.791,
+    0.128,
+    0.12,
+    0.058,
+    0.056
+   ],
+   "min_msgs_in_1s_window": 6,
+   "burst_size_max": 6,
+   "bursts_ge3": 4,
+   "stamps_outside_input_range": 20
+  },
+  "status": {
+   "count": 5369,
+   "rate_wall_hz": 20.27,
+   "rate_stamp_hz": 20.0,
+   "stamp_step_median_s": 0.05,
+   "expected_by_stamp": 5369,
+   "unique_stamps": 5369,
+   "stamp_zero": 0,
+   "stamp_backward": 0,
+   "stamp_duplicate": 0,
+   "stamp_step_not_dt": 0,
+   "stamp_max_forward_jump_s": 0.05,
+   "stamp_minus_wallclock_days": -47.4,
+   "wall_gap_s": {
+    "n": 5368,
+    "mean": 0.0493,
+    "p50": 0.0499,
+    "p95": 0.0518,
+    "p99": 0.0526,
+    "max": 0.791
+   },
+   "wall_gaps_over_100ms": 3,
+   "wall_gaps_over_250ms": 1,
+   "wall_gap_top5_s": [
+    0.791,
+    0.128,
+    0.12,
+    0.059,
+    0.058
+   ],
+   "min_msgs_in_1s_window": 6,
+   "burst_size_max": 20,
+   "bursts_ge3": 5,
+   "stamps_outside_input_range": 20
+  }
+ },
+ "frame_ids": {
+  "velocity": {
+   "base_link": 5369
+  },
+  "position": {
+   "map": 5345
+  },
+  "position_child": {
+   "base_link": 5345
+  },
+  "status": {
+   "base_link": 5369
+  }
+ },
+ "velocity_vs_odom_twist_maxdiff": 0.0,
+ "covariance": {
+  "pose_nonzero_idx": [
+   0,
+   7,
+   14,
+   21,
+   28,
+   35
+  ],
+  "twist_nonzero_idx": [
+   0,
+   7,
+   14,
+   21,
+   28,
+   35
+  ],
+  "pose_var_x": {
+   "n": 5345,
+   "mean": 0.483,
+   "p50": 0.063,
+   "p95": 0.562,
+   "p99": 7.255,
+   "max": 7.255
+  },
+  "twist_var_vx": {
+   "n": 5345,
+   "mean": 0.00295,
+   "p50": 0.00112,
+   "p95": 0.00621,
+   "p99": 0.01661,
+   "max": 0.58345
+  },
+  "pose_var_z_nonzero": 5345
+ },
+ "position_shape": {
+  "frac_y_zero": 0.0,
+  "frac_z_zero": 0.0,
+  "frac_orientation_set": 1.0,
+  "x_range": [
+   103417.61,
+   103634.04
+  ],
+  "y_range": [
+   85735.14,
+   86084.51
+  ],
+  "z_range": [
+   164.78,
+   168.65
+  ],
+  "first_xyz": [
+   103633.96,
+   86059.19,
+   165.31
+  ],
+  "last_xyz": [
+   103417.61,
+   85735.14,
+   168.54
+  ]
+ },
+ "nonfinite_or_bad": {
+  "vel_nonfinite": 0,
+  "odo_nonfinite": 0,
+  "cov_negative": 0,
+  "cov_nonfinite": 0,
+  "quat_bad": 0
+ },
+ "status": {
+  "frame_count_first_last": [
+   1,
+   5369
+  ],
+  "lost_at_probe_by_frame_count": 0,
+  "valid_frac": 0.9963,
+  "slip_frac": 0.0,
+  "mode_hist": {
+   "0": 773,
+   "1": 1397,
+   "2": 419,
+   "3": 101,
+   "5": 2659,
+   "6": 20
+  },
+  "step_time_us_field": {
+   "n": 5369,
+   "mean": 1464.3,
+   "p50": 1350.7,
+   "p95": 2351.6,
+   "p99": 2686.1,
+   "max": 15246.4
+  },
+  "sigma_v": {
+   "n": 5369,
+   "mean": 0.0415,
+   "p50": 0.0335,
+   "p95": 0.0787,
+   "p99": 0.1276,
+   "max": 0.7638
+  }
+ },
+ "latency": {
+  "in2out_vehicle_ms": {
+   "n": 10456,
+   "mean": 50.7,
+   "p50": 51.1,
+   "p95": 53.1,
+   "p99": 143.1,
+   "max": 767.8
+  },
+  "in2out_vehicle_unanswered": 0,
+  "in2out_vehicle_unanswered_before_last_output": 0,
+  "in2out_vehicle_over_100ms": 153,
+  "in2out_vehicle_over_250ms": 24,
+  "in2out_vehicle_steady_ms": {
+   "n": 10259,
+   "mean": 49.6,
+   "p50": 51.1,
+   "p95": 53.0,
+   "p99": 53.9,
+   "max": 767.8
+  },
+  "in2out_vehicle_steady_over_100ms": 35,
+  "in2out_vehicle_steady_over_250ms": 24,
+  "in2out_all_ms": {
+   "n": 15662,
+   "mean": 43.4,
+   "p50": 50.2,
+   "p95": 52.9,
+   "p99": 144.4,
+   "max": 767.8
+  },
+  "in2out_all_unanswered": 0,
+  "in2out_all_unanswered_before_last_output": 0,
+  "in2out_all_over_100ms": 223,
+  "in2out_all_over_250ms": 36,
+  "in2out_all_steady_ms": {
+   "n": 15372,
+   "mean": 42.2,
+   "p50": 50.1,
+   "p95": 52.8,
+   "p99": 53.7,
+   "max": 767.8
+  },
+  "in2out_all_steady_over_100ms": 51,
+  "in2out_all_steady_over_250ms": 36,
+  "proc_ms": {
+   "n": 5369,
+   "mean": 9.64,
+   "p50": 1.6,
+   "p95": 2.88,
+   "p99": 35.01,
+   "max": 2028.07
+  },
+  "age_ms": {
+   "n": 5325,
+   "mean": 58.8,
+   "p50": 51.7,
+   "p95": 53.3,
+   "p99": 187.0,
+   "max": 2076.4
+  }
+ },
+ "node_process": {
+  "pids": [
+   896
+  ],
+  "cmdline": "/usr/bin/python3 /tmp/ws/install/tram_state_estimator/lib/tram_state_estimator/tram_estimator --ros-args -r __node:=tram_state_estimator --params-file /tmp/ws/install/tram_state_estimator/share/tram_state_estimator/config/tram.yaml",
+  "cpu_times_user_sys": [
+   32.5,
+   1.23
+  ],
+  "samples": 272,
+  "cpu_pct_1core": {
+   "n": 272,
+   "mean": 12.3,
+   "p50": 12.0,
+   "p95": 13.0,
+   "p99": 14.3,
+   "max": 53.0
+  },
+  "rss_mb_first_last_max": [
+   64.0,
+   69.7,
+   69.7
+  ],
+  "threads_max": 23,
+  "rss_slope_mb_per_min_after_30s": 0.026,
+  "rss_mean_first_half_vs_second_half_mb": [
+   69.7,
+   69.7
+  ]
+ },
+ "publisher_qos": {
+  "/result/velocity": [
+   {
+    "node": "tram_state_estimator",
+    "type": "tram_vehicle_msgs/msg/VelocitySensor",
+    "reliability": "RELIABLE",
+    "durability": "VOLATILE",
+    "history": "UNKNOWN",
+    "depth": 0
+   }
+  ],
+  "/result/position": [
+   {
+    "node": "tram_state_estimator",
+    "type": "nav_msgs/msg/Odometry",
+    "reliability": "RELIABLE",
+    "durability": "VOLATILE",
+    "history": "UNKNOWN",
+    "depth": 0
+   }
+  ],
+  "/tram/estimator_status": [
+   {
+    "node": "tram_state_estimator",
+    "type": "tram_msgs/msg/EstimatorStatus",
+    "reliability": "RELIABLE",
+    "durability": "VOLATILE",
+    "history": "UNKNOWN",
+    "depth": 0
+   }
+  ]
+ },
+ "accuracy_sanity_vs_bag_gnss": {
+  "v_pairs": 2642,
+  "v_mae": 0.0646,
+  "v_rmse": 0.1736,
+  "v_bias": 0.0112,
+  "pos_probe_first_fix": {
+   "frame": "mgrs:37UCB",
+   "pairs": 2653,
+   "mean_m": 11.6,
+   "max_m": 20.43,
+   "end_m": 10.31,
+   "mean_m_unwrapped": 11.6,
+   "square_mismatch": 0
+  },
+  "note": "санити-проверка по GNSS master из bag в системе выхода ноды (определяется по выходу); mean_m/max_m/end_m — ошибка как у судьи, без вычета скачка на границе 100-км квадратов MGRS; mean_m_unwrapped — с вычетом (справочно); square_mismatch — пар по разные стороны границы квадратов; для относительных систем начало — первый master fix, принятый нодой: probe_first_fix верен, если нода запущена до bag"
+ }
+}

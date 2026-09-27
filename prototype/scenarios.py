@@ -4,8 +4,8 @@
 """
 
 import numpy as np
-from plant import Plant, Track, P
-from estimator import Estimator, EP, MODE_NAMES, STANDSTILL
+from plant import Plant, Track
+from estimator import Estimator, EP, STANDSTILL
 
 DT = 0.001
 SUB = int(round(EP.dt / DT))

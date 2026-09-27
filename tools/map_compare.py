@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Сравнение карт путей для следования по карте (поток frame, 26.09).
+"""Сравнение карт путей для следования по карте.
 
 Три варианта карты (все — по точке base_link, только обучающие прогоны
 tools/split.json:train для EVAL-набора):
@@ -26,8 +26,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-
-import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "analysis"))

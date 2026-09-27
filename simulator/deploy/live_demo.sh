@@ -84,7 +84,7 @@ fi
 sleep 3
 echo "rosbridge ws://$ADDRESS:$PORT ($MODE), нода tram_state_estimator, прогон $BAG по кругу (x$RATE)"
 # Каждый круг — новое проигрывание: метки времени идут назад, нода переходит
-# на новую выставку (сброс по разрыву времени — WP4 потока robust).
+# на новую выставку (сброс по разрыву времени).
 while true; do
   ros2 bag play -r "$RATE" "$DATA/$BAG" >/tmp/play.log 2>&1 || true
   sleep 1

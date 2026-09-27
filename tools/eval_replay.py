@@ -9,7 +9,7 @@
   из боевого config/tram.yaml.
 * Связка — как в tram_node.py: Runner(params, track_map, origin, ...).
   Аргументы Runner подставляются из параметров ноды по имени (`x` или
-  `x_s`); если у Runner есть **kwargs (настройки Position после WP10) —
+  `x_s`); если у Runner есть **kwargs (настройки Position) —
   то же для аргументов Position.__init__. Что не подошло (кроме параметров
   самой ноды: map_file, начало, frame_id, пульс, sheet) — пишется в
   meta["node_params_unused"] и в шапку EVAL.md.
@@ -17,20 +17,20 @@
   первые N с записи от первой точки master (как analysis/evaluate.events)
   или весь прогон (--gnss full: так выглядит bag жюри с полным GNSS).
   Статус NavSatFix передаётся в on_fix, если Runner его принимает. Если в
-  runner.py есть StartSorter (нода после WP24), стартовый всплеск
-  сортируется так же: часы — время записи в bag, окно — start_sort_s.
-  Пульс ноды (WP16) не эмулируется: он публикует те же узлы сетки, что
+  runner.py есть StartSorter, стартовый всплеск сортируется так же, как в
+  ноде: часы — время записи в bag, окно — start_sort_s.
+  Пульс ноды не эмулируется: он публикует те же узлы сетки, что
   связка выдаёт при следующем сообщении (прогноз на копии тем же кодом),
   с теми же значениями — меняется только момент публикации.
 * Выход: скорость публикуется всегда; положение — только при pos_valid
-  (нода после WP10 не публикует /result/position без якоря или у края
+  (нода не публикует /result/position без якоря или у края
   квадрата MGRS) и конечных x, y, z — поле PV.
 * Исключение в связке = падение ноды: дальше у этой связки выходов нет
   (в ROS 2 исключение в колбэке валит rclpy.spin).
 * База «только колесо»: тот же Runner (сетка, выставка, карта, привязка к
   остановкам), но вместо ядра — среднее свежих показаний тележек
   × meas_scale / 3,6 (без заглядывания вперёд), путь — интеграл на сетке.
-  Совпадает с NaiveRunner из tools/audit/core_metrics.py.
+  Совпадает с NaiveRunner из tools/core_metrics.py.
 """
 
 import ast
@@ -70,7 +70,7 @@ PARAM_NAMES = {f.name for f in fields(core.Params)}
 RUNNER_KW = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeout_s",
              "init_window": "init_window_s"}
 # параметры самой ноды (не Runner): карта, начало, имена систем, пульс и
-# сортировка всплеска (WP16/WP24), выбор листа (WP22)
+# сортировка всплеска, выбор листа
 NODE_ONLY = {"map_file", "origin_lat", "origin_lon", "origin_alt", "frame_id", "child_frame_id",
              "sheet", "pulse_horizon_s", "pulse_margin_s", "pulse_margin_nohandle_s",
              "pulse_period_s", "start_sort_s",
@@ -80,7 +80,7 @@ NODE_ONLY = {"map_file", "origin_lat", "origin_lon", "origin_alt", "frame_id", "
              "wheel_scale_online"}
 # --set vehicle=match — только для оценки: вагон по имени прогона (30618_…)
 VEHICLE_MATCH = "match"
-START_SORT_DEFAULT = 0.1     # с: start_sort_s ноды после WP24, если его нет в листе
+START_SORT_DEFAULT = 0.1     # с: start_sort_s ноды, если его нет в листе
 NODE_PY = PKG / "tram_state_estimator" / "tram_node.py"
 
 
@@ -234,7 +234,7 @@ def make_params(sheet, overrides=None, bag=None):
 
 
 def apply_vehicle(p, node, bag=None):
-    """-> (Params, сведения о вагоне). Код без vehicle.py (до 26.09) — как есть."""
+    """-> (Params, сведения о вагоне). Старый код пакета без vehicle.py — как есть."""
     try:
         from tram_state_estimator import vehicle as V
     except ImportError:
@@ -261,7 +261,7 @@ def _named(fn):
 
 def runner_arg_names(cls=None):
     """Имена аргументов Runner, которые берутся из параметров ноды. При
-    **kwargs у Runner (после WP10: настройки Position) — плюс аргументы
+    **kwargs у Runner (настройки Position) — плюс аргументы
     Position.__init__."""
     cls = cls or runner_mod.Runner
     names = _named(cls.__init__)
@@ -289,14 +289,14 @@ def make_runner(params, node, tmap, cls=None):
             kw[name] = node[key]
             used.add(key)
     r = cls(params, track_map=tmap, origin=origin, **kw)
-    # код до WP10: окно выставки задаётся после __init__ (как tram_node.py до правок)
+    # старая версия пакета: окно выставки задаётся после __init__
     if ("init_window" not in kw and "init_window_s" in node and hasattr(r, "pos")
             and hasattr(r.pos, "init_window")):
         r.pos.init_window = float(node["init_window_s"])
     if cls is runner_mod.Runner and node.get("wheel_scale_online"):
         try:
             from tram_state_estimator import vehicle as V
-        except ImportError:         # код до 26.09
+        except ImportError:         # старый код пакета без vehicle.py
             V = None
         if V is not None and hasattr(V, "wheel_scale_hook"):
             V.wheel_scale_hook(r, True)
@@ -340,7 +340,7 @@ class NaiveCore(core.Estimator):
 
 
 class NaiveRunner(runner_mod.Runner):
-    """Runner с базой вместо ядра. Сброс связки (после WP4 пересоздаёт ядро
+    """Runner с базой вместо ядра. Сброс связки (пересоздаёт ядро
     через __init__) снова ставит базу. Подкласс, а не подмена метода у
     экземпляра: копия связки (deepcopy для инъекций) остаётся независимой."""
 
@@ -563,7 +563,7 @@ def runner_origin(r):
 
 def detect_frame(node, requested, XYZ):
     """Система координат выхода Runner'а. auto: параметр листа projection
-    (после слияния WP10), иначе equirect (код до правок); затем проверка по
+    (если он есть), иначе equirect (старая версия пакета); затем проверка по
     величине |y|: > 1000 км — UTM, > 20 км — MGRS внутри квадрата."""
     note = []
     grid = str(node.get("mgrs_grid", "") or "")

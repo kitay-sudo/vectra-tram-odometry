@@ -5,7 +5,7 @@
 карта из map_file. Сообщения подаются в порядке записи в bag (tb), как их
 проигрывает `ros2 bag play`; GNSS fix — только первые init_window_s секунд
 (в проверочных bag GNSS гарантирован лишь в начале, README датасета §3.2)
-или весь кусок (gnss="all", проверка C2).
+или весь кусок (gnss="all": GNSS после окна не двигает сетку и скорость).
 
 Эталон скорости — |GNSS master/vel| по горизонтали (основной) и rover/vel
 (контрольный): «эталонной скорости нет, есть 4 источника» (организаторы,
@@ -56,10 +56,7 @@ def sheet(over=None):
     params = Params.from_dict({k: v for k, v in got.items() if k in names})
     node = {k: v for k, v in got.items() if k not in names}
     node.update(over or {})
-    try:
-        from tram_state_estimator import vehicle
-    except ImportError:             # код до 26.09
-        return params, node
+    from tram_state_estimator import vehicle
     return vehicle.apply_node(params, node)[0], node
 
 
@@ -74,7 +71,7 @@ def _accepts(fn, name):
 
 # Параметры положения: (ключ листа / ноды, аргумент Runner/Position). Ключи
 # листа — как в tram_node.py; передаются, только если есть в листе или в
-# переопределениях и Runner их принимает (у ветки без потока position — нет).
+# переопределениях и Runner их принимает.
 POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("mgrs_grid", "mgrs_grid"), ("utm_zone", "utm_zone"),
                  ("mgrs_guard_m", "mgrs_guard_m"), ("scale_adapt", "scale_adapt"),
@@ -82,7 +79,7 @@ POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("keep_offset_z", "keep_offset_z"), ("output_point", "output_point"),
                  ("antenna_master_x", "antenna_master_x"),
                  ("antenna_rover_x", "antenna_rover_x"), ("antenna_z", "antenna_z"),
-                 # коррекция по GNSS после окна (26.09): имена — как у ноды
+                 # коррекция по GNSS после окна: имена — как у ноды
                  ("gnss_correction", "gnss_correction"),
                  ("gnss_sigma_rtk_m", "gnss_sigma_rtk_m"),
                  ("gnss_sigma_sbas_m", "gnss_sigma_sbas_m"),
@@ -107,7 +104,7 @@ def _explicit(fn, name):
 
 def runner_accepts(name):
     """Принимает ли Runner параметр name: явно в __init__ или через **kwargs,
-    которые уходят в Position (поток position: Runner(..., **position_opts))."""
+    которые уходят в Position (Runner(..., **position_opts))."""
     from tram_state_estimator import runner as R
     init = R.Runner.__init__
     if _explicit(init, name):

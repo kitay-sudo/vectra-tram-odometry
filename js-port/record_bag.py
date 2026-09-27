@@ -26,7 +26,7 @@ sheet = sys.argv[3] if len(sys.argv) > 3 else os.path.join(X.PKG, "config", "tra
 params, node, _ = X.resolve_sheet(sheet)
 a = X.bagio.load(bag)
 
-try:        # формы срыва из ревью потока «срыв» (tools/slip_study.py EDGE): блокировка, сдвиг тележек…
+try:        # формы срыва на границах (tools/slip_study.py EDGE): блокировка, сдвиг тележек…
     import slip_study as SS  # noqa: E402
 except ImportError:
     SS = None

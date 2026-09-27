@@ -10,11 +10,6 @@ source /opt/ros/humble/setup.bash
 [ -f /ws/install/setup.bash ] && source /ws/install/setup.bash
 cd /repo || exit 1
 
-if [ ! -f tools/eval.py ]; then
-  echo "[eval] tools/eval.py в этой версии репозитория нет (пишет поток оценки, WP7)."
-  echo "[eval] ПРОПУЩЕНО: оценивать нечем. Сервис готов, запустится, когда файл появится."
-  exit 0
-fi
 if [ -z "$(ls -A /repo/data 2>/dev/null)" ]; then
   echo "[eval] /repo/data пуст: задайте DATA_DIR в .env (папка с прогонами data/<bag_id>/)."
 fi

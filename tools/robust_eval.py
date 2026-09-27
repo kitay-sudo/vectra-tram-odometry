@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
-"""robust_eval — офлайн-проверка правок устойчивости связки Runner на реальных
-прогонах (WP3, WP4, WP6, WP23; docs/ROBUST.md).
+"""robust_eval — офлайн-проверка защиты входов и времени связки Runner на
+реальных прогонах (docs/ROBUST.md): проверка входов, разрывы времени, сетка,
+кратная dt, приведение показаний к шагу.
 
 Запуск из корня репозитория в образе vectra/tram:dev (numpy есть только там):
 
     git show main:ros2_ws/src/tram_state_estimator/tram_state_estimator/runner.py \
-        > out/robust/runner_main.py                      # связка до правок (на хосте)
+        > out/robust/runner_main.py                      # связка без защиты (на хосте)
     python3 tools/robust_eval.py compare --set holdout --workers 2
     python3 tools/robust_eval.py compare --set train --variants main,same --sheets json
 
 Варианты связки:
-  main    runner.py из ветки main (до правок) — out/robust/runner_main.py;
-  same    новая связка с сеткой как в main (t += dt от первой метки) и без
-          приведения: проверка, что защита входов и времени (WP3, WP4) на
-          реальных данных ничего не меняет;
-  wp23    новая связка, узлы сетки кратны dt, целый счётчик (WP23), без
-          приведения;
-  wp23_6  новая связка по умолчанию: WP23 + приведение показаний к шагу (WP6).
+  main    связка без защиты входов и времени — out/robust/runner_main.py
+          (выгрузка runner.py из коммита до неё);
+  same    текущая связка с сеткой от первой метки (t += dt) и без
+          приведения: проверка, что защита входов и времени на реальных
+          данных ничего не меняет;
+  grid      текущая связка, узлы сетки кратны dt, целый счётчик, без
+            приведения;
+  grid_age  текущая связка по умолчанию: узлы кратны dt + приведение
+            показаний к шагу.
+  Прежние имена wp23 и wp23_6 (так они подписаны в docs/ROBUST.md)
+  принимаются как синонимы grid и grid_age.
 Листы: json — config/tram_calibration.json (как analysis/evaluate.py; это
 источник листа жюри, A(u,v) подогнана по всем 122 bag — на holdout значимы
-только разности вариантов); evaldraft — снимок листа EVAL потока calib
-(только split train), out/robust/eval_draft_calibration.json;
-json_nocreep — json с c_creep = c_creep_drag = 0 (правка WP5 потока calib).
+только разности вариантов); evaldraft — черновик оценочного листа (только
+split train), out/robust/eval_draft_calibration.json;
+json_nocreep — json с c_creep = c_creep_drag = 0 (крип убран по данным).
 Карта: analysis/cache/track_map_train.npz (только обучающие прогоны). GNSS —
 первые 3 с (analysis/evaluate.events), эталон — |v| GNSS master (и rover).
 Набор holdout — 15 чистых отложенных (tools/split.json: holdout_scored),
@@ -72,9 +77,9 @@ def params(sheet):
     """json — config/tram_calibration.json: источник листа жюри tram.yaml,
     таблица A(u,v) подогнана по ВСЕМ 122 bag, включая отложенные (DATA.md
     §4): абсолютные числа на holdout оптимистичны, значимы разности
-    вариантов. evaldraft — снимок листа EVAL потока calib (калибровка только
-    по split train) в out/robust/eval_draft_calibration.json; ключи, которых
-    нет в Params этой ветки (новое ядро calib), отбрасываются."""
+    вариантов. evaldraft — черновик оценочного листа (калибровка только по
+    split train) в out/robust/eval_draft_calibration.json; ключи, которых
+    нет в Params этой версии ядра, отбрасываются."""
     if sheet.startswith("evaldraft"):
         from dataclasses import fields
         from tram_state_estimator.estimator_core import Params
@@ -120,6 +125,15 @@ class LegacyGrid(Runner):
         return outs
 
 
+ALIASES = {"wp23": "grid", "wp23_6": "grid_age"}
+
+
+def canon(variant):
+    """Имя варианта с учётом прежних имён (суффикс _f05 сохраняется)."""
+    base, suf = (variant[:-4], "_f05") if variant.endswith("_f05") else (variant, "")
+    return ALIASES.get(base, base) + suf
+
+
 def make(variant, p):
     tmap = TrackMap.load(MAP) if MAP.exists() else None
     if variant == "main":
@@ -131,7 +145,7 @@ def make(variant, p):
         r = LegacyGrid(p, track_map=tmap)
     else:
         r = Runner(p, track_map=tmap)
-        r.age_comp = variant == "wp23_6"
+        r.age_comp = variant == "grid_age"
     if fwd is not None:
         r.FWD_JUMP_S = fwd
     return r
@@ -208,7 +222,7 @@ def one(job):
 
 def deltas(base, other):
     """Разница выходов двух вариантов: на общих метках (±1 мс), а если сетки
-    сдвинуты (WP23) — линейной интерполяцией другого на метки базы."""
+    сдвинуты (узлы кратны dt) — линейной интерполяцией другого на метки базы."""
     Tb, Vb, Xb = base
     To, Vo, Xo = other
     j = np.clip(np.searchsorted(To, Tb), 1, len(To) - 1)
@@ -266,7 +280,7 @@ def bag_set(name):
 
 def cmd_compare(args):
     bags = bag_set(args.set)
-    variants = args.variants.split(",")
+    variants = [canon(v) for v in args.variants.split(",")]
     sheets = args.sheets.split(",")
     if "main" in variants and not MAIN_SRC.exists():
         sys.exit(f"нет {MAIN_SRC}: git show main:.../runner.py > {MAIN_SRC}")
@@ -360,7 +374,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["compare"])
     ap.add_argument("--set", default="holdout")
-    ap.add_argument("--variants", default="main,same,wp23,wp23_6")
+    ap.add_argument("--variants", default="main,same,grid,grid_age")
     ap.add_argument("--sheets", default="json,json_nocreep")
     ap.add_argument("--workers", type=int, default=2)
     args = ap.parse_args()

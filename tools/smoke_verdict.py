@@ -4,7 +4,7 @@
     python3 tools/smoke_verdict.py <out>/summary.json --alive 1 --shut 1 --trace 0 \
         [--fixture test/data/e2e_*.npz --raw <out>/raw.npz --need-position]
 
-Критерии (TODO WP9): >= 19 Гц по меткам и стенным часам; in2out p99 < 100 мс в
+Критерии: >= 19 Гц по меткам и стенным часам; in2out p99 < 100 мс в
 установившемся режиме; >= 95 % узлов сетки; /result/position — не меньше 95 %
 узлов сетки и не больше, чем /result/velocity (до якоря нода положение не
 публикует); 0 NaN; frame_id map/base_link; нода жива; останов по SIGINT;
@@ -20,7 +20,7 @@ master+rover, tf антенн; e2e_replay.reference) в системе выхо�
 
 С --bag-meta (metadata.yaml bag, проигранного целиком) проверяется и обвязка:
 получила ли проба все входы bag. Если проба потеряла начало bag (гонка
-обнаружения DDS на старте проигрывания, риск 16), нода, скорее всего, потеряла
+обнаружения DDS на старте проигрывания), нода, скорее всего, потеряла
 его тоже; такой прогон с проваленной проверкой помечается «НЕ ЗАСЧИТАН» (код 3),
 а не FAIL ноды.
 """
@@ -141,7 +141,7 @@ def main():
                          f"пар в разных квадратах {pos['square_mismatch']} из {pos['pairs']}",
                          pos["square_mismatch"] == 0))
     info = [("in2out p99 с учётом старта (справочно)", f"p99 {al.get('p99')} / max {al.get('max')}"),
-            ("трассировки при останове (справочно, WP3)", str(a.trace)),
+            ("трассировки при останове (справочно)", str(a.trace)),
             ("CPU ноды, % ядра", str(R.get("node_process", {}).get("cpu_pct_1core"))),
             ("RSS ноды, МБ (первый/последний/макс)", str(R.get("node_process", {}).get("rss_mb_first_last_max"))),
             ("точность по GNSS из bag (санити; положение — против АНТЕННЫ master: ~10 м — плечо до base_link, не ошибка)",
@@ -163,7 +163,7 @@ def main():
         print(f"| проба получила все входы bag (обвязка, справочно) | "
               f"{'да' if not loss else 'потеряно: ' + json.dumps(loss)} | — |")
     verdict = "PASS" if passed else ("НЕ ЗАСЧИТАН" if loss else "FAIL")
-    note = (" (проба потеряла начало bag: гонка обнаружения DDS на старте проигрывания, риск 16)"
+    note = (" (проба потеряла начало bag: гонка обнаружения DDS на старте проигрывания)"
             if loss and not passed else "")
     print(f"\n[smoke] ИТОГ: {verdict}{note}")
     if a.json:

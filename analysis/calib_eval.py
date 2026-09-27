@@ -1,10 +1,10 @@
 """Оценка листов параметров на фиксированном разбиении tools/split.json.
 
-Метрики те же, что в аудите (tools/audit/core_metrics.py): прогон в порядке
+Метрики те же, что в tools/core_metrics.py: прогон в порядке
 записи через Runner, GNSS в связку только первые 3 с, пары «выход — эталон»
 по ближайшей метке <= 0,05 с, фазы по ручке и скорости GNSS, причинная база
 «только колесо» на той же карте и с теми же привязками. Средние взвешены
-числом пар скорости (как critic_offline.py sub15).
+числом пар скорости.
 
 Режимы (из корня репозитория, в образе vectra/tram:dev):
 
@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PKG = ROOT / "ros2_ws" / "src" / "tram_state_estimator"
 SPLIT = ROOT / "tools" / "split.json"
 OUT = ROOT / "out" / "calib"
-for p in (ROOT / "analysis", PKG, ROOT / "tools" / "audit"):
+for p in (ROOT / "analysis", PKG, ROOT / "tools"):
     sys.path.insert(0, str(p))
 
 import bagio                                                    # noqa: E402
@@ -219,7 +219,7 @@ def fmt_speed(tag, s):
 
 def full_summary(res, ids):
     """Сводка для таблицы: из агрегата core_metrics плюс взвешенные по парам
-    скорости средние по прогонам (как critic_offline.py sub15)."""
+    скорости средние по прогонам."""
     agg = CM.aggregate(res, ids)
     done = [b for b in ids if res.get(b) is not None]
     rows = [CM.per_run_row(b, res[b]) for b in done]

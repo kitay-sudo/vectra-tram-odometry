@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """До / после по двум прогонам tools/eval.py (поток slip): инъекции по видам и
-чистые метрики. Таблицы — Markdown для docs/audit/SLIP.md.
+чистые метрики. Таблицы — Markdown.
 
   python3 tools/slip_compare.py out/eval_before15 out/eval_after15 [--runs a,b,c]
 

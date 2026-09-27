@@ -185,7 +185,7 @@ def test_bad_table_falls_back_to_auto_with_warning(ids, scales):
 
 
 def test_sheet_without_vehicle_params_is_unchanged():
-    """Лист до 26.09 (без vehicle): Params как есть, без предупреждения."""
+    """Старый лист без vehicle: Params как есть, без предупреждения."""
     p, info = V.apply_node(BASE, {"map_file": ""})
     assert p == BASE and info["used"] == "auto" and info["warning"] is None
 
