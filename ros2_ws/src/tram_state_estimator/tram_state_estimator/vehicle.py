@@ -42,7 +42,10 @@ def normalize(value):
 
 def table(ids, scales):
     """Таблица вагонов листа -> ({вагон: масштаб}, ошибка или None)."""
-    ids = [normalize(x) for x in (ids or ())]
+    try:
+        ids = [normalize(x) for x in (ids or ())]
+    except TypeError:           # скаляр вместо списка (-p vehicle_ids:=30618)
+        return {}, "vehicle_ids: не список"
     try:
         scales = [float(x) for x in (scales or ())]
     except (TypeError, ValueError):

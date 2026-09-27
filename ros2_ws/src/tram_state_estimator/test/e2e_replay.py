@@ -44,9 +44,10 @@ def load_fixture(path=FIXTURE):
     return fx
 
 
-def sheet():
+def sheet(over=None):
     """(Params, параметры ноды) из config/tram.yaml — как в tram_node.py
-    (с масштабом колёс вагона из параметра vehicle, если он есть)."""
+    (с масштабом колёс вагона из параметра vehicle, если он есть). over —
+    параметры ноды поверх листа (до выбора вагона: vehicle="auto" и т. п.)."""
     import yaml
     from tram_state_estimator.estimator_core import Params
     with open(os.path.join(PKG, "config", "tram.yaml"), encoding="utf-8") as fh:
@@ -54,6 +55,7 @@ def sheet():
     names = {f.name for f in fields(Params)}
     params = Params.from_dict({k: v for k, v in got.items() if k in names})
     node = {k: v for k, v in got.items() if k not in names}
+    node.update(over or {})
     try:
         from tram_state_estimator import vehicle
     except ImportError:             # код до 26.09
@@ -120,8 +122,7 @@ def make_runner(use_map=True, **over):
     projection="utm"); передаются, только если Runner их принимает."""
     from tram_state_estimator.runner import Runner
     from tram_state_estimator.track_map import TrackMap
-    params, node = sheet()
-    node.update(over)
+    params, node = sheet(over)
     tmap = None
     mf = node.get("map_file", "")
     if use_map and mf:
@@ -140,6 +141,14 @@ def make_runner(use_map=True, **over):
     pos = getattr(r, "pos", None)
     if pos is not None and hasattr(pos, "init_window") and "init_window" not in kw:
         pos.init_window = node.get("init_window_s", 3.0)
+    if node.get("wheel_scale_online"):
+        # онлайн-масштаб колёс — как в ноде (tram_node.py: wheel_scale_hook)
+        try:
+            from tram_state_estimator import vehicle as V
+        except ImportError:
+            V = None
+        if V is not None:
+            V.wheel_scale_hook(r, True)
     return r, node
 
 

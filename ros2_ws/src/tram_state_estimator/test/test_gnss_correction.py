@@ -160,15 +160,25 @@ def final_err(outs, r):
 
 # ------------------------------------------------------------ бит-в-бит
 
+# Как было в main до потока vehicle: общий лист (вагон auto), без онлайн-масштаба
+# колёс. Карта пакета с 27.09 другая (поток loops: ветки за тупиком у западной
+# конечной, облако там без проходов-веток), поэтому с main сверяется выход без
+# карты; с картой main (файл из main 56da11b) интеграция 27.09 дала ровно
+# MAIN_DIGEST[True] (out/int3/dbg/digest.py).
+MAIN_CFG = dict(vehicle="auto", wheel_scale_online=False)
+
+
 def test_flag_off_is_bit_identical_to_main():
     """gnss_correction: false — выход как в main: GNSS весь кусок = GNSS в
-    окне (C2), и (в окружении записи) sha256 равен выходу main."""
+    окне (C2), и (в окружении записи, без карты) sha256 равен выходу main."""
     fx = E.load_fixture()
     for use_map in (True, False):
-        a = E.digest(E.replay(fx, use_map=use_map, gnss="all", gnss_correction=False))
-        b = E.digest(E.replay(fx, use_map=use_map, gnss="window", gnss_correction=False))
+        a = E.digest(E.replay(fx, use_map=use_map, gnss="all", gnss_correction=False,
+                              **MAIN_CFG))
+        b = E.digest(E.replay(fx, use_map=use_map, gnss="window", gnss_correction=False,
+                              **MAIN_CFG))
         assert a == b
-        if np.__version__ == MAIN_NUMPY:
+        if np.__version__ == MAIN_NUMPY and not use_map:
             assert a == MAIN_DIGEST[use_map]
 
 
@@ -593,3 +603,77 @@ def test_rover_only_epoch_takes_master_status():
     e0 = final_err(feed(r0, 0.0, 300.0, gnss=gnss), r0)
     assert abs(final_err(outs, r) - e0) < 3.0
     assert r.pos.n_corr_big == 0
+
+
+# ------------------------------------------------ онлайн-масштаб колёс (поток vehicle)
+
+def _multi_stop_profile(stops, dwell=12.0):
+    """Разгон до V, ход, торможение ACC до остановки ровно на каждой из
+    stops (м пути) и стоянка dwell с -> (v(t), s(t), ручка(t), конец)."""
+    ph = [(T_START, 0.0)]                          # (длительность, ускорение)
+    x = 0.0
+    da = V * V / (2.0 * ACC)
+    for xs in stops:
+        cruise = (xs - x - 2.0 * da) / V
+        assert cruise > 0.0
+        ph += [(V / ACC, ACC), (cruise, 0.0), (V / ACC, -ACC), (dwell, 0.0)]
+        x = xs
+    t0 = np.cumsum([0.0] + [d for d, _ in ph[:-1]])
+    v0, s0 = [0.0], [0.0]
+    for (d, a) in ph[:-1]:
+        s0.append(s0[-1] + v0[-1] * d + 0.5 * a * d * d)
+        v0.append(max(0.0, v0[-1] + a * d))
+
+    def _k(t):
+        return max(0, int(np.searchsorted(t0, t, side="right")) - 1)
+
+    def v(t):
+        k = _k(t)
+        return max(0.0, v0[k] + ph[k][1] * (t - t0[k]))
+
+    def s(t):
+        k = _k(t)
+        u = t - t0[k]
+        return s0[k] + v0[k] * u + 0.5 * ph[k][1] * u * u
+
+    def notch(t):
+        a = ph[_k(t)][1]
+        return 3 if a > 0 else (-3 if a < 0 else 0)
+
+    return (v, s, notch), float(t0[-1] + ph[-1][0])
+
+
+def test_online_wheel_scale_ignores_mid_route_gnss():
+    """Онлайн-масштаб колёс (vehicle.OnlineWheelScale, wheel_scale_online)
+    учится по привязкам к остановкам. Поправки GNSS двигают курсор, и без
+    защиты сдвиг привязки после них уже не ошибка колёс, а скорость начинает
+    зависеть от GNSS. Колёса врут на +1,2 %, три остановки через 700 м:
+    при GNSS только в окне масштаб включается (≈ 0,988); при GNSS весь
+    прогон (RTK) положение поправляется, а скорость на каждом шаге та же,
+    что при GNSS в окне, — масштаб учится по копии положения без поправок."""
+    from tram_state_estimator import vehicle as VH
+    stops = [700.0, 1400.0, 2100.0]
+    prof, t_end = _multi_stop_profile(stops)
+    x = np.arange(-50.0, 3000.0, 1.0)
+    P = np.c_[E0 + x, np.full(len(x), N0), np.full(len(x), ALT_RAIL)]
+    st = [(*_latlon(E0 + xs, N0), math.pi / 2, 1.0) for xs in stops]
+    res = {}
+    # «first3» — ровно точки окна выставки (±3 с от первой: эпохи до 3,013 с),
+    # «full» — те же и все после окна
+    for name, gnss in (("first3", lambda t: t <= 3.05), ("full", lambda t: True)):
+        tm = TrackMap.from_polylines([P], crs="utm", zone=37, bidirectional=False, stops=st)
+        r = VH.wheel_scale_hook(Runner(_tram(), track_map=tm), True)
+        res[name] = (r, feed(r, 0.0, t_end, wheel_gain=1.012, prof=prof, gnss=gnss))
+    (r3, o3), (rf, of) = res["first3"], res["full"]
+    assert r3.pos.anchors >= 2 and r3._ws_pos is None      # без GNSS после окна копии нет
+    assert r3.wheel_scale.k < 0.995                        # масштаб колёс включился
+    assert rf.pos.n_corr > 0 and rf._ws_pos is not None
+    assert max(abs(a["x"] - b["x"]) for a, b in zip(o3, of)) > 1.0   # положение — за GNSS
+    assert [o["stamp"] for o in o3] == [o["stamp"] for o in of]
+    assert [o["v"] for o in o3] == [o["v"] for o in of]              # скорость — нет
+    assert rf.wheel_scale.k == r3.wheel_scale.k
+    # и после сброса (новый прогон) копии нет, пока нет GNSS после окна
+    rf.reset("тест")
+    assert rf._ws_pos is None
+    f = rf.fork()
+    assert f._ws_pos is None

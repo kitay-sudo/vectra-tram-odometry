@@ -174,7 +174,9 @@ def test_unknown_vehicle_falls_back_to_auto_with_warning(value):
     (["30618"], [float("nan")]),                    # не число
     (["30618"], [1.5]),                             # вне 0,9…1,1
     (["30618"], ["abc"]),
-    (["30618"], [-1.0])])
+    (["30618"], [-1.0]),
+    (30618, [1.0]),                                 # скаляр (-p vehicle_ids:=30618)
+    (["30618"], 1.0)])
 def test_bad_table_falls_back_to_auto_with_warning(ids, scales):
     p, info = V.apply(BASE, "30618", ids, scales)
     assert p == BASE and info["used"] == "auto" and info["warning"]

@@ -1036,6 +1036,9 @@ class Runner:
         self._s_fix = -np.inf           # путь ядра при последней привязке
         self._ncorr = 0                 # поправок GNSS учтено в σ
         self._g = None                  # (путь ядра, σ² после, σ²ядра) последней поправки
+        # положение без поправок GNSS — только для онлайн-масштаба колёс
+        # (wheel_scale): копия self.pos, снятая перед первой поправкой
+        self._ws_pos = None
 
     def _new_position(self):
         """Новое положение с теми же картой и параметрами (и при сбросе)."""
@@ -1102,10 +1105,33 @@ class Runner:
         if self.pos.accepts(stamp, lat, lon, status):
             self.pos.on_fix(stamp, antenna, lat, lon, alt, status=status)
         elif self.pos.gnss_correction and self.pos.valid(stamp, lat, lon, status):
-            self.pos.on_late_fix(stamp, antenna, lat, lon, alt, status=status,
-                                 var=None if cov is None else _num(cov),
-                                 ref=self.stamp_max if self.t is not None else None)
+            took = self.pos.on_late_fix(stamp, antenna, lat, lon, alt, status=status,
+                                        var=None if cov is None else _num(cov),
+                                        ref=self.stamp_max if self.t is not None else None)
+            if (took and self.pos._cq and self._ws_pos is None
+                    and self.wheel_scale is not None):
+                self._ws_pos = self._shadow_position()
         return []
+
+    def _shadow_position(self):
+        """Копия положения без поправок GNSS — для онлайн-масштаба колёс.
+
+        Онлайн-масштаб колёс (vehicle.OnlineWheelScale) учится по привязкам к
+        остановкам: путь по карте против пути колёс. Поправка GNSS двигает
+        курсор, и сдвиг привязки после неё уже не равен ошибке колёс; к тому
+        же через этот масштаб GNSS попал бы в скорость. Поэтому до первой
+        поправки масштаб учится по самому положению (поправок ещё не было),
+        а с первой точки-кандидата коррекции — по копии положения, которая
+        поправок не получает (gnss_correction false): её путь и привязки те
+        же, что при GNSS только в окне выставки. Так GNSS после окна на
+        скорость не влияет и с онлайн-масштабом колёс. Карта общая (курсор
+        свой у каждой копии). Копия снимается один раз за прогон и только
+        при GNSS после окна — у жюри его почти нет."""
+        m = self.pos.map
+        sh = copy.deepcopy(self.pos, {id(m): m} if m is not None else None)
+        sh.gnss_correction = False
+        sh._cq = []
+        return sh
 
     # ---------- шаги ----------
 
@@ -1439,8 +1465,11 @@ class Runner:
                 if self.pos.gnss_correction and self.pos.fixed else None)
         # положение: Position (выставка, карта, привязки, выходная система);
         # после сброса, пока новый прогон не выставился, — запасная выставка
-        pq, fallback = self._position(s, o["mode"] == STANDSTILL and o["valid"],
-                                      t, float(c.x[IV]), sig0)
+        standing = o["mode"] == STANDSTILL and o["valid"]
+        pq, fallback = self._position(s, standing, t, float(c.x[IV]), sig0)
+        if self._ws_pos is not None:
+            # положение без поправок GNSS: тот же шаг, что у self.pos
+            self._ws_pos.step(s, standing, self.p.dt, t=t, v=float(c.x[IV]))
         pos = self._pos_prev if fallback else self.pos
         if pos.fixed:
             # σ положения (WP12): путь после выставки, последней привязки
@@ -1465,9 +1494,11 @@ class Runner:
         a = (body_force(c.u_filt, v, c.x[3], c.x[4], c.mu, c.p)
              - resistance(v, c.p)) / c.p.M_nom + float(c.x[ID])
         if self.wheel_scale is not None:
-            # онлайн-масштаб колёс по привязкам к остановкам (vehicle.py)
+            # онлайн-масштаб колёс по привязкам к остановкам (vehicle.py); с
+            # GNSS после окна — по положению без поправок (_shadow_position)
+            wp = self._ws_pos if self._ws_pos is not None else self.pos
             o["v"] = float(o["v"]) * self.wheel_scale.factor(
-                self.pos.scale_log, getattr(self.pos.map, "scale", None))
+                wp.scale_log, getattr(wp.map, "scale", None))
         o.update(stamp=t, x=x, y=y, z=z, yaw=yaw,
                  a=float(a) if v > 0 or a > 0 else 0.0,
                  pos_ready=pos.ready, pos_valid=pq is not None,

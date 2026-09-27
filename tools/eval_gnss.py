@@ -152,7 +152,7 @@ def _run_one(task, share):
     if sc == "midstart":
         a, cut = I.cut_start(a, I.seed_for(bag, "gnss|midstart"))
         info["cut_s"] = cut
-    p = R.make_params(cfg["sheet"], cfg["overrides"])
+    p = R.make_params(cfg["sheet"], cfg["overrides"], bag=bag)
     runners, names = [], []
     for name, ov, naive in task["arms"]:
         node = dict(cfg["sheet"]["node"], **ov)
