@@ -255,7 +255,13 @@ def tram_yaml_text(which="jury"):
         out.append(f"    {name}: {val}    # {unit} · {doc}")
     out += core_rows(p, skip_dt=False)
     out.append("")
-    return "\n".join(out)
+    return plain_dash("\n".join(out))
+
+
+def plain_dash(text):
+    """Текст с дефисом вместо длинного тире: описания Params в ядре пишутся с тире,
+    а в листах и таблице MODEL.md длинное тире не используется."""
+    return text.replace(" — ", " - ").replace("—", "-")
 
 
 def gen_tram_yaml(which="jury"):
@@ -301,7 +307,7 @@ def gen_yaml():
     ]
     path = os.path.join(PKG, "config", "params.yaml")
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(out))
+        fh.write(plain_dash("\n".join(out)))
     return path
 
 
@@ -323,7 +329,7 @@ def gen_table():
             lines.append(f"| `{f.name}` | {md['unit']} | {md['src']} | "
                          f"{md['doc']} | {shown} |")
         lines.append("")
-    return "\n".join(lines)
+    return plain_dash("\n".join(lines))
 
 
 def patch_model_md():
