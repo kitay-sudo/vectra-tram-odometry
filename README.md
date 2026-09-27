@@ -159,9 +159,6 @@ docker compose up --build
 | [docs/DATASET_README.md](docs/DATASET_README.md) | README датасета от организаторов (контракт судьи) |
 | [simulator/README.md](simulator/README.md), [js-port/README.md](js-port/README.md) | симулятор и JS-порт ядра |
 
-Рабочие материалы команды (планы, журналы проверок, шпаргалки) лежат в
-[docs/internal/](docs/internal/README.md) и к решению не относятся.
-
 ## Возможности
 
 | Возможность | Где |
@@ -1055,7 +1052,7 @@ ros2 topic echo /tram/estimator_status --field mode
 | `js-port/` | JS-порт ядра и связки, сверка с Python (`check.sh`) |
 | `prototype/` | имитатор вагона и сценарии проверки модели, опознавание параметров |
 | `docker/`, `docker-compose.yml` | образ и сервисы: демо, `test`, `eval`, `server` |
-| `docs/` | документы (таблица [Документы](#документы)); `docs/data/` - итоги прогонов оценки, `docs/img/` - графики, `docs/internal/` - рабочие материалы команды |
+| `docs/` | документы (таблица [Документы](#документы)); `docs/data/` - итоги прогонов оценки, `docs/img/` - графики |
 
 Данные кейса (rosbag2), кэш анализа `analysis/cache/`, исходные файлы pathgraph
 (`_incoming/`) и результаты прогонов `out/` в репозиторий не входят.

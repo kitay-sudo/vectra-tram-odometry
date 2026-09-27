@@ -24,8 +24,6 @@
 | модель и результаты | [../MODEL.md](../MODEL.md), [EVAL.md](EVAL.md), [POSITION_FRAME.md](POSITION_FRAME.md), [VEHICLES.md](VEHICLES.md), [ROBUST.md](ROBUST.md) |
 | симулятор | [SANDBOX.md](SANDBOX.md), [../simulator/README.md](../simulator/README.md) |
 
-Рабочие материалы команды лежат в [internal/](internal/README.md) и к оценке решения не
-относятся.
 
 ## Какая команда пишет какой файл
 
