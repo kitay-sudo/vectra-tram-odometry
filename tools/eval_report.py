@@ -258,26 +258,48 @@ def plot_inject(res, base, bag, kinds, img):
 
 # ------------------------------------------------------------------ реальное время
 
-def probe_rows(root, patterns):
-    rows = []
+def probe_files(root, patterns):
+    """Сводки проб по шаблонам через запятую, без повторов, в порядке шаблонов."""
+    seen = []
     for pat in patterns.split(","):
         for p in sorted(glob.glob(str(root / pat), recursive=True)):
-            try:
-                d = json.loads(Path(p).read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            o = g(d, "outputs", "velocity") or {}
-            L = d.get("latency", {}) or {}
-            P = d.get("node_process", {}) or {}
-            i2o = L.get("in2out_vehicle_ms") or {}
-            cpu = P.get("cpu_pct_1core") or {}
-            rss = P.get("rss_mb_first_last_max")
-            rows.append([Path(p).parent.name, o.get("count", "—"), f(o.get("rate_stamp_hz"), 1),
-                         f(i2o.get("p50"), 1), f(i2o.get("p99"), 1), f(i2o.get("max"), 1),
-                         f(cpu.get("mean"), 1), f(cpu.get("max"), 1),
-                         f(rss[-1], 0) if isinstance(rss, list) and rss else "—",
-                         f(P.get("rss_slope_mb_per_min_after_30s"), 2)])
+            p = Path(p).resolve()
+            if p not in seen:
+                seen.append(p)
+    return seen
+
+
+def probe_rows(root, patterns):
+    rows = []
+    for p in probe_files(root, patterns):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        o = g(d, "outputs", "velocity") or {}
+        L = d.get("latency", {}) or {}
+        P = d.get("node_process", {}) or {}
+        i2o = L.get("in2out_vehicle_ms") or {}
+        cpu = P.get("cpu_pct_1core") or {}
+        rss = P.get("rss_mb_first_last_max")
+        rows.append([p.parent.name, o.get("count", "—"), f(o.get("rate_stamp_hz"), 1),
+                     f(i2o.get("p50"), 1), f(i2o.get("p99"), 1), f(i2o.get("max"), 1),
+                     f(cpu.get("mean"), 1), f(cpu.get("max"), 1),
+                     f(rss[-1], 0) if isinstance(rss, list) and rss else "—",
+                     f(P.get("rss_slope_mb_per_min_after_30s"), 2)])
     return rows
+
+
+def probe_notes(root, patterns):
+    """Примечания к строкам таблицы: note.txt рядом со сводкой пробы."""
+    notes = []
+    for p in probe_files(root, patterns):
+        n = p.parent / "note.txt"
+        if n.is_file():
+            text = " ".join(n.read_text(encoding="utf-8").split())
+            if text:
+                notes.append([p.parent.name, text])
+    return notes
 
 
 # ------------------------------------------------------------------ сводка инъекций
@@ -1318,6 +1340,12 @@ def render(result, timing, args, pics, root):
         A(table(["замер", "выходов", "Гц", "in2out p50, мс", "p99", "макс", "CPU ср., %", "CPU макс",
                  "RSS, МБ", "рост RSS, МБ/мин"], pr))
         A("")
+        notes = (timing["realtime_notes"] if timing.get("realtime_notes") is not None
+                 else probe_notes(root, args.probe_glob))
+        for name, text in notes:
+            A(f"* `{name}`: {text}")
+        if notes:
+            A("")
         A("Отчётный замер — `tools/measure_realtime.sh` (полный bag ≥ 20 мин, "
           "`--cpus 2 --memory 512m`, машина без соседей); порядок и таблица критериев ТЗ — "
           "`docs/JURY.md` §6.")

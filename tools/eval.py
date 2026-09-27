@@ -25,7 +25,7 @@
   8. out/eval/*.json и docs/EVAL.md (tools/eval_report.py).
 Варианты листа (заглушки крипа / нули) — только с --variants.
 
-Запуск (PowerShell, из корня worktree):
+Запуск (PowerShell, из корня репозитория):
   docker run --rm --cpus 2 -v ${PWD}:/repo -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro `
       -w /repo vectra/tram:dev python3 tools/eval.py --label "<версия>"
   ... python3 tools/eval.py --quick --check-determinism     # CI: 2 коротких прогона, дважды
@@ -69,11 +69,21 @@ GNSS_FULL_EVERY = 3                     # по умолчанию каждый 3
 TAIL_S = 300.0                          # с: прогон с инъекцией идёт до конца окна + TAIL_S
 SNAP_MARGIN_S = 5.0                     # с: копия чистой связки — за BEFORE_S + это до аномалии
 REC_TOL, REC_HOLD = 0.1, 3.0            # м/с, с: восстановление = |v − v_чисто| ≤ tol в течение hold
-PROBE_GLOB = "out/realtime/**/summary.json,out/ros_e2e/*/summary.json"
+# сводки проб: отчётные (в git, с примечаниями note.txt) и свежие замеры
+PROBE_GLOB = ("docs/data/realtime/*/summary.json,out/realtime/**/summary.json,"
+              "out/ros_e2e/*/summary.json")
 DOC = "docs/EVAL.md"
 
 
 # ------------------------------------------------------------------ подготовка
+
+def runs_ru(n):
+    """«1 прогон», «2 прогона», «5 прогонов»."""
+    k = n % 100
+    w = ("прогонов" if 11 <= k <= 14 else "прогон" if k % 10 == 1
+         else "прогона" if 2 <= k % 10 <= 4 else "прогонов")
+    return f"{n} {w}"
+
 
 def effective_cpus():
     try:
@@ -99,7 +109,7 @@ def ensure_cache(ids, workers, log):
         return []
     if not bagio.DATA.exists():
         sys.exit(f"нет кэша для {len(missing)} прогонов и нет данных {bagio.DATA}")
-    log(f"кэш: строю {len(missing)} прогонов из {bagio.DATA} в {bagio.CACHE}")
+    log(f"кэш: строю {runs_ru(len(missing))} из {bagio.DATA} в {bagio.CACHE}")
     _, bad = bagio.build_cache(workers=workers, ids=missing)
     if bad:
         sys.exit(f"не прочитались: {bad}")
@@ -924,8 +934,9 @@ def main():
                     help=f"документ (по умолчанию {DOC}; с --quick — <out>/EVAL.md, графики — "
                          "img/ рядом с документом)")
     ap.add_argument("--probe-glob", default=PROBE_GLOB,
-                    help="сводки tools/ros_probe.py для раздела «Реальное время» (строки "
-                         "сохраняются в timing.json, --render-only берёт их оттуда, если файлов нет)")
+                    help="сводки tools/ros_probe.py для раздела «Реальное время»; note.txt "
+                         "рядом со сводкой — примечание под таблицей (строки и примечания "
+                         "сохраняются в timing.json, --render-only берёт их оттуда)")
     ap.add_argument("--render-only", action="store_true",
                     help="только пересобрать docs/EVAL.md и графики из готовых out/eval/*.json "
                          "и plotdata.npz (без прогонов)")
@@ -990,6 +1001,7 @@ def main():
         timing["determinism"] = check
     import eval_report
     timing["realtime"] = eval_report.probe_rows(ROOT, args.probe_glob)
+    timing["realtime_notes"] = eval_report.probe_notes(ROOT, args.probe_glob)
     (out / "timing.json").write_text(dumps(timing), encoding="utf-8")
     for line in final_table(result["summary"]):
         log(line)

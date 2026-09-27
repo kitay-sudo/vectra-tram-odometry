@@ -99,7 +99,7 @@ def test_enu_matches_pyproj(llh, enu):
     assert abs(la[0] - llh[0]) < 1e-10 and abs(lo[0] - llh[1]) < 1e-10 and abs(al[0] - llh[2]) < 1e-6
 
 
-def test_equirect_roundtrip_matches_partner_formula():
+def test_equirect_roundtrip_matches_reference_formula():
     o = (55.80484, 37.42050, 150.0)
     lat, lon, alt = 55.8120, 37.3900, 160.0
     x, y, z = G.equirect_fwd([lat], [lon], [alt], o)[0]

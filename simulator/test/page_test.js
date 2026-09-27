@@ -1,6 +1,6 @@
 // Проверка страницы в настоящем Chromium без сети (headless, puppeteer-core).
 //
-//   docker run --rm --network none -v <worktree>/simulator:/sim:ro -v <out>:/out \
+//   docker run --rm --network none -v <репозиторий>/simulator:/sim:ro -v <out>:/out \
 //     vectra/tram:sim node /sim/test/page_test.js [/sim/index.html] [/out]
 //
 // Образ vectra/tram:sim — node:22-alpine + chromium + puppeteer-core (Dockerfile
