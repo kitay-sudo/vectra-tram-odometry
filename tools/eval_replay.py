@@ -73,7 +73,13 @@ RUNNER_KW = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeo
 # сортировка всплеска (WP16/WP24), выбор листа (WP22)
 NODE_ONLY = {"map_file", "origin_lat", "origin_lon", "origin_alt", "frame_id", "child_frame_id",
              "sheet", "pulse_horizon_s", "pulse_margin_s", "pulse_margin_nohandle_s",
-             "pulse_period_s", "start_sort_s"}
+             "pulse_period_s", "start_sort_s",
+             # вагон: меняет Params (meas_scale) до Runner — make_params
+             "vehicle", "vehicle_ids", "vehicle_meas_scale",
+             # онлайн-масштаб колёс: задаётся Runner после __init__ — make_runner
+             "wheel_scale_online"}
+# --set vehicle=match — только для оценки: вагон по имени прогона (30618_…)
+VEHICLE_MATCH = "match"
 START_SORT_DEFAULT = 0.1     # с: start_sort_s ноды после WP24, если его нет в листе
 NODE_PY = PKG / "tram_state_estimator" / "tram_node.py"
 
@@ -218,10 +224,25 @@ def parse_overrides(text):
     return out
 
 
-def make_params(sheet, overrides=None):
+def make_params(sheet, overrides=None, bag=None):
+    """Params листа (+ --set) с масштабом колёс вагона, как в tram_node.py
+    (tram_state_estimator/vehicle.py). vehicle=match — вагон прогона bag."""
     d = dict(sheet["core"])
     d.update({k: v for k, v in (overrides or {}).items() if k in PARAM_NAMES})
-    return core.Params.from_dict(d)
+    p = core.Params.from_dict(d)
+    return apply_vehicle(p, sheet["node"], bag)[0]
+
+
+def apply_vehicle(p, node, bag=None):
+    """-> (Params, сведения о вагоне). Код без vehicle.py (до 26.09) — как есть."""
+    try:
+        from tram_state_estimator import vehicle as V
+    except ImportError:
+        return p, None
+    node = dict(node or {})
+    if str(node.get("vehicle", "")).strip().lower() == VEHICLE_MATCH:
+        node["vehicle"] = str(bag).split("_")[0] if bag else "auto"
+    return V.apply_node(p, node)
 
 
 # ------------------------------------------------------------------ карты
@@ -272,6 +293,13 @@ def make_runner(params, node, tmap, cls=None):
     if ("init_window" not in kw and "init_window_s" in node and hasattr(r, "pos")
             and hasattr(r.pos, "init_window")):
         r.pos.init_window = float(node["init_window_s"])
+    if cls is runner_mod.Runner and node.get("wheel_scale_online"):
+        try:
+            from tram_state_estimator import vehicle as V
+        except ImportError:         # код до 26.09
+            V = None
+        if V is not None and hasattr(V, "wheel_scale_hook"):
+            V.wheel_scale_hook(r, True)
     unused = sorted(k for k in node if k not in used)
     return r, unused
 
@@ -338,21 +366,43 @@ def _rows(x, ncol):
     return x
 
 
-def events(a, gnss="3"):
+def gnss_spec(gnss):
+    """Имя сценария GNSS: число секунд -> "first<N>" для отчёта; full и
+    сценарии inject.GNSS_SCENARIOS — как есть."""
+    g = str(gnss)
+    try:
+        return f"first{float(g):g}"
+    except ValueError:
+        return g
+
+
+def events(a, gnss="3", seed=0):
     """События в порядке записи в bag: (tb, вид, индекс, th, значение).
-    gnss: число секунд от первой записи master fix (как evaluate.events при 3)
-    или "full". Значение GNSS — (lat, lon, alt, status)."""
+    gnss: число секунд от первой записи master fix (как evaluate.events при 3),
+    "full" или сценарий доступности inject.GNSS_SCENARIOS (sparse, bursts,
+    nostart, glitchy, none; first3 — то же, что 3; midstart — обрезка записи
+    inject.cut_start, затем 3). seed — зерно сценария (inject.seed_for).
+    Значение GNSS — (lat, lon, alt, status)."""
     ev = []
     for i, key in enumerate(("front", "rear")):
         for tb, th, v in _rows(a[key], 3)[:, :3]:
             ev.append((tb, 0, i, th, v))
     for tb, th, n in _rows(a["cmd"], 3)[:, :3]:
         ev.append((tb, 1, 0, th, n))
+    g = str(gnss)
+    if g in ("first3", "midstart"):
+        g = "3"
+    if g not in ("full",) and not _is_number(g):
+        import inject as I
+        for tb, ant, th, lat, lon, alt, st in I.gnss_scenario(a, g, seed)[0]:
+            ev.append((tb, 2, ant, th, (lat, lon, alt, st)))
+        ev.sort(key=lambda e: e[0])
+        return ev
     mfix = _rows(a["mfix"], 5)
-    if gnss == "full":
+    if g == "full":
         t_end = math.inf
     else:
-        t_end = mfix[0, 0] + float(gnss) if len(mfix) else -1
+        t_end = mfix[0, 0] + float(g) if len(mfix) else -1
     for key, ant in (("mfix", "master"), ("rfix", "rover")):
         x = _rows(a[key], 5)
         for row in x:
@@ -361,6 +411,14 @@ def events(a, gnss="3"):
                 ev.append((row[0], 2, ant, row[1], (row[2], row[3], row[4], st)))
     ev.sort(key=lambda e: e[0])
     return ev
+
+
+def _is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 
 def truncate(a, seconds):

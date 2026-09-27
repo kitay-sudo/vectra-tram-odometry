@@ -4,7 +4,9 @@
     /vehicle/front_bogie_velocity   tram_vehicle_msgs/VelocitySensor  (км/ч)
     /vehicle/rear_bogie_velocity    tram_vehicle_msgs/VelocitySensor  (км/ч)
     /vehicle/driver_position_cmd    tram_vehicle_msgs/DriverControllerCommand
-Начальная выставка (только первые init_window секунд и пока вагон стоит):
+Начальная выставка (первые init_window секунд) и коррекция положения по
+GNSS в середине маршрута (gnss_correction, по умолчанию включено; ответ
+организаторов 26.09 18:05):
     /sensing/gnss/master/fix, /sensing/gnss/rover/fix   sensor_msgs/NavSatFix
 Выходы:
     /result/velocity   tram_vehicle_msgs/VelocitySensor   скорость, м/с
@@ -46,6 +48,7 @@ from rclpy.clock import Clock, ClockType
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from builtin_interfaces.msg import Time as TimeMsg
@@ -60,6 +63,7 @@ from .estimator_core import Params
 from .estimator_node import declare_core_params
 from .runner import Runner, StartSorter
 from .track_map import TrackMap
+from . import vehicle as vehicle_sheet
 
 IN_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                     history=HistoryPolicy.KEEP_LAST, depth=50)
@@ -76,6 +80,24 @@ ANG_RATE_SD = 0.02      # рад/с: крен и тангаж почти не м
 R_CURVE_MIN = 20.0      # м: наименьший радиус кривой трамвая — предел рыскания
 FALLBACK_SD = 10.0      # м: запасная выставка после сброса — путь, потерянный,
                         # пока новое ядро догоняло скорость (~1 с на 10 м/с)
+# параметры коррекции по GNSS: имена совпадают с аргументами runner.Position
+GNSS_PARAMS = ("gnss_correction", "gnss_sigma_rtk_m", "gnss_sigma_sbas_m",
+               "gnss_sigma_fix_m", "gnss_gate", "gnss_jump_m", "gnss_confirm_n",
+               "gnss_min_interval_s", "gnss_max_skew_s", "gnss_prior_rel", "gnss_scale_adapt",
+               "gnss_stop_skip_m", "gnss_persist_s")
+
+
+def fix_var(m):
+    """Заявленная дисперсия положения NavSatFix по горизонтали, м²; None —
+    не заявлена (COVARIANCE_TYPE_UNKNOWN или нули, как в данных кейса)."""
+    try:
+        if int(m.position_covariance_type) <= 0:
+            return None
+        c = m.position_covariance
+        v = 0.5 * (float(c[0]) + float(c[4]))
+        return v if math.isfinite(v) and v > 0.0 else None
+    except (AttributeError, IndexError, TypeError, ValueError):
+        return None
 
 
 def _sheet_section(doc, node):
@@ -182,14 +204,45 @@ class TramEstimatorNode(Node):
         P("antenna_rover_x", 2.563)
         P("antenna_z", 3.0)
         P("scale_adapt", True)             # онлайн-масштаб пути по остановкам
+        # вагон (docs/VEHICLES.md): 30618 | 30639 — масштаб колёс этого вагона
+        # из таблицы листа; auto — общий лист; незнакомое — auto с предупреждением.
+        # dynamic_typing: `-p vehicle:=30639` и launch дают целое, а не строку
+        P("vehicle", "30618", descriptor=ParameterDescriptor(dynamic_typing=True))
+        P("vehicle_ids", ["30618", "30639"],
+          descriptor=ParameterDescriptor(dynamic_typing=True))
+        P("vehicle_meas_scale", [1.001362, 0.997575],
+          descriptor=ParameterDescriptor(dynamic_typing=True))
+        # онлайн-масштаб колёс по привязкам к остановкам: поправка скорости
+        # при смене масштаба по датам (vehicle.OnlineWheelScale)
+        P("wheel_scale_online", True)
         P("nomap_mode", "hold")            # без карты: hold (стоять в якоре) | line
         P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе,
         P("keep_offset_z", True)           # если медиана статуса окна ≤
         P("keep_offset_max_status", -1)    # этого: −1 никогда, 1 без RTK, 2 всегда
         P("terminal_hold", "terminals")    # тупик карты: terminals | off | any
+        # коррекция по GNSS после окна выставки (организаторы 26.09 18:05:
+        # сообщения GNSS в середине маршрута можно использовать для коррекции);
+        # false — GNSS только для выставки, как до 26.09 (бит-в-бит)
+        P("gnss_correction", True)
+        P("gnss_sigma_rtk_m", 0.5)         # σ точки при NavSatFix.status 2 (RTK)
+        P("gnss_sigma_sbas_m", 1.5)        # status 1
+        P("gnss_sigma_fix_m", 5.0)         # status 0 (без поправок: смещение до ~16 м)
+        P("gnss_gate", 3.0)                # ворота невязки, σ
+        P("gnss_jump_m", 3.0)              # поправка больше — только после подтверждения
+        P("gnss_confirm_n", 3)             # эпох RTK подряд, согласных между собой (без RTK — только малые)
+        P("gnss_min_interval_s", 1.0)      # поправки не чаще
+        P("gnss_max_skew_s", 0.3)          # метка GNSS против метки последнего входа
+        P("gnss_prior_rel", 0.003)         # априори поправки: рост σ на метр пути
+        P("gnss_scale_adapt", False)       # масштаб пути по отрезкам между поправками
+        P("gnss_stop_skip_m", 0.0)         # после поправки столько м без привязки к остановке
+        P("gnss_persist_s", 10.0)          # неправдоподобная невязка RTK держится столько — верим
         g = lambda n: self.get_parameter(n).value
 
         params = declare_core_params(self, include_dt=True)
+        params, self.vehicle_info = vehicle_sheet.apply(
+            params, g("vehicle"), g("vehicle_ids"), g("vehicle_meas_scale"))
+        if self.vehicle_info["warning"]:
+            self.get_logger().warn(self.vehicle_info["warning"])
         tmap = None
         path = g("map_file")
         if path:
@@ -214,7 +267,9 @@ class TramEstimatorNode(Node):
                              output_point=g("output_point"),
                              antenna_master_x=g("antenna_master_x"),
                              antenna_rover_x=g("antenna_rover_x"),
-                             antenna_z=g("antenna_z"))
+                             antenna_z=g("antenna_z"),
+                             **{n: g(n) for n in GNSS_PARAMS})
+        vehicle_sheet.wheel_scale_hook(self.runner, g("wheel_scale_online"))
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
         self._robust_setup()
@@ -232,7 +287,8 @@ class TramEstimatorNode(Node):
         for ant in ("master", "rover"):
             sub(NavSatFix, f"/sensing/gnss/{ant}/fix", "on_fix",
                 lambda m, a=ant: (to_sec(m.header.stamp), a, m.latitude,
-                                  m.longitude, m.altitude, m.status.status))
+                                  m.longitude, m.altitude, m.status.status,
+                                  fix_var(m)))
 
         self.pub_v = self.create_publisher(VelocitySensor, "/result/velocity", 10)
         self.pub_p = self.create_publisher(Odometry, "/result/position", 10)
@@ -243,12 +299,15 @@ class TramEstimatorNode(Node):
             f"оценщик запущен: шаг {params.dt * 1000:.0f} мс, "
             f"карта {'есть' if tmap is not None else 'нет'}; "
             f"лист: {self.sheet_src}; карта: {path or 'нет (map_file пуст)'}; "
-            f"единицы {params.meas_units}; пульс {self.pulse_h:.1f} с; выход "
+            f"единицы {params.meas_units}; "
+            f"{vehicle_sheet.describe(self.vehicle_info, g('wheel_scale_online'))}; "
+            f"пульс {self.pulse_h:.1f} с; выход "
             f"{g('projection')}"
             + (f" от квадрата {g('mgrs_grid')} непрерывно" if g("mgrs_grid") else
                " (MGRS: каждая точка в своём 100-км квадрате)" if g("projection") == "mgrs" else "")
             + f"; точка {g('output_point')}"
-            + (f" (карта по {tmap.point})" if tmap is not None else ""))
+            + (f" (карта по {tmap.point})" if tmap is not None else "")
+            + f"; коррекция по GNSS после окна {'вкл' if g('gnss_correction') else 'выкл'}")
 
     # ---------- устойчивость ----------
 

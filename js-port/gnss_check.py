@@ -1,12 +1,15 @@
-"""Сценарий песочницы «Застройка без GNSS» на настоящей связке: GNSS после окна
-выставки на выход не влияет. Запись прогоняется через Runner пакета (лист жюри,
-карта пакета) три раза и сравниваются выходы каждого шага:
+"""Сценарий песочницы «Застройка без GNSS» на настоящей связке. Запись
+прогоняется через Runner пакета (лист жюри, карта пакета) и сравниваются
+выходы каждого шага:
 
   (1) GNSS master/rover на ВЕСЬ прогон  против  (2) без GNSS вовсе —
-      скорость, путь, σ, режим (ядру GNSS не нужен совсем);
+      скорость, путь, σ скорости, режим: ядру GNSS не нужен совсем (и с
+      коррекцией по GNSS, лист жюри как есть);
   (1) GNSS на весь прогон  против  (3) GNSS только первые 3 с (как в bag жюри,
-      analysis/evaluate.events) — всё то же плюс положение x, y, z и признаки
-      «положение выставлено / опубликовано».
+      analysis/evaluate.events) при gnss_correction: false — всё то же плюс
+      положение x, y, z и признаки «положение выставлено / опубликовано».
+      С коррекцией (по умолчанию с 26.09, docs/POSITION_FRAME.md) GNSS после
+      окна поправляет положение — это печатается для сведения.
 
     docker run --rm -v <repo>:/repo -v <data>:/repo/data:ro \
       -v <cache>:/repo/analysis/cache:ro -w /repo/js-port vectra/tram:integration \
@@ -37,9 +40,10 @@ t_end = a["mfix"][0, 0] + INIT_S          # окно выставки — от �
 gn3 = [g for g in gn if g[0] <= t_end]
 
 
-def run(gnss):
+def run(gnss, correction=None):
     tm = X.TrackMap.load(MAP) if os.path.exists(MAP) else None
-    r = X.make_runner(params, node, tm)
+    nd = node if correction is None else dict(node, gnss_correction=correction)
+    r = X.make_runner(params, nd, tm)
     out = []
     for tb, kind, i, th, val in sorted(ev + gnss, key=lambda e: e[0]):
         if kind == 0:
@@ -74,15 +78,21 @@ def diff(P, Q, keys):
     return res
 
 
-A, B, C = run(gn), run([]), run(gn3)
+A, B = run(gn), run([])                                   # лист как есть
+Aoff, Coff = run(gn, False), run(gn3, False)              # только выставка
 core = ("v", "s", "sigma_v", "mode")
 pos = ("x", "y", "z", "pos_ready", "pos_valid")
 dAB = diff(A, B, core)
-dAC = diff(A, C, core + tuple(k for k in pos if k in A[0]))
+dAC = diff(Aoff, Coff, core + tuple(k for k in pos if k in A[0]))
+C = run(gn3)
+dcor = diff(A, C, tuple(k for k in ("x", "y", "z") if k in A[0]))
 fmt = lambda d: ", ".join(f"{k} {v:.3g}" if isinstance(v, float) else f"{k}: расхождений {v}" for k, v in d.items())  # noqa: E731
 print(f"{bag}: точек GNSS {len(gn)} (весь прогон), {len(gn3)} (первые {INIT_S:.0f} с); "
       f"шагов {len(A)} / {len(B)} / {len(C)}")
 print(f"  весь прогон против без GNSS: {fmt(dAB)}")
-print(f"  весь прогон против первых {INIT_S:.0f} с: {fmt(dAC)}")
-ok = len(A) == len(B) == len(C) and all(v == 0 for v in dAB.values()) and all(v == 0 for v in dAC.values())
+print(f"  весь прогон против первых {INIT_S:.0f} с (gnss_correction: false): {fmt(dAC)}")
+print(f"  для сведения, с коррекцией (лист): весь прогон против первых {INIT_S:.0f} с — "
+      f"положение {fmt(dcor)} (поправки по GNSS после окна)")
+ok = (len(A) == len(B) == len(Aoff) == len(Coff) and all(v == 0 for v in dAB.values())
+      and all(v == 0 for v in dAC.values()))
 sys.exit(0 if ok else 1)

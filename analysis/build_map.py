@@ -28,6 +28,16 @@ base_link = master + 9,873/12,436 · (rover − master), z — по той же 
 колёс) калибруется во ВНУТРЕННЕЙ системе ноды (UTM со сдвигом в начало
 прогона, geodesy.Frame) против той же точки вагона: scale_frame = "utm".
 
+Ветки за тупиком у конечных (поток loops, 27.09; docs/POSITION_FRAME.md,
+раздел «Конечные и разворотные кольца»): записи, приехавшие на конечную и
+кончившиеся не у платформы высадки (разворотное кольцо, боковой путь), —
+проходы-ветки (branch_passages): клетки облака только из их точек в облако не
+идут, и платформа остаётся тупиком. Потом курсор готовой карты ведётся по
+каждому проходу к конечной (путь колёс, привязка к остановкам — как в ноде):
+где он встал в тупике, а вагон уехал дальше, — ветка (terminal_branches):
+ось, где начинается, сколько проходов и стояли ли они перед тупиком. Ключ
+--no-branches — карта как до 27.09: облако из всех проходов, веток нет.
+
 Два набора (docs/POSITION_FRAME.md):
     EVAL — только обучающие прогоны разбиения (tools/split.json: train),
            для всех чисел оценки на holdout_scored;
@@ -36,7 +46,7 @@ base_link = master + 9,873/12,436 · (rover − master), z — по той же 
     python3 analysis/build_map.py eval   # -> config/eval/track_map.npz
     python3 analysis/build_map.py jury   # -> config/track_map.npz
     python3 analysis/build_map.py --set train --split tools/split.json --out F
-    опции: --source auto|gnss|pathgraph|hybrid, --pathgraph <каталог>, --join-r 2.0,
+    опции: --source auto|gnss|pathgraph|hybrid, --pathgraph <каталог>, --join-r 2.0, --no-branches,
            --point base_link|master, --calib <tram_calibration.json>
            (meas_scale колёс; по умолчанию лист своего набора: EVAL —
            config/eval/, JURY — config/), --n-runs 30, --e2e-mult
@@ -121,6 +131,8 @@ def main():
                          "gnss (выбор на train, docs/POSITION_FRAME.md §3)")
     ap.add_argument("--pathgraph", default=str(PATHGRAPH),
                     help="каталог pathgraph организаторов (или файл, или список через «;»)")
+    ap.add_argument("--no-branches", dest="branches", action="store_false",
+                    help="без веток за тупиком у конечных (карта как до 27.09, поток loops)")
     ap.add_argument("--join-r", type=float, default=2.0,
                     help="hybrid: точки GNSS-карты ближе этого к pathgraph своего "
                          "направления заменяются pathgraph, м")
@@ -147,17 +159,23 @@ def main():
                           ["params"]).meas_scale
     tracks = {b: track(bagio.load(b), a.point) for b in ids}
     min2 = which == "all" or len(ids) > 20
-    tm = make_map(a.source, tracks, min2, a.pathgraph, a.join_r, a.point)
+    # проходы-ветки у конечных (кольцо, боковой путь) — не в облако, а в ветки
+    excl = branch_passages(tracks) if a.branches else None
+    tm = make_map(a.source, tracks, min2, a.pathgraph, a.join_r, a.point, excl)
     tm.stops = find_stops(tracks)
     tm.terminals = find_terminals(tracks)
     # множитель пути — свойство колёс, не карты: для pathgraph без продолжения
     # за его концами калибровка курсором от начала записи (оно за концом
     # pathgraph) не работает — калибруется по гибриду (та же геометрия там,
     # где pathgraph есть)
-    cal = (make_map("hybrid", tracks, min2, a.pathgraph, a.join_r, a.point)
+    cal = (make_map("hybrid", tracks, min2, a.pathgraph, a.join_r, a.point, excl)
            if a.source == "pathgraph" else tm)
     tm.scale = calibrate_scale(cal, tracks, ms, a.n_runs) * a.e2e_mult
     tm.scale_frame = "utm"
+    if a.branches:
+        # после калибровки: ветки ищет курсор готовой карты (облако, конечные,
+        # множитель) по обучающим проходам; облако и множитель не меняются
+        tm.set_branches(*terminal_branches(tm, tracks, ms))
     bagio.Path(out).parent.mkdir(parents=True, exist_ok=True)
     src = f"{which}: {len(ids)} прогонов; split {bagio.Path(a.split).name}; " \
           f"точка {a.point}; источник {a.source}"
@@ -165,8 +183,8 @@ def main():
             map_source=np.array(a.source))
     print(f"набор {which}: прогонов {len(ids)}, точка {a.point}, источник {a.source}: "
           f"точек карты {len(tm.lat)}, остановок {len(tm.stops)}, конечных "
-          f"{len(tm.terminals)}, множитель пути {tm.scale:.5f} (UTM, с поправкой "
-          f"×{a.e2e_mult}), записано {out}")
+          f"{len(tm.terminals)}, веток за тупиком {len(tm.bi)}, "
+          f"множитель пути {tm.scale:.5f} (UTM, с поправкой ×{a.e2e_mult}), записано {out}")
 
 
 # ------------------------------------------------------------------ траектория точки вагона
@@ -235,18 +253,22 @@ def track(a, point="base_link"):
 
 # ------------------------------------------------------------------ карты
 
-def make_map(source, tracks, min2, pg_path, join_r, point):
+def make_map(source, tracks, min2, pg_path, join_r, point, excl=None):
     if source == "gnss":
-        return build(tracks, min2, point)
+        return build(tracks, min2, point, excl)
     pg = TrackMap.from_pathgraph(pg_path)
     pg.scale_frame = "utm"
     if source == "pathgraph":
         print(f"pathgraph: точек {len(pg.lat)}")
         return pg
-    return hybrid(pg, build(tracks, min2, point), join_r)
+    return hybrid(pg, build(tracks, min2, point, excl), join_r)
 
 
-def build(tracks, min2, point="base_link"):
+def build(tracks, min2, point="base_link", excl=None):
+    """Облако точек по траекториям. excl — {прогон: маска точек} проходов-веток
+    у конечных (branch_passages): клетка, в которую попали только такие
+    точки, в облако не идёт (ветка живёт в карте отдельно, terminal_branches);
+    остальные клетки — как без excl, с тем же весом."""
     k = np.cos(np.radians(LAT0))
     acc = {}
     for rid, (b, tr) in enumerate(tracks.items()):
@@ -256,6 +278,7 @@ def build(tracks, min2, point="base_link"):
         y = np.radians(tr["lat"] - LAT0) * R
         mv = tr["speed"] > 1.0
         jump = np.r_[False, np.hypot(np.diff(x), np.diff(y)) > 5.0]
+        ex = excl.get(b) if excl else None
         sel = mv & ~jump
         h = tr["head"]
         cx = np.floor(x / 1.0).astype(np.int64)
@@ -265,12 +288,16 @@ def build(tracks, min2, point="base_link"):
             key = (cx[i], cy[i], hb[i])
             e = acc.get(key)
             if e is None:
-                e = acc[key] = [0.0, 0.0, 0.0, 0.0, 0.0, 0, set()]
+                e = acc[key] = [0.0, 0.0, 0.0, 0.0, 0.0, 0, set(), False]
             e[0] += tr["lat"][i]; e[1] += tr["lon"][i]; e[2] += tr["alt"][i]
             e[3] += np.sin(h[i]); e[4] += np.cos(h[i]); e[5] += 1
             e[6].add(rid)
+            e[7] = e[7] or ex is None or not ex[i]
     rows = [(e[0] / e[5], e[1] / e[5], e[2] / e[5], np.arctan2(e[3], e[4]), len(e[6]))
-            for e in acc.values()]
+            for e in acc.values() if e[7]]
+    if excl:
+        n_br = sum(not e[7] and len(e[6]) >= (2 if min2 else 1) for e in acc.values())
+        print(f"клеток только проходов-веток у конечных (не в облако): {n_br}")
     R_ = np.array(rows)
     # одиночные случайные клетки (выбросы) — вон; путь, пройденный хоть одним
     # прогоном дважды в разные дни, остаётся
@@ -390,6 +417,357 @@ def find_terminals(tracks, join_r=50.0, min_runs=3):
     print(f"концов записей {len(P)}, известных конечных {len(out)}: "
           + ", ".join(f"({la:.5f}, {lo:.5f})" for la, lo in out))
     return np.array(out) if out else np.zeros((0, 2))
+
+
+# ------------------------------------------------------------------ конечные: ветки за тупиком
+
+TERM_LINK = 150.0     # м: концы/начала записей ближе — одна конечная (одиночная связь)
+TERM_MIN_RUNS = 3     # конечная — место, где начинались или кончались ≥ стольких прогонов
+TERM_R = 250.0        # м: радиус зоны конечной; проход — от входа в этот круг
+STOP_DWELL = 8.0      # с: стоянка (как stop_dwell ноды: привязка к остановке)
+STOP_V = 0.2          # м/с: GNSS ниже — вагон стоит
+BR_SEP = 4.0          # м: проход дальше этого от курсора (медиана по 11 точкам) — разошлись
+BR_MORE = 25.0        # м: проход уехал за точку удержания дальше этого — ветка
+BR_AWAY = 15.0        # м: и его конец дальше этого от точки удержания
+BR_DE_JOIN = 6.0      # м: точки удержания ближе — один тупик (TrackMap.BR_DE_R)
+BR_JOIN = 5.0         # м: оси проходов ближе (90-й процентиль) — одна ветка
+BR_WIN_MIN = 60.0     # м: окно стоянки перед тупиком не короче
+END_LINK = 20.0       # м: концы записей ближе — одна группа (платформа высадки)
+BR_Z_NOISE = 0.3      # м: шум высоты прохода больше — высота ветки по опорам (_branch_z)
+BR_Z_R = 1.5          # м: опора высоты — облако ближе этого к оси ветки
+
+
+def terminal_centers(tracks, link=TERM_LINK, min_runs=TERM_MIN_RUNS):
+    """Центры конечных (E, N зоны 37): группы начал и концов записей
+    (одиночная связь ближе link м), у которых не меньше min_runs разных
+    прогонов."""
+    P, run = [], []
+    for b, tr in tracks.items():
+        if not tr:
+            continue
+        for i in (0, -1):
+            P.append((tr["E"][i], tr["N"][i]))
+            run.append(b)
+    P = np.array(P)
+    lab = np.arange(len(P))
+    for _ in range(len(P)):                     # связные компоненты
+        D = np.hypot(P[:, None, 0] - P[None, :, 0], P[:, None, 1] - P[None, :, 1])
+        new = np.array([lab[D[i] <= link].min() for i in range(len(P))])
+        new = new[new]
+        if (new == lab).all():
+            break
+        lab = new
+    out = []
+    for k in np.unique(lab):
+        g = lab == k
+        if len({run[i] for i in np.flatnonzero(g)}) >= min_runs:
+            out.append((float(P[g, 0].mean()), float(P[g, 1].mean()), int(g.sum())))
+    return out
+
+
+def _median(x, w):
+    """Скользящая медиана по w точкам (выбросы положения GNSS)."""
+    if len(x) < w:
+        return np.asarray(x, float)
+    h = w // 2
+    X = np.pad(np.asarray(x, float), h, mode="edge")
+    return np.median(np.lib.stride_tricks.sliding_window_view(X, w), axis=1)
+
+
+def wheel_path(b, meas_scale=1.0, dt=0.05):
+    """Путь колёс прогона (как у ноды: среднее тележек × meas_scale / 3,6),
+    интеграл по сетке dt: (метки, путь)."""
+    a = bagio.load(b)
+    f, r = a["front"], a["rear"]
+    if len(f) < 2 or len(r) < 2:
+        return None
+    t0, t1 = max(f[0, 1], r[0, 1]), min(f[-1, 1], r[-1, 1])
+    if t1 <= t0:
+        return None
+    g = np.arange(t0, t1, dt)
+    v = 0.5 * (np.interp(g, f[:, 1], f[:, 2]) + np.interp(g, r[:, 1], r[:, 2])) / 3.6 * meas_scale
+    return g, np.r_[0.0, np.cumsum(np.maximum(v[:-1], 0.0) * dt)]
+
+
+def passage_spans(tr, c, R=TERM_R):
+    """Проходы в зону конечной c = (E, N): (i0, i1) — индексы точек
+    траектории от последней точки до входа в круг радиуса R (запись
+    началась снаружи) до выхода из него или конца записи."""
+    inside = np.hypot(tr["E"] - c[0], tr["N"] - c[1]) < R
+    out, i, n = [], 1, len(inside)
+    while i < n:
+        if not (inside[i] and not inside[i - 1]):
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and inside[j + 1]:
+            j += 1
+        out.append((i - 1, j))
+        i = j + 1
+    return out
+
+
+def branch_passages(tracks, link=END_LINK, verbose=True):
+    """Проходы-ветки у конечных: {прогон: маска точек траектории}.
+
+    У каждой конечной концы записей, приехавших в неё (проход, на котором
+    запись кончилась), группируются (одиночная связь ближе link м); самая
+    большая группа — платформа высадки, где кончается большинство записей.
+    Проход, кончившийся не в ней (уехал по разворотному кольцу на путь
+    отправления, ушёл на боковой путь), — проход-ветка: его точки в зоне
+    конечной не делают облако (build, excl) — облако у конечной описывает
+    только то, что делает большинство, и платформа остаётся тупиком. Сами
+    ветки потом находит курсор (terminal_branches) — одинаково для карт
+    ОЦЕНКИ и ЖЮРИ."""
+    out = {}
+    for c in terminal_centers(tracks):
+        ends = []                                   # (прогон, i0, i1, E, N)
+        for b, tr in tracks.items():
+            if not tr:
+                continue
+            for i0, i1 in passage_spans(tr, c):
+                if i1 == len(tr["E"]) - 1:
+                    ends.append((b, i0, i1, tr["E"][i1], tr["N"][i1]))
+        if not ends:
+            continue
+        P = np.array([(e[3], e[4]) for e in ends])
+        lab = np.arange(len(P))
+        D = np.hypot(P[:, None, 0] - P[None, :, 0], P[:, None, 1] - P[None, :, 1])
+        for _ in range(len(P)):
+            new = np.array([lab[D[i] <= link].min() for i in range(len(P))])
+            new = new[new]
+            if (new == lab).all():
+                break
+            lab = new
+        main = np.bincount(lab).argmax()
+        for (b, i0, i1, _, _), lb in zip(ends, lab):
+            if lb == main:
+                continue
+            m = out.setdefault(b, np.zeros(len(tracks[b]["E"]), bool))
+            m[i0:i1 + 1] = True
+        if verbose:
+            br = sorted(e[0] for e, lb in zip(ends, lab) if lb != main)
+            print(f"конечная ({c[0] - 300000:.0f}, {c[1] - 6100000:.0f}): записей кончилось в "
+                  f"зоне {len(ends)}, у платформы {int((lab == main).sum())}, проходы-ветки: "
+                  + (", ".join(br) or "нет"))
+    return out
+
+
+def stop_moments(t, speed):
+    """Моменты привязки к остановке, как у ноды: стоянка (GNSS < STOP_V)
+    длится STOP_DWELL с — метка начала стоянки + STOP_DWELL."""
+    st, out, a_ = speed < STOP_V, [], 0
+    while a_ < len(st):
+        if not st[a_]:
+            a_ += 1
+            continue
+        b_ = a_
+        while b_ + 1 < len(st) and st[b_ + 1]:
+            b_ += 1
+        if t[b_] - t[a_] >= STOP_DWELL:
+            out.append(float(t[a_] + STOP_DWELL))
+        a_ = b_ + 1
+    return out
+
+
+def follow(tm, P, w, stops_t, t):
+    """Курсор карты tm по проходу, как в ноде: старт в первой точке P (E, N,
+    z зоны 37) с курсом по первым 5 м, сдвиг — путь колёс w (м, × meas_scale)
+    между точками, привязка к остановке (TrackMap.anchor) в моменты stops_t.
+    Возвращает (xy курсора E, N; курс сетки; удержан ли в тупике; высота
+    курсора) на каждую точку."""
+    la, lo = utm_inv(P[:1, 0], P[:1, 1], ZONE)
+    fr = Frame(float(np.asarray(la)[0]), float(np.asarray(lo)[0]), 0.0, "utm", utm_zone=ZONE)
+    tm.bind(fr)
+    far = np.flatnonzero(np.hypot(P[:, 0] - P[0, 0], P[:, 1] - P[0, 1]) >= 5.0)
+    j = int(far[0]) if len(far) else len(P) - 1
+    c = tm.locate((P[0, 0] - fr.E0, P[0, 1] - fr.N0, P[0, 2]),
+                  math.atan2(P[j, 0] - P[0, 0], P[j, 1] - P[0, 1]))
+    xy = np.zeros((len(P), 2))
+    hd = np.zeros(len(P))
+    held = np.zeros(len(P), bool)
+    zz = np.zeros(len(P))
+    w_anchor, k = w[0], 0
+    for i in range(len(P)):
+        if i:
+            tm.advance(c, w[i] - w[i - 1])
+            while k < len(stops_t) and stops_t[k] <= t[i]:
+                if stops_t[k] > t[i - 1] and tm.anchor(c, w[i] - w_anchor) is not None:
+                    w_anchor = w[i]
+                k += 1
+        xy[i] = (c["x"] + fr.E0, c["y"] + fr.N0)
+        hd[i] = c["h"]
+        held[i] = c.get("hold", 0.0) > 0.0
+        zz[i] = c["z"]
+    return xy, hd, held, zz
+
+
+def _axis(E, N, z, s, step=1.0):
+    """Ось по точкам прохода с путём s (м карты по колёсам): точки через step
+    м пути (на стоянке — средняя точка), сглаживание ±2 м."""
+    q = np.floor(s / step).astype(int)
+    u, inv = np.unique(q, return_inverse=True)
+    cnt = np.bincount(inv).astype(float)
+    A = np.c_[[np.bincount(inv, weights=v) / cnt for v in (E, N, z)]].T
+    S = np.bincount(inv, weights=s) / cnt
+    if len(A) >= 5:
+        ker = np.ones(5) / 5.0
+        A = np.c_[[np.convolve(np.pad(A[:, k], 2, mode="edge"), ker, "valid")
+                   for k in range(3)]].T
+    return A, S
+
+
+def _branch_z(tm, m, max_noise=BR_Z_NOISE, r=BR_Z_R):
+    """Высота оси ветки (проход m): своя высота прохода (скользящая медиана
+    по 21 точке), если она не шумит (90-й процентиль отклонения от медианы не
+    больше max_noise м). Иначе (высота одного прохода без хорошего GNSS
+    уходит на метры: у 30618_27e994fc на кольце +2 м) — по опорам: высота
+    облака у тупика (медиана ближе 15 м: уровень рельса платформы) и там,
+    где ветка снова идёт по облаку (ближе r м, дальше тупика: путь
+    отправления за кольцом); между опорами — линейно по пути, за крайней —
+    как у неё."""
+    A, S = m["A"], m["S"]
+    if m["znoise"] <= max_noise:
+        return _median(A[:, 2], 21)
+    Ec, Nc = (np.asarray(x, float) for x in utm_fwd(tm.lat, tm.lon, ZONE))
+    # у тупика — медиана облака ближе 15 м (в последних клетках у самого
+    # тупика мало прогонов, и один без RTK уводит высоту на 2 м)
+    near = np.hypot(Ec - m["de"][0], Nc - m["de"][1]) <= 15.0
+    ss, zs = [m["off"]], [float(np.median(tm.alt[near])) if near.any() else m["de_z"]]
+    for i in np.flatnonzero(S > m["off"] + TrackMap.BR_MIN):
+        e, n = A[i, :2]
+        k = np.flatnonzero((np.abs(Ec - e) <= r) & (np.abs(Nc - n) <= r))
+        k = k[np.hypot(Ec[k] - e, Nc[k] - n) <= r]
+        if len(k):
+            ss.append(float(S[i]))
+            zs.append(float((tm.alt[k] * tm.weight[k]).sum() / tm.weight[k].sum()))
+    return np.interp(S, ss, zs)
+
+
+def terminal_branches(tm, tracks, meas_scale=1.0, verbose=True):
+    """Ветки за тупиком у конечных (docs/POSITION_FRAME.md, «Конечные и
+    разворотные кольца»; track_map.py, docstring модуля).
+
+    Проход — участок траектории base_link прогона от входа в круг TERM_R
+    вокруг конечной до выхода из него или конца записи. По каждому проходу
+    ведётся курсор готовой карты tm (облако, остановки, конечные, множитель)
+    так же, как в ноде: путь колёс, привязка к остановкам (follow). Если
+    курсор встал в тупике (удержание у конечной), а вагон уехал дальше
+    BR_MORE м и кончил запись дальше BR_AWAY м от точки удержания, — это
+    ветка, которой нет в облаке (разворотное кольцо за платформой, боковой
+    путь до неё). Её начало — где проход в последний раз был ближе BR_SEP м
+    к курсору; offset — путь колёс (м карты) от начала ветки до тупика; ось
+    ветки — точки прохода по пути колёс от её начала (так путь по оси тот же,
+    что копит курсор, даже при выбросах GNSS без RTK).
+
+    Проходы одного тупика (точки удержания ближе BR_DE_JOIN) с осями ближе
+    BR_JOIN (90-й процентиль, по части оси за offset + BR_MIN) — одна ветка;
+    ось — самый чистый проход (меньше отклонений от сглаженной оси). Окно
+    стоянки тупика — наибольший offset его веток + 10 м (не меньше
+    BR_WIN_MIN); для ветки — сколько её проходов стояли в окне перед тупиком
+    (или до BR_MIN м за ним).
+
+    Высота оси — _branch_z.
+
+    Возвращает (bp, bi) для TrackMap.set_branches."""
+    br_min = TrackMap.BR_MIN
+    mem = []
+    cs = terminal_centers(tracks)
+    for b, tr in tracks.items():
+        if not tr:
+            continue
+        spans = [sp for c in cs for sp in passage_spans(tr, c)]
+        if not spans:
+            continue
+        wp = wheel_path(b, meas_scale)
+        if wp is None:
+            continue
+        for i0, i1 in spans:
+            # только точки, где есть путь колёс
+            while i0 <= i1 and tr["t"][i0] < wp[0][0]:
+                i0 += 1
+            while i1 >= i0 and tr["t"][i1] > wp[0][-1]:
+                i1 -= 1
+            if i1 - i0 < 10:
+                continue
+            k = slice(i0, i1 + 1)
+            t = tr["t"][k]
+            P = np.c_[[_median(tr[x][k], 5) for x in ("E", "N", "alt")]].T
+            w = np.interp(t, *wp)                        # путь колёс, м (× meas_scale)
+            stops_t = stop_moments(t, tr["speed"][k])
+            xy, hd, held, zz = follow(tm, P, w, stops_t, t)
+            if not held.any():
+                continue
+            ih = int(np.flatnonzero(held)[0])
+            s = (w - w[0]) * tm.scale                    # путь курсора, м карты
+            if s[-1] - s[ih] < BR_MORE or np.hypot(*(P[-1, :2] - xy[ih])) < BR_AWAY:
+                continue
+            d = _median(np.hypot(*(P[:ih + 1, :2] - xy[:ih + 1]).T), 11)
+            close = np.flatnonzero(d <= BR_SEP)
+            iF = min(int(close[-1]) + 1, ih) if len(close) else 0
+            sF = s[iF:] - s[iF]
+            A, S = _axis(P[iF:, 0], P[iF:, 1], P[iF:, 2], sF)
+            # чистота: разброс точек прохода вокруг сглаженной оси
+            dev = np.hypot(P[iF:, 0] - np.interp(sF, S, A[:, 0]),
+                           P[iF:, 1] - np.interp(sF, S, A[:, 1]))
+            o_st = [float(np.interp(ts, t, s)) for ts in stops_t]
+            zdev = np.abs(A[:, 2] - _median(A[:, 2], 21))
+            mem.append(dict(run=b, de=xy[ih].copy(), de_h=float(hd[ih]), de_z=float(zz[ih]),
+                            znoise=float(np.percentile(zdev, 90)),
+                            off=float(s[ih] - s[iF]), s_de=float(s[ih]), A=A, S=S,
+                            stops=o_st, noise=float(np.percentile(dev, 90))))
+    # тупики: точки удержания ближе BR_DE_JOIN
+    des = []
+    for m in sorted(mem, key=lambda m: m["run"]):
+        for D in des:
+            if np.hypot(*(D["de"] - m["de"])) <= BR_DE_JOIN:
+                D["m"].append(m)
+                break
+        else:
+            des.append(dict(de=m["de"], de_h=m["de_h"], m=[m]))
+    rows_p, rows_i = [], []
+    for D in des:
+        brs = []
+        for m in sorted(D["m"], key=lambda m: (m["noise"] + m["znoise"], m["run"])):
+            part = m["A"][m["S"] >= m["off"] + br_min, :2]
+            for B in brs:
+                A = B["axis"]["A"]
+                dd = np.array([np.min(np.hypot(A[:, 0] - p[0], A[:, 1] - p[1])) for p in part])
+                if len(dd) and np.percentile(dd, 90) <= BR_JOIN:
+                    B["m"].append(m)
+                    break
+            else:
+                brs.append(dict(axis=m, m=[m]))
+        win = max(max(B["axis"]["off"] for B in brs) + 10.0, BR_WIN_MIN)
+        for B in brs:
+            ax = B["axis"]
+            A, S = ax["A"].copy(), ax["S"]
+            A[:, 2] = _branch_z(tm, ax)
+            hg = np.arctan2(np.gradient(A[:, 0]), np.gradient(A[:, 1]))
+            k = len(rows_i)
+            la, lo = (np.asarray(x, float) for x in utm_inv(A[:, 0], A[:, 1], ZONE))
+            fr = Frame(float(la[0]), float(lo[0]), 0.0, "utm", utm_zone=ZONE)
+            conv = fr.scale_heading(la, lo, np.zeros(len(la)))[1]
+            ht = np.angle(np.exp(1j * (hg - conv)))
+            rows_p.append(np.c_[np.full(len(A), k), S, la, lo, A[:, 2], ht])
+            dla, dlo = (float(np.asarray(x)[0])
+                        for x in utm_inv(D["de"][:1], D["de"][1:2], ZONE))
+            dconv = float(fr.scale_heading(np.array([dla]), np.array([dlo]), np.zeros(1))[1][0])
+            n = len(B["m"])
+            ns = sum(any(m["s_de"] - win <= x <= m["s_de"] + br_min for x in m["stops"])
+                     for m in B["m"])
+            rows_i.append((dla, dlo, float(np.angle(np.exp(1j * (D["de_h"] - dconv)))),
+                           ax["off"], win, n, ns))
+            if verbose:
+                print(f"ветка {k}: тупик ({D['de'][0] - 300000:.0f}, {D['de'][1] - 6100000:.0f}) "
+                      f"MGRS 37UCB, начало ({A[0, 0] - 300000:.0f}, {A[0, 1] - 6100000:.0f}) "
+                      f"за {ax['off']:.0f} м до тупика, длина {S[-1]:.0f} м, конец "
+                      f"({A[-1, 0] - 300000:.0f}, {A[-1, 1] - 6100000:.0f}), ось — "
+                      f"{ax['run']} (разброс {ax['noise']:.1f} м, высоты {ax['znoise']:.2f} м"
+                      f"{'' if ax['znoise'] <= BR_Z_NOISE else ' — высота по опорам'}); проходов {n}, стояли в "
+                      f"окне {win:.0f} м: {ns}; прогоны " + ", ".join(m["run"] for m in B["m"]))
+    bp = np.vstack(rows_p) if rows_p else np.zeros((0, 6))
+    return bp, np.array(rows_i, float).reshape(-1, 7)
 
 
 def calibrate_scale(tm, tracks, meas_scale, n_runs=30):

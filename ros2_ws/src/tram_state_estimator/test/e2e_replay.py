@@ -44,8 +44,10 @@ def load_fixture(path=FIXTURE):
     return fx
 
 
-def sheet():
-    """(Params, параметры ноды) из config/tram.yaml — как в tram_node.py."""
+def sheet(over=None):
+    """(Params, параметры ноды) из config/tram.yaml — как в tram_node.py
+    (с масштабом колёс вагона из параметра vehicle, если он есть). over —
+    параметры ноды поверх листа (до выбора вагона: vehicle="auto" и т. п.)."""
     import yaml
     from tram_state_estimator.estimator_core import Params
     with open(os.path.join(PKG, "config", "tram.yaml"), encoding="utf-8") as fh:
@@ -53,7 +55,12 @@ def sheet():
     names = {f.name for f in fields(Params)}
     params = Params.from_dict({k: v for k, v in got.items() if k in names})
     node = {k: v for k, v in got.items() if k not in names}
-    return params, node
+    node.update(over or {})
+    try:
+        from tram_state_estimator import vehicle
+    except ImportError:             # код до 26.09
+        return params, node
+    return vehicle.apply_node(params, node)[0], node
 
 
 def _accepts(fn, name):
@@ -74,7 +81,19 @@ POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("nomap_mode", "nomap_mode"), ("keep_offset_xy", "keep_offset_xy"),
                  ("keep_offset_z", "keep_offset_z"), ("output_point", "output_point"),
                  ("antenna_master_x", "antenna_master_x"),
-                 ("antenna_rover_x", "antenna_rover_x"), ("antenna_z", "antenna_z"))
+                 ("antenna_rover_x", "antenna_rover_x"), ("antenna_z", "antenna_z"),
+                 # коррекция по GNSS после окна (26.09): имена — как у ноды
+                 ("gnss_correction", "gnss_correction"),
+                 ("gnss_sigma_rtk_m", "gnss_sigma_rtk_m"),
+                 ("gnss_sigma_sbas_m", "gnss_sigma_sbas_m"),
+                 ("gnss_sigma_fix_m", "gnss_sigma_fix_m"), ("gnss_gate", "gnss_gate"),
+                 ("gnss_jump_m", "gnss_jump_m"), ("gnss_confirm_n", "gnss_confirm_n"),
+                 ("gnss_min_interval_s", "gnss_min_interval_s"),
+                 ("gnss_max_skew_s", "gnss_max_skew_s"),
+                 ("gnss_prior_rel", "gnss_prior_rel"),
+                 ("gnss_scale_adapt", "gnss_scale_adapt"),
+                 ("gnss_stop_skip_m", "gnss_stop_skip_m"),
+                 ("gnss_persist_s", "gnss_persist_s"))
 # tf антенн в base_link (организаторы 25.09); независимо от body.py пакета
 MASTER_X, ROVER_X, ANTENNA_Z = -9.873, 2.563, 3.0
 
@@ -103,8 +122,7 @@ def make_runner(use_map=True, **over):
     projection="utm"); передаются, только если Runner их принимает."""
     from tram_state_estimator.runner import Runner
     from tram_state_estimator.track_map import TrackMap
-    params, node = sheet()
-    node.update(over)
+    params, node = sheet(over)
     tmap = None
     mf = node.get("map_file", "")
     if use_map and mf:
@@ -123,6 +141,14 @@ def make_runner(use_map=True, **over):
     pos = getattr(r, "pos", None)
     if pos is not None and hasattr(pos, "init_window") and "init_window" not in kw:
         pos.init_window = node.get("init_window_s", 3.0)
+    if node.get("wheel_scale_online"):
+        # онлайн-масштаб колёс — как в ноде (tram_node.py: wheel_scale_hook)
+        try:
+            from tram_state_estimator import vehicle as V
+        except ImportError:
+            V = None
+        if V is not None:
+            V.wheel_scale_hook(r, True)
     return r, node
 
 

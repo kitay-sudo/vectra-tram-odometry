@@ -22,7 +22,10 @@
     обучающих, calib_tune.py);
   * параметры фильтра, подобранные прогоном связки на подгоночных прогонах
     (q_v, крип, адаптация — calib_tune.py; выходная σ — calib_sigma.py), —
-    analysis/calib_tuned_<лист>.json.
+    analysis/calib_tuned_<лист>.json;
+  * масштаб колёс каждого вагона (блок "vehicles": 30618, 30639 по записям
+    своего вагона из тех же подгоночных) — calib_vehicle.py; нода выбирает
+    его параметром vehicle (docs/VEHICLES.md).
 
 Весь пересчёт по порядку — analysis/calib_all.sh.
 """
@@ -35,6 +38,7 @@ import numpy as np
 
 import bagio
 import calib_drive
+import calib_vehicle
 
 KMH = 3.6
 G = 9.81
@@ -205,10 +209,14 @@ def main():
         "_tuned_from": (f"analysis/calib_tuned_{which}.json" if tmeta else None),
         "_tuned_notes": (tmeta or {}).get("notes"),
     }
+    vehicles = calib_vehicle.vehicle_block(which)
+    assert abs(vehicles["_mixed_meas_scale"] - over["meas_scale"]) < 2e-6,         "масштаб вагонов посчитан не тем способом, что общий"
+    print("масштаб колёс по вагонам: " + ", ".join(
+        f"{v} {vehicles[v]['meas_scale']:.6f}" for v in calib_vehicle.VEHICLES))
     out = OUT[which]
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({**meta, "params": over}, ensure_ascii=False, indent=1),
-                   encoding="utf-8")
+    out.write_text(json.dumps({**meta, "params": over, "vehicles": vehicles},
+                              ensure_ascii=False, indent=1), encoding="utf-8")
     print("записано:", out)
 
 

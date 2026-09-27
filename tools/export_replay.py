@@ -271,9 +271,18 @@ def resolve_sheet(spec=None):
     if not leak and "/config/eval/" not in "/" + path.replace(os.sep, "/"):
         leak = "лист не оценочный (не из config/eval/): на отложенных числа не отчётные"
     params = EC.Params.from_dict(corep)
+    # вагон листа (vehicle: 30618 по умолчанию) — масштаб колёс как в ноде
+    # (tram_node.py -> vehicle.apply); лист до 26.09 без vehicle — как есть
+    vehicle = None
+    try:
+        import eval_replay as ER
+        params, vi = ER.apply_vehicle(params, node)
+        vehicle = dict(used=(vi or {}).get("used"), meas_scale=float(params.meas_scale))
+    except (ImportError, AttributeError):
+        pass
     full = path if os.path.isabs(path) else os.path.join(ROOT, path)
     return params, node, dict(path=path, label=label, leak=leak or None, resolver=src,
-                              sha1=sha1(full))
+                              sha1=sha1(full), vehicle=vehicle)
 
 
 # Параметры ноды -> аргументы Runner так же, как tram_node.py: явные
@@ -315,6 +324,14 @@ def runner_kwargs(node, tmap):
 def make_runner(params, node, tmap, cls=Runner):
     kw, _ = runner_kwargs(node, tmap)
     r = cls(params, **kw)
+    # онлайн-масштаб колёс (wheel_scale_online) — как в ноде; у базы «только
+    # колесо» его нет (как в tools/eval_replay.make_runner)
+    if cls is Runner and node.get("wheel_scale_online"):
+        try:
+            from tram_state_estimator import vehicle as V
+            V.wheel_scale_hook(r, True)
+        except ImportError:
+            pass
     # связка до WP потока «положение»: окно выставки задаётся после __init__
     # (как tram_node.py до правок)
     if "init_window" not in kw and "init_window_s" in node and hasattr(r, "pos") \
