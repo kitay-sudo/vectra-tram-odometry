@@ -3,7 +3,7 @@
 
 Входы подаются прямо в node._input по времени прихода, таймер пульса
 вызывается каждые 10 мс поддельных монотонных часов (модуль time ноды
-подменён), публикация перехвачена. Связка — Runner на листе тестов
+подменён), публикация перехвачена. Связка - Runner на листе тестов
 test_runner_robust (config/tram.yaml пакета), без карты.
 """
 
@@ -63,8 +63,8 @@ def offline(ev):
 def run_node(ev, monkeypatch, rate=1.0, pause=None, tail=3.0, delay=None,
              horizon=None, log=None):
     """Прогон ноды; возвращает массивы (метка, v, стенное время, от пульса).
-    delay(t, метод) — добавочное опоздание прихода события, с; horizon —
-    pulse_horizon_s вместо умолчания ноды; log (dict) — сюда пишутся входы
+    delay(t, метод) - добавочное опоздание прихода события, с; horizon -
+    pulse_horizon_s вместо умолчания ноды; log (dict) - сюда пишутся входы
     тележек и ручки (номер события, стенное время, метка), номера событий
     выходов и горизонт: для задержки in2out, как у tools/ros_probe.py."""
     ft = FakeTime()
@@ -174,7 +174,7 @@ def test_slow_playback_does_not_turn_outputs_into_forecasts(ros, monkeypatch):
 
 @pytest.mark.parametrize("horizon", [None, 2.0])
 def test_player_pause_forecast_within_horizon_and_monotonic(ros, monkeypatch, horizon):
-    """Пауза плеера 7,6 с: прогноз пульса — узлы сетки не дальше
+    """Пауза плеера 7,6 с: прогноз пульса - узлы сетки не дальше
     pulse_horizon_s от последней метки входа (умолчание ноды и прежние 2 с),
     с шагом ≤ 0,13 с по стенным часам; метки не идут назад после паузы."""
     ev = trt.stream(60.0, lag=0.05)
@@ -196,7 +196,7 @@ def test_player_pause_forecast_within_horizon_and_monotonic(ros, monkeypatch, ho
 def test_record_pause_latency_bounded_by_horizon(ros, monkeypatch):
     """Запись с паузой входов (как 30618_af7496f0): за паузу пульс занимает
     узлы сетки прогнозом, вернувшиеся с опозданием входы с этими метками ждут
-    первого нового узла. С горизонтом 2 с это до ~0,7 с (в ROS на этой записи —
+    первого нового узла. С горизонтом 2 с это до ~0,7 с (в ROS на этой записи -
     767,8 мс); с горизонтом по умолчанию задержка не больше горизонта с запасом
     на шаг сетки и остаётся меньше 250 мс. Метки выхода не повторяются и не идут
     назад, |Δv| против офлайн-связки < 0,01 м/с."""
@@ -218,7 +218,7 @@ def test_record_pause_latency_bounded_by_horizon(ros, monkeypatch):
 
 def test_second_bag_is_published_after_reset(ros, monkeypatch):
     """Второй bag с метками на 139 с раньше: сброс, выходы второго bag
-    публикуются (подавление повторов обнулено), внутри каждого — по порядку."""
+    публикуются (подавление повторов обнулено), внутри каждого - по порядку."""
     ev1 = trt.stream(20.0)
     ev2 = [(t + 21.0, m, a) for t, m, a in trt._bag2(-139.0 - 20.0)
            if t < 20.0]
@@ -245,7 +245,7 @@ def test_odometry_covariances_have_no_zero_diagonal(ros, monkeypatch):
     node.destroy_node()
     assert len(got) > 150
     # до якоря GNSS положение не публикуется (pos_valid),
-    # поэтому все опубликованные — с якорем: σ x, y конечна и мала
+    # поэтому все опубликованные - с якорем: σ x, y конечна и мала
     assert len(got) < len(vel)
     assert all(o.pose.covariance[0] < 1e5 for o in got)
     for od in got:

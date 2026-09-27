@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""position_eval — оценка положения на отложенных прогонах.
+"""position_eval - оценка положения на отложенных прогонах.
 
 Прогон воспроизводится офлайн через Runner выбранного исходника пакета
-(--pkg: текущий или выгрузка другой ветки) в порядке записи bag; GNSS —
+(--pkg: текущий или выгрузка другой ветки) в порядке записи bag; GNSS -
 первые 3 с по времени записи (как analysis/evaluate.py) или весь прогон.
-Эталон — GNSS master, посчитанный НЕЗАВИСИМО от кода ноды (analysis/georef.py).
-Пары «выход — эталон» — ближайшая метка в пределах 0,05 с; выходы без якоря
+Эталон - GNSS master, посчитанный НЕЗАВИСИМО от кода ноды (analysis/georef.py).
+Пары «выход - эталон» - ближайшая метка в пределах 0,05 с; выходы без якоря
 (pos_valid = False, нода их не публикует) в пары не входят. Средние по
 прогонам взвешены числом пар скорости GNSS.
 
@@ -27,11 +27,11 @@
   diff   --tags A,B                          -> max |dv|, |dp| по прогонам
   boundary                                   -> какие прогоны пересекают E = 400 км
 
-Сценарии: normal — GNSS первые 3 с; full — весь прогон; norover — без rover;
-nomaster — без master (выставка по rover со сдвигом на базу);
-cut — запись начинается на ходу (первая метка master/vel после 300 с со
+Сценарии: normal - GNSS первые 3 с; full - весь прогон; norover - без rover;
+nomaster - без master (выставка по rover со сдвигом на базу);
+cut - запись начинается на ходу (первая метка master/vel после 300 с со
 скоростью > 8 м/с, всё раньше отброшено).
---frame rel_equirect — выход старого кода (относительный equirect от первой
+--frame rel_equirect - выход старого кода (относительный equirect от первой
 точки master): сравнивается с эталоном в той же формуле.
 """
 
@@ -268,7 +268,7 @@ def polyline(P, step=1.0):
 
 def along_cross(X2, V, s, s_ref, win=60.0):
     """Проекция выхода на ломаную эталона в окне дуги ±win вокруг s_ref.
-    along = s_out − s_ref, cross — расстояние до ломаной (со знаком: + слева)."""
+    along = s_out − s_ref, cross - расстояние до ломаной (со знаком: + слева)."""
     if len(V) < 2:
         return np.zeros(len(X2)), np.zeros(len(X2))
     A_, B_ = V[:-1], V[1:]
@@ -421,8 +421,8 @@ def load_score(tag):
 
 def cmd_report(args):
     tags = args.tags.split(",")
-    print("\nСредние взвешены числом пар скорости GNSS; конец — ошибка 3D в конце "
-          "прогона; дрейф — конец / путь GNSS.\n")
+    print("\nСредние взвешены числом пар скорости GNSS; конец - ошибка 3D в конце "
+          "прогона; дрейф - конец / путь GNSS.\n")
     print("| вариант | прогонов | ср. 3D, м | конец ср. / мед. / макс, м | дрейф, % | "
           "along ср. / RMSE / макс, м | cross ср., м | \\|z\\|, м | MAE v, м/с | разн. квадрат | "
           "ср. 3D в квадрате, м |")
@@ -445,7 +445,7 @@ def cmd_report(args):
             cells = []
             for t in tags:
                 r = S[t].get(b, {})
-                cells.append(f"{r['mean3d']:.2f} / {r['end3d']:.1f}" if "mean3d" in r else "—")
+                cells.append(f"{r['mean3d']:.2f} / {r['end3d']:.1f}" if "mean3d" in r else "-")
             print(f"| {b} | " + " | ".join(cells) + " |")
     if args.detail:
         t = args.detail
@@ -489,7 +489,7 @@ def cmd_diff(args):
               if m.any() else float("nan"))
         ra, rb = SA.get(f.stem, {}), SB.get(f.stem, {})
         cell = (f"{ra['mean3d']:.2f} / {rb['mean3d']:.2f}"
-                if "mean3d" in ra and "mean3d" in rb else "—")
+                if "mean3d" in ra and "mean3d" in rb else "-")
         print(f"| {f.stem} | {dv:.2e} | {dp:.3f} | {cell} |")
 
 

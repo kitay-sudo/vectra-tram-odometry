@@ -2,8 +2,8 @@
 """Аудит контракта жюри и устойчивости связки Runner (без ROS).
 
 Гоняет Runner пакета (ros2_ws/src/tram_state_estimator/tram_state_estimator/
-runner.py) напрямую потоками сообщений — синтетическими и собранными из
-реальных прогонов (analysis/cache/*.npz), — с инъекцией аномалий. Файлы
+runner.py) напрямую потоками сообщений - синтетическими и собранными из
+реальных прогонов (analysis/cache/*.npz), - с инъекцией аномалий. Файлы
 пакета не меняются: пакет подключается через sys.path.
 
 Запуск (из корня репозитория, в образе vectra/tram:dev):
@@ -58,7 +58,7 @@ R_EARTH = 6378137.0
 NODE_KEYS = ("wheel_timeout_s", "handle_timeout_s", "init_window_s", "map_file",
              "origin_lat", "origin_lon", "origin_alt", "frame_id",
              "child_frame_id")
-T_EPOCH = 1787731608.0          # эпоха синтетики — как в данных (2026-08)
+T_EPOCH = 1787731608.0          # эпоха синтетики - как в данных (2026-08)
 OUT = ROOT / "out" / "contract"
 
 
@@ -69,7 +69,7 @@ def load_sheet():
     y = yaml.safe_load((PKG / "config" / "tram.yaml").read_text(encoding="utf-8"))
     rp = y["/tram_state_estimator"]["ros__parameters"]
     from dataclasses import fields as _fields
-    names = {f.name for f in _fields(Params)}     # параметры ноды вне ядра — мимо
+    names = {f.name for f in _fields(Params)}     # параметры ноды вне ядра - мимо
     core = {k: v for k, v in rp.items() if k in names}
     node = {k: rp[k] for k in NODE_KEYS if k in rp}
     return Params.from_dict(core), node
@@ -144,14 +144,14 @@ class Tee:
 # ============================================================ прогон потока
 #
 # Событие: (tb, kind, arg, th, val)
-#   tb — время прихода (время записи в bag; при ros2 bag play — порядок и темп)
-#   kind: "w" тележка (arg = 0 передняя, 1 задняя; val — км/ч)
-#         "h" ручка (val — позиция)
+#   tb - время прихода (время записи в bag; при ros2 bag play - порядок и темп)
+#   kind: "w" тележка (arg = 0 передняя, 1 задняя; val - км/ч)
+#         "h" ручка (val - позиция)
 #         "f" GNSS fix (arg = "master"/"rover"; val = (lat, lon, alt))
-#   th — header.stamp, его и получает Runner
+#   th - header.stamp, его и получает Runner
 
 def run_stream(runner, events, budget_s=120.0):
-    """Подаёт события в Runner, как нода: каждый вызов — один callback.
+    """Подаёт события в Runner, как нода: каждый вызов - один callback.
 
     Возвращает запись: выходы (stamp, v, x, y, z, sigma_v, sigma_s, mode,
     valid, tb вызова, выпустившего выход), время вызовов, исключение, таймаут.
@@ -201,7 +201,7 @@ def run_stream(runner, events, budget_s=120.0):
             steps = (runner.t - t_runner_before) / PARAMS.dt
             rec["hang_steps_done"] = steps
             rec["hang_steps_per_s"] = steps / max(el, 1e-9)
-    except Exception as e:                      # noqa: BLE001 — это и ищем
+    except Exception as e:                      # noqa: BLE001 - это и ищем
         rec["exc"] = f"{type(e).__name__}: {e}"
         tb_ = traceback.extract_tb(e.__traceback__)
         rec["exc_where"] = " <- ".join(
@@ -319,8 +319,8 @@ def summarize(rec):
 # ============================================================ синтетика
 
 def real_origin():
-    """Начало и курс синтетики — из первого прогона с GNSS, чтобы карта
-    путей работала как в жизни. Нет кэша — Москва, север."""
+    """Начало и курс синтетики - из первого прогона с GNSS, чтобы карта
+    путей работала как в жизни. Нет кэша - Москва, север."""
     for f in sorted(CACHE.glob("3*.npz")):
         z = np.load(f)
         m, r = z["mfix"], z["rfix"]
@@ -361,7 +361,7 @@ def notch_schedule(tc):
 
 def truth(duration, t_skip=0.0, dt=0.01):
     """Истинное движение по модели ядра (табличный привод листа вагона):
-    так синтетика согласована с моделью, и отклонения — от аномалий, а не
+    так синтетика согласована с моделью, и отклонения - от аномалий, а не
     от несовпадения модели. Возвращает сетку t, v, s (от t_skip)."""
     p = PARAMS
     n = int((duration + t_skip) / dt) + 1
@@ -390,8 +390,8 @@ def synth(duration=300.0, seed=1, gnss="window", gnss_window=3.0,
     37 мс), ручка 20 Гц, GNSS 10 Гц (master и rover в 12 м впереди по курсу).
     tb = th + типичная задержка записи из данных (0,05 / 0,001 / 0,045 с).
 
-    gnss: "window" — только первые gnss_window с; "full" — весь прогон;
-          "none" — нет.
+    gnss: "window" - только первые gnss_window с; "full" - весь прогон;
+          "none" - нет.
     Возвращает (events, truth dict).
     """
     rng = np.random.default_rng(seed)
@@ -496,8 +496,8 @@ def m_shift_after(t_rel, shift):
 
 
 def m_second_bag(gap):
-    """После прогона — ещё раз тот же прогон с метками на gap позже конца
-    первого (gap < 0 — второй прогон раньше первого)."""
+    """После прогона - ещё раз тот же прогон с метками на gap позже конца
+    первого (gap < 0 - второй прогон раньше первого)."""
     def f(ev):
         span = ev[-1][3] - ev[0][3]
         sh = span + gap
@@ -531,7 +531,7 @@ def m_jitter(maxj, seed=3):
 
 
 def m_swap_adjacent_same_topic(ev):
-    """Внутри каждого топика — перестановка соседних сообщений (порядок
+    """Внутри каждого топика - перестановка соседних сообщений (порядок
     прихода нарушен, метки идут назад)."""
     idx = {}
     for i, e in enumerate(ev):
@@ -733,7 +733,7 @@ def compare(rec, base, t_end_anom):
     if t_end_anom is not None:
         te = T_EPOCH + t_end_anom
         after = Tc >= te
-        bad = ~(dv <= 0.1)          # NaN — тоже плохо
+        bad = ~(dv <= 0.1)          # NaN - тоже плохо
         idx = np.flatnonzero(after & bad)
         if not after.any():
             out["recovery_s"] = None
@@ -1111,7 +1111,7 @@ def cmd_real_twobags(args):
     out(f"#   мин {gaps.min():.0f} с, медиана {np.median(gaps):.0f} с, макс {gaps.max():.0f} с;"
         f" отрицательных (перекрытие) {int((gaps < 0).sum())}")
     out(f"#   шагов сетки на медианный промежуток: {np.median(gaps) / PARAMS.dt:.0f}")
-    # реальная пара: A, затем B, где B позже A (типичный порядок по имени — случайный)
+    # реальная пара: A, затем B, где B позже A (типичный порядок по имени - случайный)
     bags = sorted(p.stem for p in CACHE.glob("3*.npz"))
     a, b = bags[0], bags[1]
     ea, _ = bag_events(a, "window")
@@ -1258,7 +1258,7 @@ def cmd_resources(args):
 def cmd_data(args):
     out = Tee(args.out / "data.txt")
     fs = sorted(f for f in CACHE.glob("3*.npz"))
-    out(f"# Свойства меток и значений в {len(fs)} прогонах (analysis/cache, tb — время записи, th — header.stamp)")
+    out(f"# Свойства меток и значений в {len(fs)} прогонах (analysis/cache, tb - время записи, th - header.stamp)")
     agg = {}
     ratio, backs = [], []
     for f in fs:
@@ -1460,7 +1460,7 @@ def cmd_causality(args):
 
 class LagCompRunner(Runner):
     """Предлагаемая правка (НЕ в файлах пакета): показания тележек
-    приводятся к моменту шага сетки, z + a·(t − stamp), a — ускорение
+    приводятся к моменту шага сетки, z + a·(t − stamp), a - ускорение
     прошлого выхода. Метка показания известна Runner (t_wheel)."""
 
     def _step(self):
@@ -1518,9 +1518,9 @@ def cmd_lag(args):
         res = list(ex.map(_lag_one, jobs))
     out("# Запаздывание выхода относительно эталона GNSS (|v| master, метки header).")
     out("# best_shift: сдвиг s, при котором v_out(t+s) лучше всего совпадает с v_GNSS(t);")
-    out("# > 0 — выход отстаёт. Смещение по фазам: a>0,3 разгон, a<-0,3 торможение,")
+    out("# > 0 - выход отстаёт. Смещение по фазам: a>0,3 разгон, a<-0,3 торможение,")
     out("# |a|<0,1 и v>1 ход, v<0,2 стоянка. Без карты, лист tram.yaml, GNSS 3 с.")
-    out("# orig — Runner пакета; comp — та же связка с приведением показаний к моменту шага.")
+    out("# orig - Runner пакета; comp - та же связка с приведением показаний к моменту шага.")
     out(f"{'прогон':<16}{'вариант':<8}{'|ош v|':>8}{'сдвиг,с':>9}{'разгон':>9}{'тормоз':>9}{'ход':>9}{'стоянка':>9}")
     for r in sorted(res, key=lambda r: (r["bag"], r["variant"] != "orig")):
         out(f"{r['bag']:<16}{r['variant']:<8}{r['mae']:8.4f}{r['best_shift']:+9.3f}{r['b_acc']:+9.4f}"
@@ -1536,7 +1536,7 @@ def cmd_lag(args):
 # ============================================================ проверка правок
 
 class PatchedRunner(Runner):
-    """ПРЕДЛАГАЕМЫЕ минимальные правки runner.py (здесь — подклассом, файлы
+    """ПРЕДЛАГАЕМЫЕ минимальные правки runner.py (здесь - подклассом, файлы
     пакета не меняются). Каждая правка помечена строкой runner.py.
 
     1. on_wheel/on_handle/on_fix: метка и значение должны быть конечны,
@@ -1544,7 +1544,7 @@ class PatchedRunner(Runner):
        ограничивается ±15; GNSS: конечные lat/lon/alt, не (0, 0).
     2. _advance: разрыв времени > MAX_JUMP вперёд или назад. Одиночное
        сообщение с такой меткой отбрасывается; если следующее сообщение
-       подтверждает разрыв (новый bag, перезапуск проигрывания) — связка
+       подтверждает разрыв (новый bag, перезапуск проигрывания) - связка
        перезапускается (ядро и выставка заново, карта та же).
     3. on_fix: после окна выставки GNSS не вызывает _advance и ничего не
        меняет; s0 переустанавливается, только когда выставка реально
@@ -1669,9 +1669,9 @@ def cmd_fixcheck(args):
     with ProcessPoolExecutor(args.workers) as ex:
         res = list(ex.map(_fix_real_one, bags))
     out("")
-    out("# Реальные прогоны с картой: оригинал vs правка. max|dv|, max|dp| — расхождение правки")
+    out("# Реальные прогоны с картой: оригинал vs правка. max|dv|, max|dp| - расхождение правки")
     out("# с оригиналом при GNSS 3 с (ожидается 0: правки не должны менять штатный режим).")
-    out("# 3D ср — средняя 3D-ошибка против GNSS master при GNSS весь прогон и 3 с.")
+    out("# 3D ср - средняя 3D-ошибка против GNSS master при GNSS весь прогон и 3 с.")
     out(f"{'прогон':<16}{'max|dv| окно':>13}{'max|dp| окно':>13}{'сбросов':>8}{'отброшено':>10}"
         f"{'3D ориг весь':>13}{'3D правка весь':>15}{'3D ориг окно':>13}")
     for r in res:
@@ -1711,8 +1711,8 @@ def cmd_summary(args):
         J[tag] = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
     names = list(J["nomap"] or J["map"])
     out("# Сводка фаззинга. «с картой» = конфигурация ноды (tram.yaml + track_map.npz);")
-    out("# «без карты» — та же связка без карты: видно поведение ядра и положение против истины.")
-    out("# dp — |положение − эталонный прогон без аномалии| в конце, м; ош.пол. — против истины (без карты).")
+    out("# «без карты» - та же связка без карты: видно поведение ядра и положение против истины.")
+    out("# dp - |положение − эталонный прогон без аномалии| в конце, м; ош.пол. - против истины (без карты).")
     out(f"{'сценарий':<24}{'с картой':<30}{'без карты':<30}{'NaN вых':>8}{'тишина,с':>9}"
         f"{'восст.,с':>9}{'dp конец':>10}{'ош.пол.':>9}{'|ош v|':>8}{'макс.вызов,мс':>14}")
 

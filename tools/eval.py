@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
-"""tools/eval.py — единая оценка точности и устойчивости. Одна команда.
+"""tools/eval.py - единая оценка точности и устойчивости. Одна команда.
 
 Что делает (всё офлайн, без ROS, в образе vectra/tram:dev):
   1. строит кэш numpy из data/ для нужных прогонов, если его нет
-     (analysis/bagio.py; .msg — из ros2_ws/src/tram_vehicle_msgs/msg);
+     (analysis/bagio.py; .msg - из ros2_ws/src/tram_vehicle_msgs/msg);
   2. строит карту путей только по обучающим прогонам (analysis/build_map.py
      train), если её нет;
   3. прогоняет отложенные прогоны tools/split.json:holdout_scored через связку
      Runner так же, как нода (tools/eval_replay.py): GNSS только первые 3 с
-     (--gnss full — весь прогон, как bag жюри с полным GNSS); отдельно —
+     (--gnss full - весь прогон, как bag жюри с полным GNSS); отдельно -
      проверка «GNSS весь прогон» на 5 прогонах (первые 5 мин);
-  4. считает метрики ТЗ против GNSS: скорость (master — основной эталон,
-     rover — дополнительный) RMSE/MAE/смещение, по фазам, ±2σ, ложные стоянки;
-     положение точки base_link (по tf антенн; --ref-point master — прежний
-     эталон) в системе судьи MGRS от угла 37UCB непрерывно (x — восток,
-     y — север, z — высота уровня рельса), только опубликованное (pos_valid):
+  4. считает метрики ТЗ против GNSS: скорость (master - основной эталон,
+     rover - дополнительный) RMSE/MAE/смещение, по фазам, ±2σ, ложные стоянки;
+     положение точки base_link (по tf антенн; --ref-point master - прежний
+     эталон) в системе судьи MGRS от угла 37UCB непрерывно (x - восток,
+     y - север, z - высота уровня рельса), только опубликованное (pos_valid):
      3D, вдоль/поперёк пути, дрейф % по концу прогона, шаги без положения
      после выставки; поперечная ошибка и путь вдоль карты организаторов
      pathgraph (если есть _incoming/pathgraph); квадраты 100 км;
-  5. рядом — причинная база «только колесо» на той же машинерии карты;
+  5. рядом - причинная база «только колесо» на той же машинерии карты;
   6. инъекции аномалий (tools/inject.py) в реальные отложенные прогоны:
      до / во время / после, восстановление, флаги;
   7. графики docs/img/eval_*.png;
   8. out/eval/*.json и docs/EVAL.md (tools/eval_report.py).
-Варианты листа (заглушки крипа / нули) — только с --variants.
+Варианты листа (заглушки крипа / нули) - только с --variants.
 
 Запуск (PowerShell, из корня репозитория):
   docker run --rm --cpus 2 -v ${PWD}:/repo -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro `
       -w /repo vectra/tram:dev python3 tools/eval.py --label "<версия>"
   ... python3 tools/eval.py --quick --check-determinism     # CI: 2 коротких прогона, дважды
-Ключи — python3 tools/eval.py --help и docs/EVAL.md, раздел «Как запустить».
+Ключи - python3 tools/eval.py --help и docs/EVAL.md, раздел «Как запустить».
 """
 
 import argparse
@@ -64,10 +64,10 @@ QUICK_KINDS = ("both_zero", "dropout", "nan", "stamp_jump")
 VARIANTS = ("stubs:c_creep=0.02,c_creep_drag=0.002", "zero:c_creep=0,c_creep_drag=0")
 SENS_FRAMES = ("mgrs", "enu", "equirect")
 BEFORE_S, AFTER_S = 30.0, 60.0
-GNSS_FULL_S = 300.0                     # с записи: прогон «GNSS весь прогон» — первые 5 мин
+GNSS_FULL_S = 300.0                     # с записи: прогон «GNSS весь прогон» - первые 5 мин
 GNSS_FULL_EVERY = 3                     # по умолчанию каждый 3-й отложенный (5 из 15)
 TAIL_S = 300.0                          # с: прогон с инъекцией идёт до конца окна + TAIL_S
-SNAP_MARGIN_S = 5.0                     # с: копия чистой связки — за BEFORE_S + это до аномалии
+SNAP_MARGIN_S = 5.0                     # с: копия чистой связки - за BEFORE_S + это до аномалии
 REC_TOL, REC_HOLD = 0.1, 3.0            # м/с, с: восстановление = |v − v_чисто| ≤ tol в течение hold
 # сводки проб: отчётные (в git, с примечаниями note.txt) и свежие замеры
 PROBE_GLOB = ("docs/data/realtime/*/summary.json,out/realtime/**/summary.json,"
@@ -129,9 +129,9 @@ def build_map_cli():
 def build_train_map(out, train_ids, workers, log, sheet):
     """Карта оценки только по обучающим прогонам tools/split.json:train.
     argparse: `build_map.py --set train --split tools/split.json --out F
-    --calib <лист оценки как json>` — множитель пути считается с meas_scale
+    --calib <лист оценки как json>` - множитель пути считается с meas_scale
     того же листа, что оценивается. legacy: `build_map.py train F` (список
-    train — из analysis/drive_model.json, он должен совпасть со split)."""
+    train - из analysis/drive_model.json, он должен совпасть со split)."""
     ensure_cache(train_ids, workers, log)
     import build_map
     argv = sys.argv
@@ -146,7 +146,7 @@ def build_train_map(out, train_ids, workers, log, sheet):
         dm = json.loads(dm_path.read_text(encoding="utf-8"))
         if sorted(dm["train"]) != sorted(train_ids):
             sys.exit("build_map.py берёт train из analysis/drive_model.json, а он не совпадает "
-                     "с tools/split.json:train — карта оценки была бы не той")
+                     "с tools/split.json:train - карта оценки была бы не той")
         if not (bagio.CACHE.parent / "drive_model.json").exists():   # build_map ищет его рядом с кэшем
             shutil.copy(dm_path, bagio.CACHE.parent / "drive_model.json")
         sys.argv = ["build_map.py", "train", str(out)]
@@ -199,7 +199,7 @@ def resolve_map(spec, cache, train_ids, workers, rebuild, log, sheet):
         key = map_key(sheet)
         name = f"track_map_train.{key}.npz"
         # старая карта analysis/cache/track_map_train.npz не используется: она собрана
-        # на другой платформе и отличается множителем пути в 16-м знаке (числа — в 6-м)
+        # на другой платформе и отличается множителем пути в 16-м знаке (числа - в 6-м)
         cands = [cache / name, MAPS_DIR / name]
         f = next((c for c in cands if c.exists()), None)
         if rebuild or f is None:
@@ -250,7 +250,7 @@ def _load_run(bag, quick_s):
 
 def _geo(O, r, a, cfg, zone):
     """Выход Runner'а -> (lat, lon, alt) по его системе координат. Только
-    для опубликованных положений (PV); остальные строки — NaN."""
+    для опубликованных положений (PV); остальные строки - NaN."""
     PV = M.published(O)
     fr, grid, note = R.detect_frame(cfg["sheet"]["node"], cfg["runner_frame"], O["XYZ"][PV])
     if cfg.get("runner_grid") is not None:
@@ -325,7 +325,7 @@ def run_inject_bag(task):
     """Все инъекции одного прогона. Чистая связка (модель и база) идёт один
     раз; перед каждой аномалией (за BEFORE_S + SNAP_MARGIN_S) снимается её
     копия, и дальше копия получает поток с инъекцией. Начало потока с
-    инъекцией до этого момента совпадает с чистым (проверяется; иначе —
+    инъекцией до этого момента совпадает с чистым (проверяется; иначе -
     прогон с нуля), поэтому результат тот же, что у прогона с нуля."""
     cfg = task["cfg"]
     bag = task["bag"]
@@ -435,7 +435,7 @@ def _score(res, task, cfg, p, a, runners, outs):
         if task.get("keep_samples"):
             e["samples"] = dict(v=s_v, p=s_p)
         if task.get("keep_series"):
-            e["xyz"] = np.where(PVs[:, None], O["XYZ"], np.nan)     # неопубликованное — NaN
+            e["xyz"] = np.where(PVs[:, None], O["XYZ"], np.nan)     # неопубликованное - NaN
             e["series"] = _series(O)
             e["series"]["tp"] = s_p["tp"] if s_p else np.zeros(0)
             e["series"]["al"] = s_p.get("al", np.zeros(0)) if s_p else np.zeros(0)
@@ -563,7 +563,7 @@ def gnss_full_compare(res, base, ids):
         XYZf = ef["xyz"]
         XYZb = eb["xyz"][mb][ok]
         dp = np.linalg.norm(XYZf[j[ok]] - XYZb, axis=1)
-        dp = dp[np.isfinite(dp)]                # неопубликованное — совпадение по same_pv
+        dp = dp[np.isfinite(dp)]                # неопубликованное - совпадение по same_pv
         # метрики на общем отрезке: пары скорости и положения по меткам эталона
         mg = Sb["tg"] <= t_hi
         mpp = Sb["tp"] <= t_hi
@@ -663,7 +663,7 @@ def evaluate(args, log):
     sheet = R.resolve_sheet(args.sheet)
     overrides = R.parse_overrides(args.set)
     core_ov, node_ov = R.split_overrides(overrides)
-    sheet["node"].update(node_ov)                  # --set mgrs_grid=37UDB и т. п. — параметры ноды
+    sheet["node"].update(node_ov)                  # --set mgrs_grid=37UDB и т. п. - параметры ноды
     map_path, map_label, map_leak = resolve_map(args.map, cache, train, workers, args.rebuild_map, log,
                                                 sheet)
     pg_spec = PGM.default_spec() if args.pathgraph == "auto" else args.pathgraph
@@ -715,7 +715,7 @@ def evaluate(args, log):
             ensure_cache([b], workers, log)
             tasks.append(dict(id=("base", b), bag=b, cfg=cfg, naive=True, keep_series=True))
         tasks.append(dict(id=("injbag", b), bag=b, cfg=cfg, kinds=kinds))
-    # длинные — первыми, чтобы процессы кончили вместе
+    # длинные - первыми, чтобы процессы кончили вместе
     order = sorted(range(len(tasks)), key=lambda i: (tasks[i]["id"][0] != "injbag", i))
     log(f"задач {len(tasks)}: прогонов {len(ids)}, вариантов {len([v for v in variants if not v['same_as_base']])}, "
         f"GNSS весь прогон {len(gf_ids)}, инъекций {len(inj_runs) * len(kinds)}; процессов {workers}")
@@ -734,7 +734,7 @@ def evaluate(args, log):
     base = {k[1]: v for k, v in res.items() if k[0] == "base"}
     unused = sorted({u for r in base.values() for u in r.get("node_params_unused", [])})
     if unused:
-        log(f"ВНИМАНИЕ: параметры ноды не дошли до Runner: {unused} — связка eval_replay "
+        log(f"ВНИМАНИЕ: параметры ноды не дошли до Runner: {unused} - связка eval_replay "
             "отстала от tram_node.py, числа могут не совпадать с нодой")
     glue = next((r.get("glue") for r in base.values() if r.get("glue")), {})
     report = dict(meta=dict(
@@ -830,7 +830,7 @@ def final_table(S):
     def fmt(d, key, nd, sign=False, pct=False):
         v = (d or {}).get(key)
         if v is None or (isinstance(v, float) and not math.isfinite(v)):
-            return "—"
+            return "-"
         return f"{100 * v:.1f} %" if pct else (f"{v:+.{nd}f}" if sign else f"{v:.{nd}f}")
 
     rows = []
@@ -842,13 +842,13 @@ def final_table(S):
                  (f"{title}: скорость RMSE, м/с", fmt(m, "v_rmse", 4), fmt(n, "v_rmse", 4)),
                  (f"{title}: смещение скорости, м/с", fmt(m, "v_bias", 4, sign=True),
                   fmt(n, "v_bias", 4, sign=True)),
-                 (f"{title}: истина внутри ±2σ", fmt(m, "cov2s_v", 1, pct=True), "—"),
+                 (f"{title}: истина внутри ±2σ", fmt(m, "cov2s_v", 1, pct=True), "-"),
                  (f"{title}: положение 3D ср., м", fmt(m, "p3d_mean", 2), fmt(n, "p3d_mean", 2)),
                  (f"{title}: конец прогона 3D ср., м", fmt(m, "p3d_end_mean", 2),
                   fmt(n, "p3d_end_mean", 2))]
     w0 = max([len(r[0]) for r in rows] + [7])
     w1 = max([len(r[1]) for r in rows] + [6])
-    out = [f"итог на {len(runs)} прогонах (эталон — GNSS; полные таблицы — EVAL.md):",
+    out = [f"итог на {len(runs)} прогонах (эталон - GNSS; полные таблицы - EVAL.md):",
            f"  {'метрика':<{w0}} | {'модель':>{w1}} | только колесо",
            f"  {'-' * w0}-+-{'-' * w1}-+--------------"]
     out += [f"  {a:<{w0}} | {b:>{w1}} | {c}" for a, b, c in rows]
@@ -857,7 +857,7 @@ def final_table(S):
 
 
 def _shown(path):
-    """Путь для журнала: от корня дерева, а вне дерева (--out снаружи) —
+    """Путь для журнала: от корня дерева, а вне дерева (--out снаружи) -
     как есть. Прежде relative_to падал на последней строке журнала, уже
     после записи JSON, и timing.json оставался без wall_with_doc_s."""
     path = Path(path)
@@ -871,17 +871,17 @@ def main():
                     help="eval (по умолчанию: config/eval/tram_eval.yaml | tram.yaml | "
                          "tram_calibration.json, иначе json с пометкой об утечке) | jury | json | путь")
     ap.add_argument("--set", default="",
-                    help="переопределить поля листа: k=v,k=v; поля Params — ядру, остальное — "
+                    help="переопределить поля листа: k=v,k=v; поля Params - ядру, остальное - "
                          "параметрам ноды (например mgrs_grid=37UDB, projection=utm)")
     ap.add_argument("--map", default="eval",
-                    help="eval (по умолчанию: config/eval/track_map.npz пакета — карта ОЦЕНКИ, "
+                    help="eval (по умолчанию: config/eval/track_map.npz пакета - карта ОЦЕНКИ, "
                          "только split train, масштаб колёс листа ОЦЕНКИ) | train (build_map по "
                          "split train с meas_scale оцениваемого листа, строится сама) | jury | "
                          "none | путь .npz")
     ap.add_argument("--rebuild-map", action="store_true", help="пересобрать карту train")
     ap.add_argument("--baseline", default=None,
                     help="итоги прежней версии (summary.json) для раздела «До и после»; по "
-                         "умолчанию docs/data/eval_before/summary.json, если есть; none — без него")
+                         "умолчанию docs/data/eval_before/summary.json, если есть; none - без него")
     ap.add_argument("--baseline-label", default="",
                     help="подпись прежней версии в разделе «До и после» вместо meta.label её "
                          "summary.json")
@@ -889,27 +889,27 @@ def main():
                     help="секунд GNSS в связку (3), full или сценарий доступности tools/inject.py "
                          "(sparse, bursts, nostart, midstart, glitchy, none)")
     ap.add_argument("--frame", default="mgrs", choices=M.FRAMES,
-                    help="система эталона для ошибок положения (mgrs — как у судьи)")
+                    help="система эталона для ошибок положения (mgrs - как у судьи)")
     ap.add_argument("--runner-frame", default="auto", choices=R.RUNNER_FRAMES,
-                    help="система выхода Runner'а: auto — по параметру листа projection, "
+                    help="система выхода Runner'а: auto - по параметру листа projection, "
                          "иначе equirect (старая версия пакета), с проверкой по величине")
     ap.add_argument("--runner-grid", default=None,
-                    help="как ЧИТАТЬ выход Runner'а в MGRS (\"\" — перенос по точке, 37UDB — "
-                         "непрерывно от квадрата); по умолчанию — параметр ноды mgrs_grid. Runner "
+                    help="как ЧИТАТЬ выход Runner'а в MGRS (\"\" - перенос по точке, 37UDB - "
+                         "непрерывно от квадрата); по умолчанию - параметр ноды mgrs_grid. Runner "
                          "этот ключ не настраивает: чтобы Runner выдавал 37UDB, --set mgrs_grid=37UDB")
     ap.add_argument("--judge-grid", default=M.JUDGE_GRID,
-                    help="соглашение судьи на границе квадратов: код квадрата — непрерывно от "
-                         "него (по умолчанию 37UCB, как pathgraph организаторов), \"\" — "
+                    help="соглашение судьи на границе квадратов: код квадрата - непрерывно от "
+                         "него (по умолчанию 37UCB, как pathgraph организаторов), \"\" - "
                          "перенос по точке")
     ap.add_argument("--ref-point", default="base_link", choices=M.REF_POINTS,
                     help="точка эталона положения: base_link (по tf антенн, как у судьи) | "
-                         "master (антенна, прежний эталон — для сравнения)")
+                         "master (антенна, прежний эталон - для сравнения)")
     ap.add_argument("--drop-antenna", default="", choices=("", "master", "rover"),
                     help="не подавать в связку GNSS этой антенны (выставка по одной "
                          "антенне); эталон по-прежнему по обеим")
     ap.add_argument("--pathgraph", default="auto",
                     help="pathgraph организаторов для поперечной ошибки и пути вдоль него: "
-                         "auto — _incoming/pathgraph, если есть; none; путь (каталог, файл, «;»)")
+                         "auto - _incoming/pathgraph, если есть; none; путь (каталог, файл, «;»)")
     ap.add_argument("--runs", default="", help="прогоны через запятую (по умолчанию holdout_scored)")
     ap.add_argument("--inject-runs", default=",".join(INJECT_RUNS))
     ap.add_argument("--inject-kinds", default="", help="виды инъекций (по умолчанию все)")
@@ -920,7 +920,7 @@ def main():
     ap.add_argument("--no-gnss-full", action="store_true")
     ap.add_argument("--gnss-full-runs", default="",
                     help=f"прогоны для проверки «GNSS весь прогон» (первые {GNSS_FULL_S:.0f} с): "
-                         f"по умолчанию каждый {GNSS_FULL_EVERY}-й отложенный; all — все; или список")
+                         f"по умолчанию каждый {GNSS_FULL_EVERY}-й отложенный; all - все; или список")
     ap.add_argument("--quick", action="store_true",
                     help=f"CI: прогоны {','.join(QUICK_RUNS)}, первые {QUICK_S:.0f} с, "
                          f"инъекции {','.join(QUICK_KINDS)}")
@@ -931,18 +931,18 @@ def main():
     ap.add_argument("--label", default="", help="подпись версии в шапке EVAL.md")
     ap.add_argument("--no-doc", action="store_true", help="не писать docs/EVAL.md и графики")
     ap.add_argument("--doc", default=DOC,
-                    help=f"документ (по умолчанию {DOC}; с --quick — <out>/EVAL.md, графики — "
+                    help=f"документ (по умолчанию {DOC}; с --quick - <out>/EVAL.md, графики - "
                          "img/ рядом с документом)")
     ap.add_argument("--probe-glob", default=PROBE_GLOB,
                     help="сводки tools/ros_probe.py для раздела «Реальное время»; note.txt "
-                         "рядом со сводкой — примечание под таблицей (строки и примечания "
+                         "рядом со сводкой - примечание под таблицей (строки и примечания "
                          "сохраняются в timing.json, --render-only берёт их оттуда)")
     ap.add_argument("--render-only", action="store_true",
                     help="только пересобрать docs/EVAL.md и графики из готовых out/eval/*.json "
                          "и plotdata.npz (без прогонов)")
     ap.add_argument("--gnss-scenarios", default="",
                     help="итоги tools/eval_gnss.py (summary.json или каталог) для раздела 5.1 "
-                         "«Сценарии доступности GNSS»; пусто — без раздела")
+                         "«Сценарии доступности GNSS»; пусто - без раздела")
     ap.add_argument("--gnss-scenarios-before", default="",
                     help="те же итоги прежней версии (столбцы «main» раздела 5.1)")
     ap.add_argument("--check-determinism", action="store_true",
@@ -1006,7 +1006,7 @@ def main():
     for line in final_table(result["summary"]):
         log(line)
     if not args.no_doc:
-        # документ — из тех же округлённых JSON, что и --render-only: байты совпадают
+        # документ - из тех же округлённых JSON, что и --render-only: байты совпадают
         shown = dict(summary=json.loads(files["summary.json"]), runs=json.loads(files["runs.json"]),
                      inject=json.loads(files["inject.json"]), kinds=result["kinds"])
         eval_report.write(shown, json.loads(dumps(timing)), base, res, args, ROOT, out)

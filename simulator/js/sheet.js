@@ -4,7 +4,7 @@ g.TV_SHEET = {
  "sheet": "jury",
  "path": "ros2_ws/src/tram_state_estimator/config/tram.yaml",
  "label": "боевой config/tram.yaml (все данные)",
- "sheet_sha1": "83ff85da1b23",
+ "sheet_sha1": "3259530ab401",
  "core_sha1": "684530832766",
  "core": {
   "M_nom": 28000.0,

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""tools/eval_gnss.py — коррекция положения по GNSS в середине маршрута:
+"""tools/eval_gnss.py - коррекция положения по GNSS в середине маршрута:
 сценарии доступности GNSS, «до» (GNSS только для выставки) и «после»
 (gnss_correction), модель и база «только колесо».
 
 Сценарии (tools/inject.py, GNSS_SCENARIOS; всё с зерном прогона):
-  first3   — GNSS только первые 3 с (как в проверочных bag; должно совпасть с «до»);
-  sparse   — первые 3 с + пачки по 5–10 с каждые 2–3 мин;
-  bursts   — первые 3 с + пачки по 1–4 с, в среднем раз в минуту;
-  nostart  — в начале GNSS нет, первая пачка через 1–3 мин (выставка посреди прогона);
-  midstart — запись с середины маршрута (входы и эталон с 3–8 мин), GNSS первые 3 с;
-  full     — GNSS весь прогон;
-  glitchy  — sparse + сбои: скачки, метки ±1 с, пачка без RTK со сдвигом, без rover, мусор.
-Эталон положения — base_link по ВСЕМ точкам GNSS прогона (как в tools/eval.py).
+  first3   - GNSS только первые 3 с (как в проверочных bag; должно совпасть с «до»);
+  sparse   - первые 3 с + пачки по 5–10 с каждые 2–3 мин;
+  bursts   - первые 3 с + пачки по 1–4 с, в среднем раз в минуту;
+  nostart  - в начале GNSS нет, первая пачка через 1–3 мин (выставка посреди прогона);
+  midstart - запись с середины маршрута (входы и эталон с 3–8 мин), GNSS первые 3 с;
+  full     - GNSS весь прогон;
+  glitchy  - sparse + сбои: скачки, метки ±1 с, пачка без RTK со сдвигом, без rover, мусор.
+Эталон положения - base_link по ВСЕМ точкам GNSS прогона (как в tools/eval.py).
 
-Плечи («arms»): before — gnss_correction false; after — true (параметры ноды
-по умолчанию + лист + --set); naive_before / naive_after — база «только
+Плечи («arms»): before - gnss_correction false; after - true (параметры ноды
+по умолчанию + лист + --set); naive_before / naive_after - база «только
 колесо» на той же машинерии. --arm имя:k=v;k=v добавляет вариант модели
 (подбор на train: --split train).
 
@@ -50,7 +50,7 @@ SCENARIOS = ("first3", "sparse", "bursts", "nostart", "midstart", "full", "glitc
 # Сценарии с теми же первыми 3 с GNSS, что first3: при gnss_correction false
 # точки после окна отбрасываются, поэтому выход плеч «до» у них тот же, что в
 # first3 (проверено: tools/eval_gnss.py --no-share-before). Плечи «до»
-# считаются один раз — в first3 — и копируются.
+# считаются один раз - в first3 - и копируются.
 SAME_BEFORE = ("sparse", "bursts", "full", "glitchy")
 KEYS = ("v_mae", "v_bias", "p3d_mean", "p3d_end_mean", "p3d_end_median", "p3d_end_max",
         "drift_pct_3d_median", "drift_pct_3d_mean", "drift_pct_3d_max",
@@ -92,7 +92,7 @@ class _Tape:
     прогона ядро шагает одинаково: остальные плечи берут выходы ядра с ленты
     вместо пересчёта UKF (в 3–5 раз быстрее при нескольких плечах). После
     прогона сверяется, что ведомые прочли ленту до конца и сбросов не было;
-    иначе задача считается заново без ленты (--no-share-core — всегда так)."""
+    иначе задача считается заново без ленты (--no-share-core - всегда так)."""
 
     def __init__(self, core):
         self.rec = []
@@ -208,7 +208,7 @@ def totals(results, ids, arm):
 
 def fmt(x, d=2):
     if x is None or (isinstance(x, float) and not math.isfinite(x)):
-        return "—"
+        return "-"
     if isinstance(x, int):
         return str(x)
     s = f"{x:.{d}f}"
@@ -227,8 +227,8 @@ def render(summary):
     A("# Коррекция по GNSS: сценарии доступности (tools/eval_gnss.py)")
     A("")
     A(f"Прогоны: {meta['split']} ({len(meta['runs'])}), лист {meta['sheet']}, карта {meta['map']}. "
-      f"Код пакета sha `{meta['pkg_src_sha']}`. «до» — `gnss_correction: false` (GNSS только "
-      "для выставки), «после» — `true`. Эталон — base_link по всем точкам GNSS "
+      f"Код пакета sha `{meta['pkg_src_sha']}`. «до» - `gnss_correction: false` (GNSS только "
+      "для выставки), «после» - `true`. Эталон - base_link по всем точкам GNSS "
       "прогона, MGRS 37UCB.")
     A("")
     for sc in meta["scenarios"]:

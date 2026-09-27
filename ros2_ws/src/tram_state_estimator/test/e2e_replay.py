@@ -3,20 +3,20 @@
 Общий код для test_e2e_real.py и test_determinism.py. Нода собирается так же,
 как в tram_node.py: лист config/tram.yaml (поля Params + параметры ноды),
 карта из map_file. Сообщения подаются в порядке записи в bag (tb), как их
-проигрывает `ros2 bag play`; GNSS fix — только первые init_window_s секунд
+проигрывает `ros2 bag play`; GNSS fix - только первые init_window_s секунд
 (в проверочных bag GNSS гарантирован лишь в начале, README датасета §3.2)
 или весь кусок (gnss="all": GNSS после окна не двигает сетку и скорость).
 
-Эталон скорости — |GNSS master/vel| по горизонтали (основной) и rover/vel
+Эталон скорости - |GNSS master/vel| по горизонтали (основной) и rover/vel
 (контрольный): «эталонной скорости нет, есть 4 источника» (организаторы,
-25.09). Эталон положения — точка base_link по tf антенн (организаторы, 25.09:
+25.09). Эталон положения - точка base_link по tf антенн (организаторы, 25.09:
 base_link = master + 9,873/12,436 · (rover − master), z − 3,0; пары master и
 rover одной эпохи ±0,05 с), переведённая в ту систему, в которой публикует
 Runner (MGRS, UTM, ENU или прежний equirect): система определяется по самому
 выходу (refgeo.detect), поэтому тест не зависит от значения параметра
-projection. point="master" — прежний эталон (антенна master). Пары — по ближайшей метке выхода в пределах
+projection. point="master" - прежний эталон (антенна master). Пары - по ближайшей метке выхода в пределах
 0,05 с, как у судьи. Положение сравнивается только у выходов, которые нода
-публикует в /result/position (pos_valid, как в tram_node.py); ошибка — без
+публикует в /result/position (pos_valid, как в tram_node.py); ошибка - без
 вычета скачка на границе 100-км квадратов MGRS (так её увидит судья).
 """
 
@@ -45,8 +45,8 @@ def load_fixture(path=FIXTURE):
 
 
 def sheet(over=None):
-    """(Params, параметры ноды) из config/tram.yaml — как в tram_node.py
-    (с масштабом колёс вагона из параметра vehicle, если он есть). over —
+    """(Params, параметры ноды) из config/tram.yaml - как в tram_node.py
+    (с масштабом колёс вагона из параметра vehicle, если он есть). over -
     параметры ноды поверх листа (до выбора вагона: vehicle="auto" и т. п.)."""
     import yaml
     from tram_state_estimator.estimator_core import Params
@@ -70,7 +70,7 @@ def _accepts(fn, name):
 
 
 # Параметры положения: (ключ листа / ноды, аргумент Runner/Position). Ключи
-# листа — как в tram_node.py; передаются, только если есть в листе или в
+# листа - как в tram_node.py; передаются, только если есть в листе или в
 # переопределениях и Runner их принимает.
 POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("mgrs_grid", "mgrs_grid"), ("utm_zone", "utm_zone"),
@@ -79,7 +79,7 @@ POSITION_OPTS = (("init_window_s", "init_window"), ("projection", "projection"),
                  ("keep_offset_z", "keep_offset_z"), ("output_point", "output_point"),
                  ("antenna_master_x", "antenna_master_x"),
                  ("antenna_rover_x", "antenna_rover_x"), ("antenna_z", "antenna_z"),
-                 # коррекция по GNSS после окна: имена — как у ноды
+                 # коррекция по GNSS после окна: имена - как у ноды
                  ("gnss_correction", "gnss_correction"),
                  ("gnss_sigma_rtk_m", "gnss_sigma_rtk_m"),
                  ("gnss_sigma_sbas_m", "gnss_sigma_sbas_m"),
@@ -115,7 +115,7 @@ def runner_accepts(name):
 
 
 def make_runner(use_map=True, **over):
-    """Runner как в ноде. over — параметры ноды поверх листа (например
+    """Runner как в ноде. over - параметры ноды поверх листа (например
     projection="utm"); передаются, только если Runner их принимает."""
     from tram_state_estimator.runner import Runner
     from tram_state_estimator.track_map import TrackMap
@@ -139,7 +139,7 @@ def make_runner(use_map=True, **over):
     if pos is not None and hasattr(pos, "init_window") and "init_window" not in kw:
         pos.init_window = node.get("init_window_s", 3.0)
     if node.get("wheel_scale_online"):
-        # онлайн-масштаб колёс — как в ноде (tram_node.py: wheel_scale_hook)
+        # онлайн-масштаб колёс - как в ноде (tram_node.py: wheel_scale_hook)
         try:
             from tram_state_estimator import vehicle as V
         except ImportError:
@@ -150,8 +150,8 @@ def make_runner(use_map=True, **over):
 
 
 def events(fx, gnss="window", init_s=3.0):
-    """Сообщения в порядке записи. gnss: "window" — fix только первые init_s
-    секунд от первого master fix (по времени записи); "all" — все; "none"."""
+    """Сообщения в порядке записи. gnss: "window" - fix только первые init_s
+    секунд от первого master fix (по времени записи); "all" - все; "none"."""
     ev = []
     for i, key in enumerate(("front", "rear")):
         for tb, th, v in fx[key]:
@@ -198,10 +198,10 @@ def _speed(T, V, g):
 
 
 def reference(fx, point="base_link", origin=None):
-    """Эталон положения: (метки, {система: N×3}) — точка point вагона по GNSS.
-    base_link — по парам master+rover одной эпохи (±0,05 с) в каждой системе:
+    """Эталон положения: (метки, {система: N×3}) - точка point вагона по GNSS.
+    base_link - по парам master+rover одной эпохи (±0,05 с) в каждой системе:
     master + 9,873/12,436 · (rover − master), z − 3,0 (фиксы master без пары
-    не входят); master — сами фиксы master."""
+    не входят); master - сами фиксы master."""
     m = fx["mfix"]
     o = origin or tuple(m[0, 2:5])
     if point == "master":
@@ -223,8 +223,8 @@ def reference(fx, point="base_link", origin=None):
 
 
 def metrics(outs, fx, frame=None, point="base_link"):
-    """Метрики выхода. frame — система эталона положения (имя из refgeo.frames);
-    None — определить по самому выходу (refgeo.detect). point — точка
+    """Метрики выхода. frame - система эталона положения (имя из refgeo.frames);
+    None - определить по самому выходу (refgeo.detect). point - точка
     эталона: base_link (по умолчанию, как у судьи) или master."""
     T = np.array([o["stamp"] for o in outs])
     V = np.array([o["v"] for o in outs])
@@ -242,8 +242,8 @@ def metrics(outs, fx, frame=None, point="base_link"):
     if "rvel" in fx:
         n, e = _speed(T, V, fx["rvel"])
         res.update(v_pairs_rover=n, v_mae_rover=float(np.abs(e).mean()))
-    # Положение — только выходы, которые нода публикует в /result/position:
-    # tram_node.py не публикует выход с pos_valid=False (нет якоря — нет
+    # Положение - только выходы, которые нода публикует в /result/position:
+    # tram_node.py не публикует выход с pos_valid=False (нет якоря - нет
     # положения). У Runner без этого поля публикуется всё, включая заглушку
     # (s, 0, 0) до выставки.
     pub = [k for k, o in enumerate(outs) if o.get("pos_valid", True)]
@@ -252,7 +252,7 @@ def metrics(outs, fx, frame=None, point="base_link"):
     res["n_pos_gaps"] = (len(outs) - pub[0] - len(pub)) if pub else 0
     res["squares"] = refgeo.mgrs_squares(fx["mfix"][:, 2], fx["mfix"][:, 3])
     m = fx["mfix"]
-    if len(pub) < 2:            # положения нет совсем (нет GNSS — нет якоря)
+    if len(pub) < 2:            # положения нет совсем (нет GNSS - нет якоря)
         res.update(p_frame=frame or "none", p_pairs=0)
         return _path(res, m)
     Tp, Xall = T[pub], X[pub]
@@ -266,7 +266,7 @@ def metrics(outs, fx, frame=None, point="base_link"):
     Xp, ready = Xall[j2[ok2]], ready_all[j2[ok2]]
     if frame is None:
         frame, _ = refgeo.detect(Xp, fr)
-    # основная ошибка — как у судьи, без развёртки; развёрнутая — справочно
+    # основная ошибка - как у судьи, без развёртки; развёрнутая - справочно
     d3, d3u, mism = refgeo.errors(Xp, fr[frame], frame)
     d = Xp - fr[frame]
     res.update(p_frame=frame, p_pairs=int(ok2.sum()), p_mean3d=float(d3.mean()),
@@ -288,7 +288,7 @@ def _path(res, m):
 
 
 def digest(outs):
-    """sha256 выходов: метка, скорость, положение, σ, режим — побайтно."""
+    """sha256 выходов: метка, скорость, положение, σ, режим - побайтно."""
     keys = ("stamp", "v", "x", "y", "z", "sigma_v", "sigma_s", "a")
     arr = np.array([[float(o[k]) for k in keys] + [float(o["mode"])] for o in outs],
                    dtype="<f8")

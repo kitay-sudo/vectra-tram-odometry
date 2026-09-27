@@ -1,4 +1,4 @@
-# CI: сборка пакетов ROS 2 Humble, тесты и ROS-смоук на фикстуре — без данных кейса.
+# CI: сборка пакетов ROS 2 Humble, тесты и ROS-смоук на фикстуре - без данных кейса.
 # Те же скрипты, что `docker compose run --rm test` и tools/ros_smoke.sh локально.
 name: ci
 

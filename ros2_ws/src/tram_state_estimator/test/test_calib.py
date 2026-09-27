@@ -115,7 +115,7 @@ def test_output_sigma_defaults_equal_filter_sigma():
 
 
 def test_output_sigma_calibration_changes_sigma_not_estimate():
-    """Выходная σ — только публикация: оценка скорости и пути та же."""
+    """Выходная σ - только публикация: оценка скорости и пути та же."""
     p0 = _tram()
     p1 = replace(p0, sv_gain=1.5, sv_floor=0.03, sv_floor_stand=0.02,
                  sv_age=0.1, sv_rel=0.004, ss_map=2.0, ss_rel=0.003)
@@ -194,7 +194,7 @@ def _frozen_run(freeze, t_end=60.0, notch=lambda t: 5 if t < 30 else -6,
 
 def test_all_bogies_frozen_are_flagged_and_uncertain():
     """Обе тележки залипли разом на 20 с при тяге и торможении: флаг,
-    valid = false, σ растёт; после оттаивания — снова valid и точная оценка."""
+    valid = false, σ растёт; после оттаивания - снова valid и точная оценка."""
     outs, v_true = _frozen_run((15.0, 35.0))
     T = np.array([o["stamp"] for o in outs])
     fr = np.array([o["frozen"] for o in outs])
@@ -211,7 +211,7 @@ def test_all_bogies_frozen_are_flagged_and_uncertain():
 def test_normal_stream_and_standstill_are_not_frozen():
     outs, _ = _frozen_run(None)
     assert not any(o["frozen"] for o in outs)
-    # стоянка под тормозом и под тягой: нули бит в бит — это не залипание
+    # стоянка под тормозом и под тягой: нули бит в бит - это не залипание
     for n in (-6, 5):
         outs, _ = _frozen_run(None, t_end=20.0, notch=lambda t: n,
                               v_true=lambda t: 0.0)

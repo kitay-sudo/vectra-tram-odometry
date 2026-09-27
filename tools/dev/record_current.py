@@ -3,7 +3,7 @@
 Аналог js-port/record.py, но:
   * не пишет в js-port/ (вывод в out/sim/ или путь из argv[1]);
   * пишет больше полей (sigma_s, k_b, ambiguous, n_acc, n_rej, valid, истина s);
-  * параметры ядра — DEFAULT (заглушки), как в симуляторе и старом record.py.
+  * параметры ядра - DEFAULT (заглушки), как в симуляторе и старом record.py.
 
 Запуск (Docker, из корня репозитория):
   docker run --rm -v E:/MY-PROJECT/TrackVector:/repo -w /repo vectra/tram:dev \

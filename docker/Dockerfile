@@ -21,8 +21,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     RCUTILS_LOGGING_BUFFERED_STREAM=0
 
-# python3-psutil — CPU/RSS ноды в tools/ros_probe.py; rosbridge — мост для
-# симулятора (compose: сервис bridge); остальное — оценка и тесты.
+# python3-psutil - CPU/RSS ноды в tools/ros_probe.py; rosbridge - мост для
+# симулятора (compose: сервис bridge); остальное - оценка и тесты.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-numpy python3-yaml python3-pytest python3-pip python3-psutil \
         python3-matplotlib \
@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-rosbridge-server \
     && rm -rf /var/lib/apt/lists/*
 
-# rosbags — чтение bag без ROS для офлайн-оценки (tools/eval.py) и фикстур тестов
+# rosbags - чтение bag без ROS для офлайн-оценки (tools/eval.py) и фикстур тестов
 RUN pip3 install --no-cache-dir rosbags==0.10.9
 
 WORKDIR /ws

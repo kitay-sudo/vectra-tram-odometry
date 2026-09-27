@@ -1,35 +1,35 @@
 """Прогон записи через связку Runner так же, как это делает нода (для tools/eval.py).
 
 * Параметры ноды: значения по умолчанию из объявлений tram_node.py
-  (`P("имя", значение)` / `declare_parameter`), поверх — лист. Лист: yaml
+  (`P("имя", значение)` / `declare_parameter`), поверх - лист. Лист: yaml
   (`/tram_state_estimator: ros__parameters`, как у ноды) или json
-  (`{"params": {...}}`, как tram_calibration.json). Поля Params — ядру, всё
-  остальное — параметры ноды (map_file, init_window_s, таймауты, начало,
+  (`{"params": {...}}`, как tram_calibration.json). Поля Params - ядру, всё
+  остальное - параметры ноды (map_file, init_window_s, таймауты, начало,
   projection, mgrs_grid и т. п.). Для json-листа параметры ноды берутся
   из боевого config/tram.yaml.
-* Связка — как в tram_node.py: Runner(params, track_map, origin, ...).
+* Связка - как в tram_node.py: Runner(params, track_map, origin, ...).
   Аргументы Runner подставляются из параметров ноды по имени (`x` или
-  `x_s`); если у Runner есть **kwargs (настройки Position) —
+  `x_s`); если у Runner есть **kwargs (настройки Position) -
   то же для аргументов Position.__init__. Что не подошло (кроме параметров
-  самой ноды: map_file, начало, frame_id, пульс, sheet) — пишется в
+  самой ноды: map_file, начало, frame_id, пульс, sheet) - пишется в
   meta["node_params_unused"] и в шапку EVAL.md.
-* Порядок событий — по времени записи в bag (как `ros2 bag play`); GNSS —
+* Порядок событий - по времени записи в bag (как `ros2 bag play`); GNSS -
   первые N с записи от первой точки master (как analysis/evaluate.events)
   или весь прогон (--gnss full: так выглядит bag жюри с полным GNSS).
   Статус NavSatFix передаётся в on_fix, если Runner его принимает. Если в
   runner.py есть StartSorter, стартовый всплеск сортируется так же, как в
-  ноде: часы — время записи в bag, окно — start_sort_s.
+  ноде: часы - время записи в bag, окно - start_sort_s.
   Пульс ноды не эмулируется: он публикует те же узлы сетки, что
   связка выдаёт при следующем сообщении (прогноз на копии тем же кодом),
-  с теми же значениями — меняется только момент публикации.
-* Выход: скорость публикуется всегда; положение — только при pos_valid
+  с теми же значениями - меняется только момент публикации.
+* Выход: скорость публикуется всегда; положение - только при pos_valid
   (нода не публикует /result/position без якоря или у края
-  квадрата MGRS) и конечных x, y, z — поле PV.
+  квадрата MGRS) и конечных x, y, z - поле PV.
 * Исключение в связке = падение ноды: дальше у этой связки выходов нет
   (в ROS 2 исключение в колбэке валит rclpy.spin).
 * База «только колесо»: тот же Runner (сетка, выставка, карта, привязка к
-  остановкам), но вместо ядра — среднее свежих показаний тележек
-  × meas_scale / 3,6 (без заглядывания вперёд), путь — интеграл на сетке.
+  остановкам), но вместо ядра - среднее свежих показаний тележек
+  × meas_scale / 3,6 (без заглядывания вперёд), путь - интеграл на сетке.
   Совпадает с NaiveRunner из tools/core_metrics.py.
 """
 
@@ -48,7 +48,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "ros2_ws" / "src" / "tram_state_estimator"
 CFG = PKG / "config"
-# пакет из этого дерева — первым в пути (в образе PYTHONPATH ведёт и на /ws со
+# пакет из этого дерева - первым в пути (в образе PYTHONPATH ведёт и на /ws со
 # старой сборкой: при PKG не на первом месте молча взялась бы она)
 if sys.path[:1] != [str(PKG)]:
     if str(PKG) in sys.path:
@@ -74,18 +74,18 @@ RUNNER_KW = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeo
 NODE_ONLY = {"map_file", "origin_lat", "origin_lon", "origin_alt", "frame_id", "child_frame_id",
              "sheet", "pulse_horizon_s", "pulse_margin_s", "pulse_margin_nohandle_s",
              "pulse_period_s", "start_sort_s",
-             # вагон: меняет Params (meas_scale) до Runner — make_params
+             # вагон: меняет Params (meas_scale) до Runner - make_params
              "vehicle", "vehicle_ids", "vehicle_meas_scale",
-             # онлайн-масштаб колёс: задаётся Runner после __init__ — make_runner
+             # онлайн-масштаб колёс: задаётся Runner после __init__ - make_runner
              "wheel_scale_online"}
-# --set vehicle=match — только для оценки: вагон по имени прогона (30618_…)
+# --set vehicle=match - только для оценки: вагон по имени прогона (30618_…)
 VEHICLE_MATCH = "match"
 START_SORT_DEFAULT = 0.1     # с: start_sort_s ноды, если его нет в листе
 NODE_PY = PKG / "tram_state_estimator" / "tram_node.py"
 
 
 def sha(path):
-    """Отпечаток файла; для .npz — по содержимому массивов (в zip-архиве
+    """Отпечаток файла; для .npz - по содержимому массивов (в zip-архиве
     numpy есть время записи, и одинаковая карта давала бы разный хэш)."""
     path = Path(path)
     if path.suffix == ".npz":
@@ -156,7 +156,7 @@ def node_declared(path=NODE_PY):
 
 def resolve_sheet(spec):
     """spec: eval | jury | json | путь. Возвращает dict(label, path, kind,
-    core, node, leak). node — объявления tram_node.py, поверх — лист."""
+    core, node, leak). node - объявления tram_node.py, поверх - лист."""
     jury_yaml = CFG / "tram.yaml"
     declared = node_declared()
     node_defaults = dict(declared)
@@ -174,7 +174,7 @@ def resolve_sheet(spec):
             label = f"оценочный ({path.relative_to(ROOT).as_posix()}, только train)"
     elif spec == "jury":
         path, label = jury_yaml, "боевой config/tram.yaml (все данные)"
-        leak = "УТЕЧКА: боевой лист подогнан по всем данным — числа на отложенных не отчётные"
+        leak = "УТЕЧКА: боевой лист подогнан по всем данным - числа на отложенных не отчётные"
     elif spec == "json":
         path, label = CFG / "tram_calibration.json", "json config/tram_calibration.json"
         leak = ("УТЕЧКА: таблица привода и масштаб подогнаны по всем 122 bag, "
@@ -203,7 +203,7 @@ def resolve_sheet(spec):
 
 
 def split_overrides(ov):
-    """--set: поля Params — ядру, остальное — параметрам ноды."""
+    """--set: поля Params - ядру, остальное - параметрам ноды."""
     return ({k: v for k, v in ov.items() if k in PARAM_NAMES},
             {k: v for k, v in ov.items() if k not in PARAM_NAMES})
 
@@ -226,7 +226,7 @@ def parse_overrides(text):
 
 def make_params(sheet, overrides=None, bag=None):
     """Params листа (+ --set) с масштабом колёс вагона, как в tram_node.py
-    (tram_state_estimator/vehicle.py). vehicle=match — вагон прогона bag."""
+    (tram_state_estimator/vehicle.py). vehicle=match - вагон прогона bag."""
     d = dict(sheet["core"])
     d.update({k: v for k, v in (overrides or {}).items() if k in PARAM_NAMES})
     p = core.Params.from_dict(d)
@@ -234,7 +234,7 @@ def make_params(sheet, overrides=None, bag=None):
 
 
 def apply_vehicle(p, node, bag=None):
-    """-> (Params, сведения о вагоне). Старый код пакета без vehicle.py — как есть."""
+    """-> (Params, сведения о вагоне). Старый код пакета без vehicle.py - как есть."""
     try:
         from tram_state_estimator import vehicle as V
     except ImportError:
@@ -261,7 +261,7 @@ def _named(fn):
 
 def runner_arg_names(cls=None):
     """Имена аргументов Runner, которые берутся из параметров ноды. При
-    **kwargs у Runner (настройки Position) — плюс аргументы
+    **kwargs у Runner (настройки Position) - плюс аргументы
     Position.__init__."""
     cls = cls or runner_mod.Runner
     names = _named(cls.__init__)
@@ -310,7 +310,7 @@ class NaiveCore(core.Estimator):
     def __init__(self, p, runner):
         super().__init__(p)
         if p.meas_units not in core.LINEAR_UNITS:
-            raise ValueError("база «только колесо» — только для линейных единиц (km_h, m_s)")
+            raise ValueError("база «только колесо» - только для линейных единиц (km_h, m_s)")
         self.r = runner
         self.kv = p.meas_scale * core.LINEAR_UNITS[p.meas_units]
         self.v = 0.0
@@ -359,7 +359,7 @@ def make_naive(params, node, tmap):
 # ------------------------------------------------------------------ события
 
 def _rows(x, ncol):
-    """Массив прогона как (n, ≥ncol); пустой — (0, ncol) (bagio пишет пустые (0, 3))."""
+    """Массив прогона как (n, ≥ncol); пустой - (0, ncol) (bagio пишет пустые (0, 3))."""
     x = np.asarray(x, float)
     if x.ndim != 2 or x.shape[1] < ncol:
         return np.zeros((0, ncol))
@@ -368,7 +368,7 @@ def _rows(x, ncol):
 
 def gnss_spec(gnss):
     """Имя сценария GNSS: число секунд -> "first<N>" для отчёта; full и
-    сценарии inject.GNSS_SCENARIOS — как есть."""
+    сценарии inject.GNSS_SCENARIOS - как есть."""
     g = str(gnss)
     try:
         return f"first{float(g):g}"
@@ -380,9 +380,9 @@ def events(a, gnss="3", seed=0):
     """События в порядке записи в bag: (tb, вид, индекс, th, значение).
     gnss: число секунд от первой записи master fix (как evaluate.events при 3),
     "full" или сценарий доступности inject.GNSS_SCENARIOS (sparse, bursts,
-    nostart, glitchy, none; first3 — то же, что 3; midstart — обрезка записи
-    inject.cut_start, затем 3). seed — зерно сценария (inject.seed_for).
-    Значение GNSS — (lat, lon, alt, status)."""
+    nostart, glitchy, none; first3 - то же, что 3; midstart - обрезка записи
+    inject.cut_start, затем 3). seed - зерно сценария (inject.seed_for).
+    Значение GNSS - (lat, lon, alt, status)."""
     ev = []
     for i, key in enumerate(("front", "rear")):
         for tb, th, v in _rows(a[key], 3)[:, :3]:
@@ -453,9 +453,9 @@ def _pack(o):
 
 
 class Glue:
-    """Как нода подаёт сообщения в связку: статус NavSatFix — если on_fix его
-    принимает; сортировка стартового всплеска — если в runner.py есть
-    StartSorter (часы — время записи в bag)."""
+    """Как нода подаёт сообщения в связку: статус NavSatFix - если on_fix его
+    принимает; сортировка стартового всплеска - если в runner.py есть
+    StartSorter (часы - время записи в bag)."""
 
     def __init__(self, r, node=None):
         node = node or {}
@@ -496,7 +496,7 @@ class Glue:
 
 
 def arrays(R):
-    """Строки _pack -> dict массивов выхода. PV — положение опубликовано
+    """Строки _pack -> dict массивов выхода. PV - положение опубликовано
     (pos_valid и конечные x, y, z)."""
     A = np.array(R, dtype=float) if R else np.zeros((0, len(KEYS)))
     fin = np.isfinite(A[:, 2:5]).all(axis=1)
@@ -507,7 +507,7 @@ def arrays(R):
 
 
 class Replay:
-    """Прогон событий через несколько связок сразу; fork() — независимая
+    """Прогон событий через несколько связок сразу; fork() - независимая
     копия всего состояния (связки, выходы) для продолжения другим потоком
     событий (инъекции с общего чистого начала)."""
 
@@ -523,7 +523,7 @@ class Replay:
                     continue
                 try:
                     self.rows[k].extend(_pack(x) for x in gl.feed(*ev))
-                except Exception as e:           # noqa: BLE001 — падение ноды фиксируется
+                except Exception as e:           # noqa: BLE001 - падение ноды фиксируется
                     self.crash[k] = dict(stamp=float(ev[3]), error=f"{type(e).__name__}: {e}"[:200])
         return self
 
@@ -564,7 +564,7 @@ def runner_origin(r):
 def detect_frame(node, requested, XYZ):
     """Система координат выхода Runner'а. auto: параметр листа projection
     (если он есть), иначе equirect (старая версия пакета); затем проверка по
-    величине |y|: > 1000 км — UTM, > 20 км — MGRS внутри квадрата."""
+    величине |y|: > 1000 км - UTM, > 20 км - MGRS внутри квадрата."""
     note = []
     grid = str(node.get("mgrs_grid", "") or "")
     if requested != "auto":
@@ -578,19 +578,19 @@ def detect_frame(node, requested, XYZ):
         med = float(np.median(y))
         by_mag = "utm" if med > 1e6 else "mgrs" if med > 2e4 else None
         if by_mag and fr in ("equirect", "enu"):
-            note.append(f"|y| медиана {med:.0f} м — выход не локальный, считаю {by_mag}")
+            note.append(f"|y| медиана {med:.0f} м - выход не локальный, считаю {by_mag}")
             fr = by_mag
         elif by_mag is None and fr in ("utm", "mgrs") and med < 2e4:
             if fr == "utm":
-                note.append("utm с |y| < 20 км — считаю UTM относительно начала")
+                note.append("utm с |y| < 20 км - считаю UTM относительно начала")
             else:
-                note.append(f"mgrs с |y| медиана {med:.0f} м — подозрительно")
+                note.append(f"mgrs с |y| медиана {med:.0f} м - подозрительно")
     return fr, grid, note
 
 
 def to_geo(XYZ, frame_name, grid, origin, zone):
     """Выход Runner'а (x, y, z в его системе) -> (lat, lon, alt).
-    origin — начало Runner'а (для equirect/enu/utm-относительного)."""
+    origin - начало Runner'а (для equirect/enu/utm-относительного)."""
     x, y, z = XYZ[:, 0], XYZ[:, 1], XYZ[:, 2]
     if frame_name == "equirect":
         return G.equirect_inv(x, y, z, origin)
@@ -601,7 +601,7 @@ def to_geo(XYZ, frame_name, grid, origin, zone):
         fin = np.isfinite(x)
         if fin.any() and np.median(np.abs(x[fin])) > 1e5:       # абсолютные E/N
             E, N, alt = x, y, z
-        else:                                                   # от начала, z — от высоты начала
+        else:                                                   # от начала, z - от высоты начала
             E, N, alt = x + E0, y + N0, z + origin[2]
     elif frame_name == "mgrs":
         if grid:

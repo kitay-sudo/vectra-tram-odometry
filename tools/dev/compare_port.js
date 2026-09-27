@@ -60,7 +60,7 @@ for (const [name, data] of Object.entries(rec)) {
   });
 }
 
-const f = (x, d = 3) => (x === null ? '—' : x.toFixed(d));
+const f = (x, d = 3) => (x === null ? '-' : x.toFixed(d));
 console.log(`Порт: ${path.relative(ROOT, estPath)}; эталон: ${path.relative(ROOT, recPath)}`);
 console.log('| Сценарий | max|dv|, м/с | RMS dv | ds конец, м | max|dk_t| | max|dσv| | режим ≠, % | 1-е расхожд., с | RMSE v порт/ядро, м/с | ошибка пути порт/ядро, м | SLIP порт/ядро | ±2σ порт/ядро, % | мкс/шаг JS |');
 console.log('|---|---|---|---|---|---|---|---|---|---|---|---|---|');

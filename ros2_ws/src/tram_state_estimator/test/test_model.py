@@ -1,7 +1,7 @@
 """Тесты модели и фильтра. ROS не требуется.
 
 Проверяется структура модели, поведение при срывах и отказах, связь с листом
-параметров. Константы — заглушки; тесты не подгоняются под конкретные числа
+параметров. Константы - заглушки; тесты не подгоняются под конкретные числа
 вагона, а проверяют физически осмысленные свойства.
 """
 
@@ -162,7 +162,7 @@ def test_six_axle_sheet_runs():
 
 
 def test_params_change_behaviour():
-    """Изменение параметра меняет поведение модели — константы не зашиты."""
+    """Изменение параметра меняет поведение модели - константы не зашиты."""
     heavy = Params.from_dict({"M_nom": 2 * DEFAULT.M_nom})
     x = np.array([0.0, 5.0, 0.0, 1.0, 1.0])
     a0 = f_process(x, 1.0, 0.25, DEFAULT)[IV] - x[IV]
@@ -174,7 +174,7 @@ def test_params_change_behaviour():
 
 
 def test_every_parameter_is_used_by_the_core():
-    """Параметр, который ядро не читает, — обман: он есть в листе, но ничего
+    """Параметр, который ядро не читает, - обман: он есть в листе, но ничего
     не меняет. Такой параметр надо удалить или подключить."""
     src = open(os.path.join(PKG, "tram_state_estimator",
                             "estimator_core.py"), encoding="utf-8").read()
@@ -216,8 +216,8 @@ def _drive(track, driver, t_end, faults=None, seed=0, params=None,
            meas_map=None, fault_fn=None, hold_every=1, t_start=0.0):
     """meas_map переводит показания имитатора (8 колёс, рад/с на колесе) в
     то, что выдал бы датчик по листу params. fault_fn(m, t) искажает
-    показания во времени. hold_every — новые показания раз в столько шагов
-    имитатора (датчики медленнее цикла). t_start — оценщик включается на ходу."""
+    показания во времени. hold_every - новые показания раз в столько шагов
+    имитатора (датчики медленнее цикла). t_start - оценщик включается на ходу."""
     pl = Plant(track, dt=DT, seed=seed)
     es = None
     if faults:
@@ -473,7 +473,7 @@ def test_scale_adapts_and_does_not_rail():
 
 
 def test_adaptation_is_frozen_during_slip():
-    """При буксовании масштаб тяги не должен уходить: срыв — не изменение
+    """При буксовании масштаб тяги не должен уходить: срыв - не изменение
     силы привода."""
     _, es = _drive(Track(mu=lambda s, t: 0.12), accel_brake, 30.0)
     assert abs(es.x[IKT] - 1.0) < 0.15
@@ -487,7 +487,7 @@ def test_notch_tables_asymmetric_and_nonlinear():
                           "notch_brake": [0.5, 1.0]})
     assert [notch_to_u(n, p) for n in (1, 2, 3)] == pytest.approx([0.1, 0.3, 1.0])
     assert [notch_to_u(n, p) for n in (-1, -2)] == pytest.approx([-0.5, -1.0])
-    assert notch_to_u(7, p) == pytest.approx(1.0)          # за таблицей — полный
+    assert notch_to_u(7, p) == pytest.approx(1.0)          # за таблицей - полный
     assert notch_to_u(1.5, p) == pytest.approx(0.2)        # непрерывная ручка
     assert notch_to_u(0, p) == 0.0
 
@@ -559,7 +559,7 @@ def test_new_sheet_fields_are_validated():
 
 def test_identification_is_accepted_and_recovers_resistance():
     """Режим опознавания на специальном профиле принимается и находит
-    сопротивление объекта, а не заглушку листа. Раньше он отказывал — из-за
+    сопротивление объекта, а не заглушку листа. Раньше он отказывал - из-за
     дефекта имитатора (привод набирал момент ~20 с)."""
     from tram_state_estimator.identification import (
         DriveIdentifier, identification_profile)
@@ -678,7 +678,7 @@ def test_position_follows_map_and_ignores_late_gnss():
     """Выставка по двум антеннам, движение по карте; GNSS после окна
     выставки не используется: поздняя точка не сдвигает ни выход, ни сетку.
     Выход в прежней плоской системе (projection equirect), чтобы сверять с
-    координатами карты напрямую; MGRS — test_position.py."""
+    координатами карты напрямую; MGRS - test_position.py."""
     from tram_state_estimator.runner import Runner
     from tram_state_estimator.track_map import TrackMap
     lat0, lon0 = 55.8, 37.4

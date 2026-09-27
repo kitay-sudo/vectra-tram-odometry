@@ -5,42 +5,42 @@
 ros2_ws/src/tram_state_estimator, лист параметров вагона, карта путей;
 параметры ноды передаются в Runner так же, как их передаёт tram_node.py
 (включая параметры выставки и системы выхода).
-Сообщения подаются в порядке записи bag, GNSS — только первые 3 с
+Сообщения подаются в порядке записи bag, GNSS - только первые 3 с
 (analysis/evaluate.events, как tools/eval.py). Рядом считаются:
   * причинная база «только колесо»: тот же Runner (сетка, выставка, карта,
-    привязка к остановкам, система выхода — код пакета без копий), но на
-    месте ядра — среднее свежих (не старше wheel_timeout) показаний тележек в
-    м/с, путь — интеграл на сетке (как NaiveCore в tools/eval_replay.py);
-  * эталон: скорость — |vel| GNSS master (rover vel — справочно); положение —
+    привязка к остановкам, система выхода - код пакета без копий), но на
+    месте ядра - среднее свежих (не старше wheel_timeout) показаний тележек в
+    м/с, путь - интеграл на сетке (как NaiveCore в tools/eval_replay.py);
+  * эталон: скорость - |vel| GNSS master (rover vel - справочно); положение -
     та же точка вагона, что на выходе связки: base_link по паре антенн
     (tools/eval_metrics.reference) или fix master (старая версия пакета,
-    где выход — антенна master);
+    где выход - антенна master);
   * входы (тележки, км/ч; ручка) и диагностика оценщика: поля
     EstimatorStatus и состояние каждой тележки (принята / нет новых данных /
     отвергнута / исключена / поток прерван).
 
 Варианты с аномалиями строятся здесь же маленькими функциями inject_*
 (та же семантика и выбор окна, что в tools/inject.py; если tools/inject.py
-есть — берётся он).
+есть - берётся он).
 
-Честность: прогон по умолчанию — отложенный (holdout_scored в
-tools/split.json); карта — только из обучающих: config/eval/track_map.npz
-пакета, если есть, иначе analysis/cache/track_map_train.npz; лист — по тем же
+Честность: прогон по умолчанию - отложенный (holdout_scored в
+tools/split.json); карта - только из обучающих: config/eval/track_map.npz
+пакета, если есть, иначе analysis/cache/track_map_train.npz; лист - по тем же
 правилам, что tools/eval.py --sheet eval: оценочный config/eval/{tram_eval.yaml,
-tram.yaml, tram_calibration.json}, а пока его нет — config/tram_calibration.json
+tram.yaml, tram_calibration.json}, а пока его нет - config/tram_calibration.json
 с пометкой «УТЕЧКА» (она пишется в файл и показывается на странице; числа с
 такой пометкой не отчётные).
 
 Система координат на экране: система выхода модели (MGRS/UTM, ENU или
-equirect — берётся из настроек Runner и проверяется по данным), сдвинутая в
-первую точку эталона положения (base_link или master — как выход связки).
+equirect - берётся из настроек Runner и проверяется по данным), сдвинутая в
+первую точку эталона положения (base_link или master - как выход связки).
 Разрыв MGRS на границе квадратов 100 км снимается.
 Судья считает в MGRS; ошибки в плане от сдвига начала не зависят.
 
 Выход:
-  simulator/replays/<run>_<variant>.js  — `TV_REPLAYS["<run>_<variant>"] = {...}`
+  simulator/replays/<run>_<variant>.js  - `TV_REPLAYS["<run>_<variant>"] = {...}`
                                           (грузится <script src> и с file://)
-  simulator/replays/index.js            — список прогонов с итоговыми метриками
+  simulator/replays/index.js            - список прогонов с итоговыми метриками
 
   docker run --rm --cpus 2 -v <репозиторий>:/repo \
       -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro \
@@ -84,13 +84,13 @@ CFG = os.path.join(PKG, "config")
 # (analysis/build_map.py eval), иначе кэш analysis/cache (build_map по train)
 MAP_CANDIDATES = (os.path.join(CFG, "eval", "track_map.npz"),
                   os.path.join(ROOT, "analysis", "cache", "track_map_train.npz"))
-# оценочный лист — те же кандидаты и тот же запасной, что tools/eval_replay.py
+# оценочный лист - те же кандидаты и тот же запасной, что tools/eval_replay.py
 EVAL_SHEETS = tuple(os.path.join(CFG, "eval", n)
                     for n in ("tram_eval.yaml", "tram.yaml", "tram_calibration.json"))
 LEAK = ("УТЕЧКА: лист подогнан по всем записям, включая отложенные "
-        "(оценочного листа config/eval/ ещё нет) — числа не отчётные")
+        "(оценочного листа config/eval/ ещё нет) - числа не отчётные")
 VARIANTS = ("clean", "front_zero", "both_zero", "dropout", "skid_brake")
-TOL = 0.05          # с: пара «выход — эталон» по ближайшей метке (README §5.1)
+TOL = 0.05          # с: пара «выход - эталон» по ближайшей метке (README §5.1)
 DECIM_DT = 0.1      # с: шаг строк экспорта (10 Гц)
 T_SKIP = 60.0       # с от начала входов: окно аномалии не раньше
 AFTER = 120.0       # с после окна должно остаться до конца прогона
@@ -181,9 +181,9 @@ def inject(a, kind, t0, dur):
 
 
 def make_variant(a, bag, kind):
-    """(массивы, info). tools/inject.py — если он есть."""
+    """(массивы, info). tools/inject.py - если он есть."""
     if kind == "clean":
-        return a, dict(kind=kind, ru=KINDS[kind]["ru"], t0=None, dur=0.0, eval=0.0, src="—")
+        return a, dict(kind=kind, ru=KINDS[kind]["ru"], t0=None, dur=0.0, eval=0.0, src="-")
     try:
         import inject as shared      # tools/inject.py
         if kind in shared.KINDS:
@@ -222,13 +222,13 @@ def _rel(path):
 
 
 def resolve_sheet(spec=None):
-    """Лист по правилам tools/eval.py --sheet (если tools/eval_replay.py есть —
+    """Лист по правилам tools/eval.py --sheet (если tools/eval_replay.py есть -
     буквально его resolve_sheet, иначе те же правила здесь):
-      None/'eval' — оценочный config/eval/{tram_eval.yaml, tram.yaml,
-                    tram_calibration.json}; без него — config/tram_calibration.json
+      None/'eval' - оценочный config/eval/{tram_eval.yaml, tram.yaml,
+                    tram_calibration.json}; без него - config/tram_calibration.json
                     + параметры ноды из config/tram.yaml, с пометкой УТЕЧКА;
-      'jury'      — боевой config/tram.yaml (УТЕЧКА на отложенных);
-      путь        — yaml ноды или json калибровки.
+      'jury'      - боевой config/tram.yaml (УТЕЧКА на отложенных);
+      путь        - yaml ноды или json калибровки.
     Возвращает (Params, параметры ноды, сведения о листе)."""
     spec = spec or "eval"
     names = {f.name for f in dataclasses.fields(EC.Params)}
@@ -250,7 +250,7 @@ def resolve_sheet(spec=None):
                 label = f"оценочный ({_rel(path)}, только train)"
         elif spec == "jury":
             path, label = jury, "боевой config/tram.yaml (все данные)"
-            leak = "УТЕЧКА: боевой лист подогнан по всем данным — числа на отложенных не отчётные"
+            leak = "УТЕЧКА: боевой лист подогнан по всем данным - числа на отложенных не отчётные"
         else:
             path = os.path.abspath(spec)
             label = _rel(path)
@@ -266,12 +266,12 @@ def resolve_sheet(spec=None):
             corep = {k: v for k, v in d.items() if k in names}
             node = {k: v for k, v in d.items() if k not in names}
         path, src = _rel(path), "tools/export_replay.py"
-    # лист не из config/eval/ на отложенном прогоне — всегда пометка
+    # лист не из config/eval/ на отложенном прогоне - всегда пометка
     if not leak and "/config/eval/" not in "/" + path.replace(os.sep, "/"):
         leak = "лист не оценочный (не из config/eval/): на отложенных числа не отчётные"
     params = EC.Params.from_dict(corep)
-    # вагон листа (vehicle: 30618 по умолчанию) — масштаб колёс как в ноде
-    # (tram_node.py -> vehicle.apply); старый лист без vehicle — как есть
+    # вагон листа (vehicle: 30618 по умолчанию) - масштаб колёс как в ноде
+    # (tram_node.py -> vehicle.apply); старый лист без vehicle - как есть
     vehicle = None
     try:
         import eval_replay as ER
@@ -285,7 +285,7 @@ def resolve_sheet(spec=None):
 
 
 # Параметры ноды -> аргументы Runner так же, как tram_node.py: явные
-# соответствия, остальное — по имени аргумента (x или x_s). Если у Runner есть
+# соответствия, остальное - по имени аргумента (x или x_s). Если у Runner есть
 # **kwargs (они уходят в Position), принимаются и
 # аргументы Position.__init__ (projection, mgrs_grid, utm_zone, ...).
 NODE_TO_ARG = {"wheel_timeout": "wheel_timeout_s", "handle_timeout": "handle_timeout_s",
@@ -323,7 +323,7 @@ def runner_kwargs(node, tmap):
 def make_runner(params, node, tmap, cls=Runner):
     kw, _ = runner_kwargs(node, tmap)
     r = cls(params, **kw)
-    # онлайн-масштаб колёс (wheel_scale_online) — как в ноде; у базы «только
+    # онлайн-масштаб колёс (wheel_scale_online) - как в ноде; у базы «только
     # колесо» его нет (как в tools/eval_replay.make_runner)
     if cls is Runner and node.get("wheel_scale_online"):
         try:
@@ -346,7 +346,7 @@ def instrument_core():
     if getattr(C, "_tv_instrumented", False):
         return
     if not all(hasattr(C, n) for n in ("_axle_speeds", "_correct", "step", "step_open_loop")):
-        print("внимание: у Estimator нет ожидаемых методов — состояние тележек не экспортируется")
+        print("внимание: у Estimator нет ожидаемых методов - состояние тележек не экспортируется")
         C._tv_instrumented = True
         return
     o_axle, o_corr, o_step, o_ol = C._axle_speeds, C._correct, C.step, C.step_open_loop
@@ -399,8 +399,8 @@ def instrument_core():
 
 class _NaiveCore(EC.Estimator):
     """База «только колесо» на месте ядра (семантика NaiveCore из
-    tools/eval_replay.py): скорость — среднее свежих (не старше wheel_timeout
-    связки) конечных показаний тележек в м/с, иначе прежняя; путь — интеграл
+    tools/eval_replay.py): скорость - среднее свежих (не старше wheel_timeout
+    связки) конечных показаний тележек в м/с, иначе прежняя; путь - интеграл
     на сетке p.dt. Остальные поля выхода нейтральные."""
 
     def __init__(self, params, runner):
@@ -435,7 +435,7 @@ class _NaiveCore(EC.Estimator):
 class NaiveRunner(Runner):
     """Причинная база «только колесо» внутри той же связки: Runner пакета
     (сетка, выставка по GNSS окна, карта, привязка к остановкам, система
-    выхода — без копий, при любом их API), но ядро — _NaiveCore. Ядро
+    выхода - без копий, при любом их API), но ядро - _NaiveCore. Ядро
     подменяется при КАЖДОМ присваивании self.core (в __init__, при сбросе
     связки по разрыву времени и при пересоздании ядра)."""
 
@@ -451,7 +451,7 @@ class NaiveRunner(Runner):
 
 
 def replay(a, runners):
-    """События bag в порядке записи (GNSS — первые 3 с, analysis/evaluate.events)."""
+    """События bag в порядке записи (GNSS - первые 3 с, analysis/evaluate.events)."""
     outs = [[] for _ in runners]
     for tb, kind, i, th, val in E.events(a):
         for k, r in enumerate(runners):
@@ -466,7 +466,7 @@ def replay(a, runners):
 
 # ------------------------------------------------------------------ геодезия
 
-# Геодезия — одна на проект: tram_state_estimator/geodesy.py (нода, оценка,
+# Геодезия - одна на проект: tram_state_estimator/geodesy.py (нода, оценка,
 # экспорт). Прежние свои формулы экспортёра совпадали с ней лучше 1 мм и
 # заменены вызовами пакета.
 from tram_state_estimator import geodesy as GD  # noqa: E402
@@ -503,7 +503,7 @@ def unwrap100k(a):
 
 def frame_hint(r):
     """Система выхода по настройкам связки: Position.projection (mgrs | utm |
-    enu | equirect) и mgrs_grid; без них — формула equirect (старая версия
+    enu | equirect) и mgrs_grid; без них - формула equirect (старая версия
     пакета). -> (кандидат detect_frame, projection, grid)."""
     pos = getattr(r, "pos", None)
     proj = str(getattr(pos, "projection", "") or "equirect").lower()
@@ -513,24 +513,24 @@ def frame_hint(r):
 
 
 def output_point(r):
-    """Точка вагона на выходе связки: Position.output_point (base_link — ось
+    """Точка вагона на выходе связки: Position.output_point (base_link - ось
     поворота передней тележки на уровне рельса, как у судьи); в старой версии
-    без этого параметра выход — антенна master."""
+    без этого параметра выход - антенна master."""
     return str(getattr(getattr(r, "pos", None), "output_point", "") or "master")
 
 
 def reference_fix(a, point):
     """Эталон положения для точки выхода point -> (строки как a["mfix"]:
-    [t, t, lat, lon, alt], подпись). master — сами фиксы master; base_link —
+    [t, t, lat, lon, alt], подпись). master - сами фиксы master; base_link -
     tools/eval_metrics.reference (та же функция, что в tools/eval.py): пара
     master+rover одной эпохи по tf организаторов, base_link = master +
-    9,873/12,436·(rover − master), z − 3,0; без пары — перенос вдоль курса.
-    Эталон и выход — одна точка вагона, иначе на плане ложная ошибка ~9,9 м."""
+    9,873/12,436·(rover − master), z − 3,0; без пары - перенос вдоль курса.
+    Эталон и выход - одна точка вагона, иначе на плане ложная ошибка ~9,9 м."""
     if point == "master":
         return a["mfix"], "антенна GNSS master"
     import eval_metrics as EMX      # tools/eval_metrics.py
     if not hasattr(EMX, "reference"):
-        raise SystemExit(f"выход связки — точка {point}, а tools/eval_metrics.py не строит "
+        raise SystemExit(f"выход связки - точка {point}, а tools/eval_metrics.py не строит "
                          "эталон для неё (нужен eval_metrics.reference с этой точкой)")
     R = EMX.reference(a, point)
     m = np.c_[R["t"], R["t"], R["lat"], R["lon"], R["alt"]]
@@ -539,10 +539,10 @@ def reference_fix(a, point):
 
 def detect_frame(xyz, T, ready, m, hint=None):
     """Система выхода: кандидат из настроек связки (hint), проверенный по
-    данным. Для каждого кандидата — эталон master fix в этой системе и
+    данным. Для каждого кандидата - эталон master fix в этой системе и
     медианная ошибка в плане; настройка берётся, если её медиана не хуже
     лучшей больше чем на max(0,5 м, 10 %) (на стоящем прогоне все кандидаты
-    равны), иначе — лучший по данным (с предупреждением).
+    равны), иначе - лучший по данным (с предупреждением).
     Возвращает dict: имя, подпись, xy на экране, эталон, z, медианы."""
     lat, lon, alt = m[:, 2], m[:, 3], m[:, 4]
     o = (float(lat[0]), float(lon[0]), float(alt[0]))
@@ -606,7 +606,7 @@ def selftest(bag):
     """Проверка определения системы выхода на синтетике из GNSS прогона: выход
     модели = эталон + шум 0,5 м в разных системах (MGRS с переносом квадрата,
     MGRS от 37UDB, UTM, ENU, equirect). После перевода на экран ошибка в плане
-    должна остаться ~шумом, а система — определиться верно."""
+    должна остаться ~шумом, а система - определиться верно."""
     a = bagio.load(bag)
     m = a["mfix"]
     T = m[:, 1]
@@ -642,8 +642,8 @@ def selftest(bag):
 # ------------------------------------------------------------------ метрики
 
 def along_cross(ref_xy, idx, est_xy):
-    """Ошибка вдоль/поперёк траектории эталона — алгоритм независимой
-    реализации метрик (tools/core_metrics.py; в tools/eval_metrics.py — тот же)."""
+    """Ошибка вдоль/поперёк траектории эталона - алгоритм независимой
+    реализации метрик (tools/core_metrics.py; в tools/eval_metrics.py - тот же)."""
     try:
         from eval_metrics import along_cross as ac      # tools/eval_metrics.py
     except ImportError:
@@ -683,7 +683,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     T = np.array([o["stamp"] for o in mo])
     Tn = np.array([o["stamp"] for o in no])
     if len(T) != len(Tn) or not np.allclose(T, Tn):
-        # сетка модели могла сброситься (разрыв времени) — база по ближайшей метке
+        # сетка модели могла сброситься (разрыв времени) - база по ближайшей метке
         jn = np.clip(np.searchsorted(Tn, T), 0, len(Tn) - 1)
         no = [no[i] for i in jn]
 
@@ -691,7 +691,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         return np.array([o.get(k, np.nan) if o.get(k) is not None else np.nan for o in src], dtype=dtype)
     V, SV, S, SS = O("v"), O("sigma_v"), O("s"), O("sigma_s")
     XYZ = np.c_[O("x"), O("y"), O("z")]
-    # положение есть: выставка прошла и pos_valid — у края
+    # положение есть: выставка прошла и pos_valid - у края
     # квадрата MGRS при mgrs_guard_m нода /result/position не публикует
     def pos_ok(src):
         return np.array([bool(o.get("pos_ready", True)) and bool(o.get("pos_valid", True))
@@ -701,7 +701,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     XYZn = np.c_[O("x", no), O("y", no), O("z", no)]
     ready_n = pos_ok(no)
 
-    # эталон положения — та же точка вагона, что на выходе связки (base_link или master)
+    # эталон положения - та же точка вагона, что на выходе связки (base_link или master)
     point = output_point(r)
     m, ref_label = reference_fix(a, point)
     g = a["mvel"]
@@ -709,9 +709,9 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     fr = detect_frame(XYZ, T, ready, m, hint)
     frn = detect_frame(XYZn, T, ready_n, m, hint)
     if fr is None:
-        raise SystemExit(f"{bag}: нет пар положения с эталоном — выставка не прошла?")
+        raise SystemExit(f"{bag}: нет пар положения с эталоном - выставка не прошла?")
 
-    # ---- пары скорости (эталон — |v| GNSS master; rover справочно)
+    # ---- пары скорости (эталон - |v| GNSS master; rover справочно)
     j, ok = E.nearest(T, g[:, 1])
     vg = np.hypot(g[:, 2], g[:, 3])
     jj = j[ok]
@@ -723,7 +723,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         er = V[jr[okr]] - np.hypot(rv[okr, 2], rv[okr, 3])
     else:
         er = np.zeros(0)
-    # ---- пары положения (эталон — master fix в системе выхода)
+    # ---- пары положения (эталон - master fix в системе выхода)
     j2, ok2 = E.nearest(T, m[:, 1])
     ok2 = ok2 & ready[j2]
     idx = np.flatnonzero(ok2)
@@ -762,8 +762,8 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         along_end=last(al), naive_along_end=last(aln),
         along_mean_abs=float(np.nanmean(np.abs(al))) if fin.any() else None,
         # «накопленный дрейф» по ТЗ: ошибка положения в конце прогона / пройденный путь.
-        # Ошибка — вдоль трассы эталона на последней паре; если оценка там ушла с
-        # трассы (вдоль не определено) — ошибка в плане. Путь — дуговая координата
+        # Ошибка - вдоль трассы эталона на последней паре; если оценка там ушла с
+        # трассы (вдоль не определено) - ошибка в плане. Путь - дуговая координата
         # эталона sref последней пары (≈ path).
         drift_pct=100.0 * end_err(al, d2) / sref[-1] if len(sref) and sref[-1] > 100 else None,
         naive_drift_pct=100.0 * end_err(aln, d2n) / sref[-1] if len(sref) and sref[-1] > 100 else None,
@@ -792,7 +792,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
             sigma_v_end=float(ow[-1]["sigma_v"]) if ow else None,
             sigma_s_end=float(ow[-1]["sigma_s"]) if ow else None)
 
-    # ---- строки 10 Гц (каждый второй шаг сетки 50 мс; входы — последнее значение)
+    # ---- строки 10 Гц (каждый второй шаг сетки 50 мс; входы - последнее значение)
     step = max(1, int(round(DECIM_DT / max(np.median(np.diff(T)), 1e-3))))
     R = np.arange(0, len(T), step)
     TR = T[R]
@@ -800,10 +800,10 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     rear = _zoh(a["rear"][:, 1], a["rear"][:, 2], TR)
     t_fr = _zoh(a["front"][:, 1], a["front"][:, 1], TR)
     t_rr = _zoh(a["rear"][:, 1], a["rear"][:, 1], TR)
-    front = np.where(TR - t_fr <= 1.0, front, np.nan)     # нет сообщений > 1 с — пусто
+    front = np.where(TR - t_fr <= 1.0, front, np.nan)     # нет сообщений > 1 с - пусто
     rear = np.where(TR - t_rr <= 1.0, rear, np.nan)
     handle = _zoh(a["cmd"][:, 1], a["cmd"][:, 2], TR)
-    # эталон на строке — ближайший отсчёт в пределах 0,06 с
+    # эталон на строке - ближайший отсчёт в пределах 0,06 с
     jg = np.clip(np.searchsorted(g[:, 1], TR), 1, len(g) - 1)
     jg = np.where(np.abs(g[jg - 1, 1] - TR) < np.abs(g[jg, 1] - TR), jg - 1, jg)
     gv = np.where(np.abs(g[jg, 1] - TR) <= 0.06, vg[jg], np.nan)
@@ -812,11 +812,11 @@ def run_variant(a, params, node, map_path, bag, kind, info):
     okf = np.abs(m[jf, 1] - TR) <= 0.06
     gx = np.where(okf, ref[jf, 0], np.nan)
     gy = np.where(okf, ref[jf, 1], np.nan)
-    # путь по эталону (дуговая координата траектории GNSS) — для дрейфа %
+    # путь по эталону (дуговая координата траектории GNSS) - для дрейфа %
     s_fix = np.full(len(m), np.nan)
     s_fix[idx] = sref
     gs = np.where(okf, s_fix[jf], np.nan)
-    # состояние тележки на строке — последнее решение по ней (показания
+    # состояние тележки на строке - последнее решение по ней (показания
     # приходят ~10 Гц, шаг 20 Гц: «нет новых данных» не дольше 0,5 с не показываем)
     st_all = np.array([o.get("_dg", {}).get("state", [9, 9]) for o in mo])
     bst_all = st_all.copy()
@@ -880,7 +880,7 @@ def run_variant(a, params, node, map_path, bag, kind, info):
         "p": {"t": q(m[idx, 1] - t0, 100), "al": q(al, 1000), "aln": q(aln, 1000),
               "h": q(d2, 1000), "hn": q(d2n, 1000), "sr": q(sref, 10)},
     }
-    # плавные колонки — разностями (страница восстанавливает накопленной суммой)
+    # плавные колонки - разностями (страница восстанавливает накопленной суммой)
     dcols = ("t", "s", "ss", "x", "y", "ns", "nx", "ny", "gx", "gy", "gs", "fr", "rr", "v", "nv", "gv",
              "kt", "kb", "mu", "d", "sv", "h")
     for k_ in dcols:
@@ -947,7 +947,7 @@ def rounded(x, nd=6):
 def write_js(doc, key):
     os.makedirs(OUT_DIR, exist_ok=True)
     body = json.dumps(rounded(doc), ensure_ascii=False, separators=(",", ":"))
-    js = (f"// Сгенерировано tools/export_replay.py — не править руками.\n"
+    js = (f"// Сгенерировано tools/export_replay.py - не править руками.\n"
           f"(window.TV_REPLAYS = window.TV_REPLAYS || {{}})[{json.dumps(key)}] = {body};\n")
     p = os.path.join(OUT_DIR, f"{key}.js")
     with open(p, "w", encoding="utf-8") as fh:
@@ -970,7 +970,7 @@ def update_index(entries):
     allv.sort(key=lambda e: (e["run"], order.get(e["variant"], 99)))
     body = json.dumps(allv, ensure_ascii=False, indent=1)
     with open(p, "w", encoding="utf-8") as fh:
-        fh.write("// Сгенерировано tools/export_replay.py — список прогонов для режима "
+        fh.write("// Сгенерировано tools/export_replay.py - список прогонов для режима "
                  "«Прогон данных комиссии».\n")
         fh.write(f"window.TV_REPLAY_INDEX = {body};\n")
     return p
@@ -982,9 +982,9 @@ def main():
     ap.add_argument("--variants", default=",".join(VARIANTS))
     ap.add_argument("--map", default=None,
                     help="карта путей; по умолчанию config/eval/track_map.npz пакета, если есть, "
-                         "иначе analysis/cache/track_map_train.npz (обе — только train); '' — без карты")
+                         "иначе analysis/cache/track_map_train.npz (обе - только train); '' - без карты")
     ap.add_argument("--sheet", default=None,
-                    help="лист: eval (по умолчанию: оценочный config/eval/, без него — запасной json "
+                    help="лист: eval (по умолчанию: оценочный config/eval/, без него - запасной json "
                          "с пометкой УТЕЧКА, как tools/eval.py) | jury | путь к yaml/json")
     ap.add_argument("--allow-train", action="store_true", help="разрешить прогон не из holdout_scored")
     ap.add_argument("--out", default=None, help="каталог вывода (по умолчанию simulator/replays)")
@@ -1008,7 +1008,7 @@ def main():
         map_path = next((q for q in MAP_CANDIDATES if os.path.exists(q)), None)
         if map_path is None:
             raise SystemExit("нет карты только из обучающих: " + ", ".join(_rel(q) for q in MAP_CANDIDATES)
-                             + " (--map '' — без карты)")
+                             + " (--map '' - без карты)")
     else:
         map_path = args.map or None
     if map_path and not os.path.exists(map_path):
@@ -1017,7 +1017,7 @@ def main():
     a = bagio.load(args.run)
     entries = []
     csha = core_sha1()
-    print(f"прогон {args.run}; лист {sheet['path']} — {sheet['label']} (правила {sheet['resolver']}); "
+    print(f"прогон {args.run}; лист {sheet['path']} - {sheet['label']} (правила {sheet['resolver']}); "
           f"карта {_rel(map_path) if map_path else 'нет'}; ядро {_rel(EC.__file__)} sha1 {csha}")
     print(f"  в Runner: {', '.join(f'{k}={v!r}' for k, v in kw.items() if k != 'track_map')}"
           + (f"; параметры ноды не для Runner: {', '.join(unused)}" if unused else ""))
@@ -1026,7 +1026,7 @@ def main():
     for kind in args.variants.split(","):
         b, info = make_variant(a, args.run, kind)
         if b is None:
-            print(f"  {kind}: нет подходящего окна — пропуск")
+            print(f"  {kind}: нет подходящего окна - пропуск")
             continue
         doc = run_variant(b, params, node, map_path, args.run, kind, info)
         doc["meta"].update(

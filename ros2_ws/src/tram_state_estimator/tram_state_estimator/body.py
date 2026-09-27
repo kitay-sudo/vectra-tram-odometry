@@ -1,10 +1,10 @@
 """Точки вагона в base_link: антенны GNSS и точка выхода положения.
 
-Ответ организаторов 25.09 (docs/ORGANIZER_ANSWERS.md): base_link — ось
+Ответ организаторов 25.09 (docs/ORGANIZER_ANSWERS.md): base_link - ось
 поворота ПЕРЕДНЕЙ тележки на уровне касания колеса и рельса; антенны в нём
 (м): master (−9,873; 0; 3,0), rover (2,563; 0; 3,0). Rover впереди, база
-12,436 м. Эталон судьи (и карта организаторов pathgraph) — точка base_link:
-x, y — ось пути у передней тележки, z — уровень рельса.
+12,436 м. Эталон судьи (и карта организаторов pathgraph) - точка base_link:
+x, y - ось пути у передней тележки, z - уровень рельса.
 
 Ось x base_link проходит через обе антенны (y = 0 у обеих). Кузов жёсткий и
 опирается на оси поворота тележек, которые стоят на оси пути, поэтому
@@ -12,10 +12,10 @@ base_link лежит на отрезке master→rover и на кривой:
 
     base_link = master + 9,873 / 12,436 · (rover − master),  z = z_антенны − 3,0.
 
-Антенны на кривой уходят с оси пути (свесы кузова), base_link — нет. Если
+Антенны на кривой уходят с оси пути (свесы кузова), base_link - нет. Если
 пары антенн одной эпохи нет, точка переносится вдоль курса u (единичный
 вектор оси x base_link на плоскости): P_to = P_from + (x_to − x_from)·u, по
-высоте — на z_to − z_from.
+высоте - на z_to − z_from.
 """
 
 import math
@@ -46,7 +46,7 @@ class Body:
         self.antenna_z = float(antenna_z)
         if not (self.rover_x - self.master_x) > 1.0:
             raise ValueError("rover должен быть впереди master (antenna_rover_x > "
-                             "antenna_master_x): курс выставки — по вектору master→rover")
+                             "antenna_master_x): курс выставки - по вектору master→rover")
 
     @property
     def baseline(self):
@@ -65,8 +65,8 @@ class Body:
 
     def shift(self, xyz, az, src, dst):
         """Точка src вагона (x, y, z во внутренней системе, м) -> точка dst.
-        az — курс оси x base_link (азимут сетки от севера по часовой, рад);
-        None — курса нет: переносится только высота."""
+        az - курс оси x base_link (азимут сетки от севера по часовой, рад);
+        None - курса нет: переносится только высота."""
         x, y, z = (float(v) for v in xyz)
         dz = self.z(dst) - self.z(src)
         if az is None:
@@ -76,7 +76,7 @@ class Body:
 
     def from_pair(self, m, r, dst="base_link"):
         """Пара антенн одной эпохи (master m, rover r: x, y, z) -> точка dst.
-        Работает поэлементно и для массивов numpy (последняя ось — x, y, z)."""
+        Работает поэлементно и для массивов numpy (последняя ось - x, y, z)."""
         f = self.frac(dst)
         dz = self.z(dst) - self.antenna_z
         out = [mi + f * (ri - mi) for mi, ri in zip(_xyz(m), _xyz(r))]

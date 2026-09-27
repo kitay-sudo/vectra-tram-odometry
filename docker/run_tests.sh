@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_tests.sh — сборка пакетов и тесты (compose: сервис test; CI; любой Humble).
+# run_tests.sh - сборка пакетов и тесты (compose: сервис test; CI; любой Humble).
 #
 #   docker compose run --rm test                  # colcon build + pytest (кроме маркера timing)
 #   docker compose run --rm test -k e2e           # аргументы уходят в pytest
@@ -11,7 +11,7 @@
 #
 # Исходники берутся из смонтированного репозитория (/repo, только чтение) и
 # собираются во временный workspace /tmp/ws, так что тестируется ровно то, что
-# лежит в рабочем дереве. Сервис compose идёт с network_mode: none — заодно
+# лежит в рабочем дереве. Сервис compose идёт с network_mode: none - заодно
 # проверка, что colcon build и тесты не ходят в сеть.
 #
 # Маркер timing (test/conftest.py): p99 времени шага ядра < 5 мс; при нехватке CPU
@@ -49,7 +49,7 @@ mexpr=""
 [ -n "$mexpr" ] && args+=(-m "$mexpr")
 echo "[test] pytest ${args[*]} $*"
 t0=$(date +%s)
-# PYTHONPATH на исходники: тесты и фикстуры — из рабочего дерева
+# PYTHONPATH на исходники: тесты и фикстуры - из рабочего дерева
 PYTHONPATH="$SRC/tram_state_estimator:$PYTHONPATH" python3 -m pytest test/ "${args[@]}" "$@" && rc=0 || rc=$?
 if [ $rc = 0 ]; then verdict="PASS"; else verdict="FAIL"; fi
 echo "[test] ИТОГ: $verdict (pytest, код $rc) за $(( $(date +%s) - t0 )) с"

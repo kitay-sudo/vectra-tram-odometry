@@ -50,7 +50,7 @@ def main():
         for s in a["mfix"][:, 5].astype(int):
             st_cnt[s] = st_cnt.get(s, 0) + 1
         cov.append(np.median(np.sqrt(a["mfix"][:, 6])))
-        # база master-rover (м) — если приёмники разнесены, даёт курс
+        # база master-rover (м) - если приёмники разнесены, даёт курс
         mf, rf = a["mfix"], a["rfix"]
         if len(rf) > 10:
             rl = np.interp(mf[:, 0], rf[:, 0], rf[:, 2])

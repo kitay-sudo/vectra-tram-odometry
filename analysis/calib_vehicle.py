@@ -1,13 +1,13 @@
 """Различия трамваев: масштаб колёс по вагону и дате, листы по вагонам.
 
-Организаторы 26.09: проверка — только вагон 30618, учёт различий трамваев
+Организаторы 26.09: проверка - только вагон 30618, учёт различий трамваев
 засчитывается в плюс. Здесь:
 
   1. масштаб показаний тележек (скорость тележек / скорость GNSS на
      установившемся движении, как analysis/calib_sheet.speed_stats) по
      каждой записи с GNSS, затем медианы по вагону, по вагону и дате;
   2. масштаб колёс каждого вагона для листа ОЦЕНКИ (только train_unique
-     вагона) и листа ЖЮРИ (все уникальные записи вагона) — блок "vehicles"
+     вагона) и листа ЖЮРИ (все уникальные записи вагона) - блок "vehicles"
      калибровки config/[eval/]tram_calibration.json (его пишет и
      calib_sheet.py); tools/gen_params.py переносит его в лист ноды
      (параметры vehicle, vehicle_ids, vehicle_meas_scale;
@@ -43,13 +43,13 @@ PKG = ROOT / "ros2_ws" / "src" / "tram_state_estimator"
 CALIB = {"eval": PKG / "config" / "eval" / "tram_calibration.json",
          "jury": PKG / "config" / "tram_calibration.json"}
 VEHICLES = ("30618", "30639")
-# вагон по умолчанию в листе: проверка организаторов — только 30618
+# вагон по умолчанию в листе: проверка организаторов - только 30618
 DEFAULT_VEHICLE = "30618"
 
 
 def run_ratio(bag):
-    """(отношение «тележки / GNSS» — медиана по записи, число отсчётов) или
-    None. Отбор отсчётов — как calib_sheet.speed_stats: |v| GNSS > 3 м/с,
+    """(отношение «тележки / GNSS» - медиана по записи, число отсчётов) или
+    None. Отбор отсчётов - как calib_sheet.speed_stats: |v| GNSS > 3 м/с,
     |ускорение| < 0,1 м/с², тележки согласны (< 0,2 м/с)."""
     a = bagio.load(bag)
     f, r, g = a["front"], a["rear"], a["mvel"]
@@ -97,7 +97,7 @@ def main():
     if a.runs:
         print("запись            вагон  дата        набор     отношение  отсчётов")
         for b in sorted(per_run):
-            s = "holdout" if b in hold else ("train" if b in sets["eval"] else "—")
+            s = "holdout" if b in hold else ("train" if b in sets["eval"] else "-")
             print(f"{b}  {md[b]['vehicle']}  {md[b]['date']}  {s:8s}  "
                   f"{np.median(per_run[b]):.5f}  {len(per_run[b])}")
 
@@ -134,7 +134,7 @@ def all_ratios(ids):
 
 def vehicle_block(which, per_run=None, md=None):
     """Блок "vehicles" калибровки листа which: масштаб колёс каждого вагона
-    по записям подгонки листа (eval — train_unique, jury — все уникальные)."""
+    по записям подгонки листа (eval - train_unique, jury - все уникальные)."""
     md = md or meta()
     ids = calib_drive.fit_ids(which)
     per_run = per_run if per_run is not None else all_ratios(ids)

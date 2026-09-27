@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ros_wait — ждёт, пока в графе ROS 2 появятся подписчики или издатели.
+"""ros_wait - ждёт, пока в графе ROS 2 появятся подписчики или издатели.
 
 Нужен, чтобы `ros2 bag play` не начинал проигрывание раньше, чем нода и
 проба подписались на входы (иначе начало bag теряется).
@@ -7,7 +7,7 @@
     python3 tools/ros_wait.py --subscribers /vehicle/front_bogie_velocity:2 --timeout 120
     python3 tools/ros_wait.py --publishers /result/velocity:1
 
-Код выхода: 0 — условие выполнено, 1 — вышел таймаут.
+Код выхода: 0 - условие выполнено, 1 - вышел таймаут.
 """
 
 import argparse
@@ -28,7 +28,7 @@ def main():
                     metavar="TOPIC[:N]", help="ждать >= N подписчиков топика")
     ap.add_argument("--publishers", type=spec, action="append", default=[],
                     metavar="TOPIC[:N]", help="ждать >= N издателей топика")
-    ap.add_argument("--timeout", type=float, default=60.0, help="с, 0 — без предела")
+    ap.add_argument("--timeout", type=float, default=60.0, help="с, 0 - без предела")
     a = ap.parse_args()
 
     rclpy.init()

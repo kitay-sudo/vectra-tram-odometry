@@ -1,4 +1,4 @@
-"""ros_gnss_cmp — сравнение прогонов tools/ros_e2e.sh (raw.npz) одного bag против эталона base_link
+"""ros_gnss_cmp - сравнение прогонов tools/ros_e2e.sh (raw.npz) одного bag против эталона base_link
 по ВСЕМ точкам GNSS из кэша: скорость (против GNSS master), положение (3D,
 вдоль), и скорость одного прогона против другого по меткам.
 

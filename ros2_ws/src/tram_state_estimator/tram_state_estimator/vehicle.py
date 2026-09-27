@@ -3,19 +3,19 @@
 Организаторы 26.09: проверка идёт только на вагоне 30618, учёт различий
 трамваев засчитывается в плюс. Вагоны различаются масштабом колёс: скорость
 тележек против скорости GNSS у 30618 и 30639 расходится на 0,4 % (по всем
-данным), а по датам у одного вагона — до 1,2 % (docs/VEHICLES.md).
+данным), а по датам у одного вагона - до 1,2 % (docs/VEHICLES.md).
 
 Лист вагона (config/tram.yaml) несёт:
-  * vehicle             "30618" | "30639" | "auto" — какой вагон;
+  * vehicle             "30618" | "30639" | "auto" - какой вагон;
   * vehicle_ids         вагоны, для которых есть своя калибровка;
   * vehicle_meas_scale  масштаб колёс каждого из них (по тем же данным, что
-                        лист: ЖЮРИ — все записи вагона, ОЦЕНКА — только train).
+                        лист: ЖЮРИ - все записи вагона, ОЦЕНКА - только train).
 
-Известный вагон — масштаб показаний ядра (Params.meas_scale) берётся его.
-"auto" — общий лист как есть (калибровка по обоим вагонам) плюс онлайн-оценки
+Известный вагон - масштаб показаний ядра (Params.meas_scale) берётся его.
+"auto" - общий лист как есть (калибровка по обоим вагонам) плюс онлайн-оценки
 по привязкам к остановкам: масштаба пути (Position, scale_adapt) и масштаба
 колёс для скорости (OnlineWheelScale, параметр wheel_scale_online); обе
-работают при любом значении vehicle. Незнакомое значение — «auto» с
+работают при любом значении vehicle. Незнакомое значение - «auto» с
 предупреждением.
 
 Модуль без ROS: его используют нода (tram_node.py) и оценка (tools/eval_replay.py),
@@ -65,7 +65,7 @@ def table(ids, scales):
 
 def resolve(vehicle, ids, scales):
     """-> dict(requested, used, meas_scale или None, warning или None).
-    used — ключ вагона из таблицы или "auto"."""
+    used - ключ вагона из таблицы или "auto"."""
     req = normalize(vehicle)
     tab, err = table(ids, scales)
     info = dict(requested=req, used=AUTO, meas_scale=None, warning=None,
@@ -76,11 +76,11 @@ def resolve(vehicle, ids, scales):
         return info
     if err:
         info["warning"] = (f"вагон {req!r}: таблица вагонов листа негодна ({err}); "
-                           "работаю как auto — общий лист и онлайн-масштаб пути")
+                           "работаю как auto - общий лист и онлайн-масштаб пути")
         return info
     if req not in tab:
         info["warning"] = (f"вагон {req!r} неизвестен (есть: {', '.join(sorted(tab)) or 'нет'}"
-                           "); работаю как auto — общий лист и онлайн-масштаб пути")
+                           "); работаю как auto - общий лист и онлайн-масштаб пути")
         return info
     info.update(used=req, meas_scale=tab[req])
     return info
@@ -97,10 +97,10 @@ def apply(params, vehicle, ids, scales):
 
 
 def describe(info, online=None):
-    """Строка для лога ноды (online — параметр wheel_scale_online)."""
+    """Строка для лога ноды (online - параметр wheel_scale_online)."""
     if info["used"] == AUTO:
         out = (f"вагон auto: общий лист, meas_scale {info['sheet_meas_scale']:.6f}, "
-               "масштаб пути — онлайн по остановкам")
+               "масштаб пути - онлайн по остановкам")
     else:
         out = (f"вагон {info['used']}: meas_scale {info['meas_scale']:.6f} "
                f"(общий лист {info['sheet_meas_scale']:.6f})")
@@ -115,20 +115,20 @@ class OnlineWheelScale:
     Масштаб колёс меняется по датам у того же вагона до 1,2 % (docs/VEHICLES.md
     §2), а дату нода не знает. Привязка к остановке (Position.on_stop) даёт на
     каждом отрезке между остановками отношение пути по карте к пути колёс:
-    k = (L·s0·m + δ) / (L·s0), где L — путь ядра по отрезку, δ — сдвиг
-    привязки вдоль пути, m — множитель пути Position на этом отрезке, s0 —
+    k = (L·s0·m + δ) / (L·s0), где L - путь ядра по отрезку, δ - сдвиг
+    привязки вдоль пути, m - множитель пути Position на этом отрезке, s0 -
     множитель пути карты (при масштабе листа). Отрезки берутся не короче
-    min_l и с |k − 1| < max_dev (дальше — «не та остановка»). Оценка —
+    min_l и с |k − 1| < max_dev (дальше - «не та остановка»). Оценка -
     Σ L·k / Σ L, то есть весь путь по карте на весь путь колёс принятых
-    отрезков (weighted; медиана k — weighted=False), когда таких отрезков не
+    отрезков (weighted; медиана k - weighted=False), когда таких отрезков не
     меньше min_n; не больше ±cap. Длинный отрезок весит больше: ошибка
-    привязки — метры, на длинном отрезке она меньше в долях. Поправка
-    скорости — эта оценка, если |оценка − 1| > deadband, иначе 1 (на
+    привязки - метры, на длинном отрезке она меньше в долях. Поправка
+    скорости - эта оценка, если |оценка − 1| > deadband, иначе 1 (на
     «обычных» датах шум оценки дороже поправки). Всё причинно: только
-    законченные отрезки. Выбор настроек — на train (docs/VEHICLES.md §6).
+    законченные отрезки. Выбор настроек - на train (docs/VEHICLES.md §6).
 
-    Журнал привязок — Position.scale_log: (путь, δ, L, m после привязки).
-    Новый журнал (сброс Runner — новый прогон) — оценка заново."""
+    Журнал привязок - Position.scale_log: (путь, δ, L, m после привязки).
+    Новый журнал (сброс Runner - новый прогон) - оценка заново."""
 
     MIN_L = 300.0       # м
     MAX_DEV = 0.03
@@ -137,7 +137,7 @@ class OnlineWheelScale:
     DEADBAND = 0.005
 
     SKIP_FIRST = False  # не брать первый отрезок (от выставки по GNSS): на train хуже
-    WEIGHTED = True     # Σ L·k / Σ L; False — медиана k (на train хуже)
+    WEIGHTED = True     # Σ L·k / Σ L; False - медиана k (на train хуже)
 
     def __init__(self, min_l=MIN_L, max_dev=MAX_DEV, min_n=MIN_N, cap=CAP,
                  deadband=DEADBAND, skip_first=SKIP_FIRST, weighted=WEIGHTED):
@@ -193,9 +193,9 @@ class OnlineWheelScale:
 
 
 def wheel_scale_hook(runner, enabled, **kw):
-    """Включить онлайн-масштаб колёс у Runner (нода и оценка — одинаково):
+    """Включить онлайн-масштаб колёс у Runner (нода и оценка - одинаково):
     runner.wheel_scale переживает reset() (его __init__ атрибут не трогает),
-    журнал привязок у нового прогона новый — оценка начинается заново."""
+    журнал привязок у нового прогона новый - оценка начинается заново."""
     runner.wheel_scale = OnlineWheelScale(**kw) if enabled else None
     return runner
 

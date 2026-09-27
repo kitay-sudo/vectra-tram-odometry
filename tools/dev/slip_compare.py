@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """До / после по двум прогонам tools/eval.py (правки срыва): инъекции по видам и
-чистые метрики. Таблицы — Markdown.
+чистые метрики. Таблицы - Markdown.
 
   python3 tools/dev/slip_compare.py out/eval_before15 out/eval_after15 [--runs a,b,c]
 
---runs — только эти прогоны инъекций (например, три прогона по умолчанию
+--runs - только эти прогоны инъекций (например, три прогона по умолчанию
 tools/eval.py: 30618_3e9f4952,30639_d3c43d69,30618_e9a34502).
 """
 
@@ -17,12 +17,12 @@ import numpy as np
 
 def f(x, n=3):
     if x is None or (isinstance(x, float) and not np.isfinite(x)):
-        return "—"
+        return "-"
     return f"{x:.{n}f}".replace(".", ",")
 
 
 def pct(x):
-    return "—" if x is None or not np.isfinite(x) else f"{100 * x:.1f} %".replace(".", ",")
+    return "-" if x is None or not np.isfinite(x) else f"{100 * x:.1f} %".replace(".", ",")
 
 
 def load(d):
@@ -100,9 +100,9 @@ def main():
         if b is None or x is None:
             continue
         if n is None:
-            print(f"| {name} | {pct(b)} | {pct(x)} | {100 * (x - b):+.2f} п. п. | — |")
+            print(f"| {name} | {pct(b)} | {pct(x)} | {100 * (x - b):+.2f} п. п. | - |")
         else:
-            ch = f"{100 * (x - b) / abs(b):+.2f} %" if b else "—"
+            ch = f"{100 * (x - b) / abs(b):+.2f} %" if b else "-"
             print(f"| {name} | {f(b, n)} | {f(x, n)} | {ch} | {f(nb.get(key), n)} |")
     ph_b = sb.get("pooled", {}).get("model", {}).get("by_phase", {})
     ph_a = sa.get("pooled", {}).get("model", {}).get("by_phase", {})

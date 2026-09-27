@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ros_inject — инъекция битых сообщений во входы ноды tram_estimator.
+"""ros_inject - инъекция битых сообщений во входы ноды tram_estimator.
 
 Работает рядом с ros2 bag play (tools/ros_e2e.sh --inject "MODE [опции]").
 Время bag берётся из последнего принятого /vehicle/driver_position_cmd.
