@@ -4,13 +4,13 @@
 (README датасета, раздел 5.1). Эталон скорости - |v| GNSS master по (x, y)
 (основной) и rover (дополнительный): официального эталона скорости нет,
 источников четыре - 2 тележки и 2 GNSS. Эталон положения - точка base_link
-по GNSS (организаторы 25.09: ось поворота передней тележки на уровне рельса;
+по GNSS (по ответу организаторов, ось поворота передней тележки на уровне рельса;
 антенны в base_link: master (−9,873; 0; 3,0), rover (2,563; 0; 3,0)):
 пара master+rover одной эпохи (±0,05 с) - base_link = master + 9,873/12,436 ·
 (rover − master), z − 3,0; без пары - master + 9,873 м вдоль курса эталонной
 траектории, z = высота master − 3,0 (reference). Система судьи - плоские MGRS
-от угла квадрата 37UCB непрерывно (как pathgraph организаторов). Прежний
-эталон (антенна master) - ref_point="master".
+от угла квадрата 37UCB непрерывно (как pathgraph организаторов). Эталон по
+антенне master (для сравнения) - ref_point="master".
 
 Разложение вдоль/поперёк пути (along_cross) перенесено без изменений из
 tools/core_metrics.py (независимая реализация метрик), чтобы числа
@@ -290,7 +290,7 @@ def score_speed(O, a, which="master", v_standstill=0.3, meas_scale=1.0):
     return row, s
 
 
-# tf антенн в base_link (организаторы 25.09), м; независимо от body.py пакета
+# tf антенн в base_link (по ответу организаторов), м; независимо от body.py пакета
 MASTER_X, ROVER_X, ANTENNA_Z = -9.873, 2.563, 3.0
 REF_POINTS = ("base_link", "master")
 PAIR_TOL = 0.05            # с: master и rover одной эпохи
@@ -358,7 +358,7 @@ def reference(a, point="base_link"):
         keep = paired | np.isfinite(yaw)
     else:
         raise ValueError(f"точка эталона {point!r}: {REF_POINTS}")
-    if point == "master":                       # сами фиксы, без пересчёта (как прежде)
+    if point == "master":                       # сами фиксы, без пересчёта
         return dict(t=t, lat=lat, lon=lon, alt=alt, yaw=yaw, paired=paired, zone=zone)
     la, lo = G.utm_inv(E[keep], N[keep], zone)
     return dict(t=t[keep], lat=np.asarray(la, float), lon=np.asarray(lo, float),
@@ -367,13 +367,13 @@ def reference(a, point="base_link"):
 
 def reference_geo(a, point="master"):
     """Эталон положения: метки и (lat, lon, alt) точки point (по умолчанию -
-    master fix, как прежде; оценка берёт base_link через reference)."""
+    master fix; оценка берёт base_link через reference)."""
     r = reference(a, point)
     return r["t"], r["lat"], r["lon"], r["alt"]
 
 
 BOUNDARY_GRID = "37UDB"     # «непрерывно от квадрата» для матрицы соглашений на границе
-JUDGE_GRID = "37UCB"        # соглашение судьи: от угла 37UCB непрерывно (pathgraph, 26.09)
+JUDGE_GRID = "37UCB"        # соглашение судьи: от угла 37UCB непрерывно (как pathgraph)
 
 
 def _conv(E, N, conv):

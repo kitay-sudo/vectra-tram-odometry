@@ -4,7 +4,7 @@
 #   docker build -f docker/Dockerfile -t vectra/tram:compose .
 #
 # Базовый образ закреплён по digest (индекс multi-arch ros:humble-ros-base,
-# снят `docker inspect ros:humble-ros-base` 25.09.2026, образ от 09.09.2026),
+# снят `docker inspect ros:humble-ros-base`, образ от 09.09.2026),
 # чтобы сборка у жюри шла на тех же пакетах, что у нас. Обновить:
 #   docker pull ros:humble-ros-base && docker inspect ros:humble-ros-base \
 #     --format '{{json .RepoDigests}}'

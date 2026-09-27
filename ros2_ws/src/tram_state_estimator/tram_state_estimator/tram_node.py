@@ -5,8 +5,8 @@
     /vehicle/rear_bogie_velocity    tram_vehicle_msgs/VelocitySensor  (км/ч)
     /vehicle/driver_position_cmd    tram_vehicle_msgs/DriverControllerCommand
 Начальная выставка (первые init_window_s секунд) и коррекция положения по
-GNSS в середине маршрута (gnss_correction, по умолчанию включено; ответ
-организаторов 26.09: такие сообщения можно использовать для коррекции):
+GNSS в середине маршрута (gnss_correction, по умолчанию включено; по ответу
+организаторов, такие сообщения можно использовать для коррекции):
     /sensing/gnss/master/fix, /sensing/gnss/rover/fix   sensor_msgs/NavSatFix
 Выходы:
     /result/velocity   tram_vehicle_msgs/VelocitySensor   скорость, м/с

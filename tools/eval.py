@@ -26,7 +26,7 @@
 Варианты листа (заглушки крипа / нули) - только с --variants.
 
 Запуск (PowerShell, из корня репозитория):
-  docker run --rm --cpus 2 -v ${PWD}:/repo -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro `
+  docker run --rm --cpus 2 -v ${PWD}:/repo -v <папка с записями>:/repo/data:ro `
       -w /repo vectra/tram:dev python3 tools/eval.py --label "<версия>"
   ... python3 tools/eval.py --quick --check-determinism     # CI: 2 коротких прогона, дважды
 Ключи - python3 tools/eval.py --help и docs/EVAL.md, раздел «Как запустить».
@@ -858,8 +858,8 @@ def final_table(S):
 
 def _shown(path):
     """Путь для журнала: от корня дерева, а вне дерева (--out снаружи) -
-    как есть. Прежде relative_to падал на последней строке журнала, уже
-    после записи JSON, и timing.json оставался без wall_with_doc_s."""
+    как есть: relative_to упал бы на последней строке журнала, уже после
+    записи JSON, и timing.json остался бы без wall_with_doc_s."""
     path = Path(path)
     return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
 
@@ -879,11 +879,11 @@ def main():
                          "split train с meas_scale оцениваемого листа, строится сама) | jury | "
                          "none | путь .npz")
     ap.add_argument("--rebuild-map", action="store_true", help="пересобрать карту train")
-    ap.add_argument("--baseline", default=None,
-                    help="итоги прежней версии (summary.json) для раздела «До и после»; по "
-                         "умолчанию docs/data/eval_before/summary.json, если есть; none - без него")
+    ap.add_argument("--baseline", default="none",
+                    help="итоги другой версии (summary.json) для раздела «До и после», например "
+                         "out/eval_prev/summary.json; по умолчанию none - без раздела")
     ap.add_argument("--baseline-label", default="",
-                    help="подпись прежней версии в разделе «До и после» вместо meta.label её "
+                    help="подпись той версии в разделе «До и после» вместо meta.label её "
                          "summary.json")
     ap.add_argument("--gnss", default="3",
                     help="секунд GNSS в связку (3), full или сценарий доступности tools/inject.py "
@@ -944,7 +944,7 @@ def main():
                     help="итоги tools/eval_gnss.py (summary.json или каталог) для раздела 5.1 "
                          "«Сценарии доступности GNSS»; пусто - без раздела")
     ap.add_argument("--gnss-scenarios-before", default="",
-                    help="те же итоги прежней версии (столбцы «main» раздела 5.1)")
+                    help="те же итоги другой версии (столбец «до» раздела 5.1)")
     ap.add_argument("--check-determinism", action="store_true",
                     help="прогнать всё второй раз и сравнить JSON побайтно")
     args = ap.parse_args()

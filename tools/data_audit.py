@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Аудит датасета кейса «Резервная одометрия по модели» (шаг 1 плана).
+"""Разбор и проверка датасета кейса «Резервная одометрия по модели».
 
 Читает все rosbag2 (sqlite3) из data/ библиотекой rosbags (без ROS),
 считает по каждому прогону и топику: длительность, число сообщений,
@@ -7,11 +7,11 @@
 (наличие, статусы, ковариации, высота), движение на старте, отношение
 «тележки / GNSS» (проверка единиц), ручку, аномалии тележек, пройденный
 путь, дубликаты прогонов и перекрытия, кластеры маршрутов, утечку
-отложенных прогонов партнёра (analysis/calib_drive.split) в обучение.
+отложенных прогонов калибровки привода (analysis/calib_drive.split) в обучение.
 
 Запуск (в образе vectra/tram:dev, из корня репозитория):
 
-    docker run --rm -v E:/MY-PROJECT/TrackVector:/repo -w /repo vectra/tram:dev \
+    docker run --rm -v <репозиторий>:/repo -w /repo vectra/tram:dev \
         python3 tools/data_audit.py [--workers 6] [--bags ID ...]
 
 Выход (out/data/): bags.csv (строка на прогон), topics.csv (прогон × топик),
@@ -782,7 +782,7 @@ def main():
                                   same_inputs=int(rows[i]["hash_inputs"] == rows[j]["hash_inputs"])))
     near = [p for p in pairs if not p["same_inputs"]]
 
-    # --- разбиение партнёра и утечка
+    # --- разбиение калибровки привода и утечка
     tr, va = partner_split(all_ids)
     dm_path = REPO / "analysis" / "drive_model.json"
     dm_match = None

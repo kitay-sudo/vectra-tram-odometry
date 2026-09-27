@@ -25,6 +25,7 @@ calib_tune.py и calib_sigma.py (см. docs в их заголовках). Ли�
 import json
 import os
 import sys
+import textwrap
 from dataclasses import fields
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -261,7 +262,7 @@ def tram_yaml_text(which="jury"):
 def plain_dash(text):
     """Текст с дефисом вместо длинного тире: описания Params в ядре пишутся с тире,
     а в листах и таблице MODEL.md длинное тире не используется."""
-    return text.replace(" — ", " - ").replace("—", "-")
+    return text.replace(" \u2014 ", " - ").replace("\u2014", "-")
 
 
 def gen_tram_yaml(which="jury"):
@@ -311,6 +312,40 @@ def gen_yaml():
     return path
 
 
+# знаков: длинная ячейка делает таблицу на GitHub нечитаемой, поэтому длинное описание
+# в таблице обрезается до первого разделителя, а полностью идёт списком под таблицей
+DOC_CELL_MAX = 110
+
+
+def doc_cell(doc):
+    """Первая часть описания для ячейки таблицы: до первого разделителя, если описание длинное."""
+    if len(doc) <= DOC_CELL_MAX:
+        return doc
+    # chr(0x2014) - длинное тире: в описаниях Params оно чаще отделяет сказуемое, чем
+    # пояснение («скачки ... в этом окне - один срыв»), поэтому режем по нему в последнюю очередь
+    for seps in ((": ", "; ", " ("), (", ", f" {chr(0x2014)} ")):
+        cuts = [i for i in (doc.find(s, 20) for s in seps) if 0 < i <= DOC_CELL_MAX]
+        if cuts:
+            return doc[:min(cuts)]
+    return doc
+
+
+def sentence(text):
+    """Описание в виде предложения: с прописной буквы и с точкой в конце."""
+    if text[:1].islower():
+        text = text[:1].upper() + text[1:]
+    return text if text.endswith((".", "!", "?")) else text + "."
+
+
+def list_item(text):
+    """Пункт списка Markdown, перенесённый по 100 знакам.
+
+    Дефис-тире приклеен к предыдущему слову: в начале строки он открыл бы новый пункт."""
+    glued = plain_dash(text).replace(" - ", "\0- ")
+    return textwrap.fill(glued, width=100, subsequent_indent="  ", break_long_words=False,
+                         break_on_hyphens=False).replace("\0", " ")
+
+
 def gen_table():
     order, table = groups()
     lines = []
@@ -320,15 +355,23 @@ def gen_table():
             continue
         lines += [f"#### {g}", "",
                   "| Параметр | Единицы | Источник | Смысл | Заглушка |",
-                  "| --- | --- | --- | --- | --- |"]
+                  "| :--- | :--- | :--- | :--- | ---: |"]
+        details = []
         for f in rows:
             md = f.metadata
             v = getattr(DEFAULT, f.name)
             shown = "; ".join(fmt(x) for x in v) if isinstance(v, tuple) \
                 else fmt(v)
+            cell = doc_cell(md["doc"])
+            if cell != md["doc"]:
+                details.append(list_item(f"- **`{f.name}`.** {sentence(md['doc'])}"))
+            # вертикальная черта в описании (|a|) иначе делит ячейку таблицы
+            cell = cell.replace("|", "\\|")
             lines.append(f"| `{f.name}` | {md['unit']} | {md['src']} | "
-                         f"{md['doc']} | {shown} |")
+                         f"{cell} | {shown} |")
         lines.append("")
+        if details:
+            lines += ["Подробнее:", ""] + details + [""]
     return plain_dash("\n".join(lines))
 
 

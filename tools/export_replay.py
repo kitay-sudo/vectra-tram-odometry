@@ -43,8 +43,7 @@ equirect - берётся из настроек Runner и проверяется
   simulator/replays/index.js            - список прогонов с итоговыми метриками
 
   docker run --rm --cpus 2 -v <репозиторий>:/repo \
-      -v E:/MY-PROJECT/TrackVector/data:/repo/data:ro \
-      -v E:/MY-PROJECT/TrackVector/analysis/cache:/repo/analysis/cache:ro \
+      -v <папка с записями>:/repo/data:ro \
       -w /repo vectra/tram:dev python3 tools/export_replay.py \
       [--run 30618_e9a34502] [--variants clean,front_zero,both_zero,dropout,skid_brake]
 """

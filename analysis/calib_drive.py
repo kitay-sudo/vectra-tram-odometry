@@ -1,4 +1,4 @@
-"""Шаг 2б: калибровка модели привода по данным.
+"""Калибровка модели привода по данным.
 
 Модель: ускорение на ровном пути a = A(u, v), где u - позиция ручки после
 чистой задержки delay и апериодического звена tau (в позициях), v - скорость.
@@ -18,8 +18,9 @@ A - билинейная таблица по сетке позиций и ско
 перебор delay и tau. Дубли записей в подгонку не идут дважды.
 
 Выход: analysis/drive_model_<eval|jury>.json - таблица и константы для
-calib_sheet.py. Старый analysis/drive_model.json не трогается: из него другие
-инструменты берут прежние списки train/val.
+calib_sheet.py. Файл analysis/drive_model.json команда не пишет: из него
+списки train/val читают tools/core_metrics.py, tools/data_audit.py и
+analysis/evaluate.py.
 """
 
 import json

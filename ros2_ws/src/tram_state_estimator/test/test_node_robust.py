@@ -161,7 +161,8 @@ def test_no_handle_1x_pulse_fills_between_bogie_messages(ros, monkeypatch):
 
 def test_slow_playback_does_not_turn_outputs_into_forecasts(ros, monkeypatch):
     """play -r 0.5: темп оценивается по приросту меток, пульс не опережает
-    входы (раньше 1176 из 1236 выходов были прогнозом, |dv| до 0,07)."""
+    входы (без учёта темпа 1176 из 1236 выходов оказываются прогнозом, |dv|
+    до 0,07)."""
     ev = trt.stream(60.0, handle=False, lag=0.05)
     T, V, W, Pu, summ = run_node(ev, monkeypatch, rate=0.5, tail=6.0)
     assert np.all(np.diff(T) > 0)
@@ -175,7 +176,7 @@ def test_slow_playback_does_not_turn_outputs_into_forecasts(ros, monkeypatch):
 @pytest.mark.parametrize("horizon", [None, 2.0])
 def test_player_pause_forecast_within_horizon_and_monotonic(ros, monkeypatch, horizon):
     """Пауза плеера 7,6 с: прогноз пульса - узлы сетки не дальше
-    pulse_horizon_s от последней метки входа (умолчание ноды и прежние 2 с),
+    pulse_horizon_s от последней метки входа (умолчание ноды и 2 с),
     с шагом ≤ 0,13 с по стенным часам; метки не идут назад после паузы."""
     ev = trt.stream(60.0, lag=0.05)
     log = {}
@@ -212,7 +213,7 @@ def test_record_pause_latency_bounded_by_horizon(ros, monkeypatch):
     assert hor[None] <= 0.25
     assert lat[2.0].max() > 0.5
     assert lat[None].max() <= hor[None] + 0.1 and lat[None].max() < 0.25
-    # вне паузы то же, что с прежним горизонтом
+    # вне паузы то же, что с горизонтом 2 с
     assert np.median(lat[None]) == pytest.approx(np.median(lat[2.0]), abs=0.011)
 
 

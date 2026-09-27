@@ -77,7 +77,10 @@ NODE_ONLY = {"map_file", "origin_lat", "origin_lon", "origin_alt", "frame_id", "
              # вагон: меняет Params (meas_scale) до Runner - make_params
              "vehicle", "vehicle_ids", "vehicle_meas_scale",
              # онлайн-масштаб колёс: задаётся Runner после __init__ - make_runner
-             "wheel_scale_online"}
+             "wheel_scale_online",
+             # сдвиг публикуемой скорости под эталон проверки организаторов; оценка
+             # считает скорость ядра без сдвига (docs/EVAL.md, раздел 8)
+             "speed_output_delay_s"}
 # --set vehicle=match - только для оценки: вагон по имени прогона (30618_…)
 VEHICLE_MATCH = "match"
 START_SORT_DEFAULT = 0.1     # с: start_sort_s ноды, если его нет в листе

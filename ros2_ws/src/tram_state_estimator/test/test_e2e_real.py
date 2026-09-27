@@ -145,7 +145,7 @@ def test_no_placeholder_position_in_reference_pairs(run_map):
 
 
 def test_output_frame_is_mgrs_by_default(run_map):
-    """Организаторы 25.09: «плоские координаты именно в MGRS». По умолчанию
+    """Ответ организаторов: «плоские координаты именно в MGRS». По умолчанию
     нода публикует абсолютные MGRS: x - easting, y - northing, z - высота."""
     outs, m = run_map
     assert m["p_frame"].startswith("mgrs"), m

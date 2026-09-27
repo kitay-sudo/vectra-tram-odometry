@@ -339,7 +339,8 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     (out / "summary.json").write_text(E.dumps(summary), encoding="utf-8")
     (out / "runs.json").write_text(E.dumps(runs), encoding="utf-8")
-    (out / "EVAL_GNSS.md").write_text(render(json.loads(E.dumps(summary))), encoding="utf-8")
+    doc = render(json.loads(E.dumps(summary))).replace("–", "-")  # диапазоны через дефис
+    (out / "EVAL_GNSS.md").write_text(doc, encoding="utf-8")
     for s in scen:
         T = summary["totals"][s]["all"]
         log(s + ": " + "; ".join(
