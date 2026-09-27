@@ -212,6 +212,57 @@ def test_stop_before_window_does_not_count():
     assert c["br"]["k"] == 0
 
 
+def _grid_head(P, s):
+    S = _s(P)
+    j = int(np.clip(np.searchsorted(S, s), 1, len(S) - 1))
+    return math.atan2(P[j, 0] - P[j - 1, 0], P[j, 1] - P[j - 1, 1])
+
+
+def test_locate_on_branch_axis():
+    """Интеграция 27.09 (loops × gnss): перестановка курсора по GNSS
+    (Position, коррекция посреди маршрута) идёт через locate. Точка на
+    боковом пути или на кольце — курсор на ось ветки (в облаке их нет,
+    раньше он притягивался к соседнему пути облака или оставался вне карты);
+    на платформе — облако, как было."""
+    tm = _map()
+    plat, dep, sw, loop = _geometry()
+    _, fr = _cursor(tm)
+    for P, s, k in ((sw, 100.0, 0), (loop, 30.0, 1)):
+        e, n = _at(P, s)
+        c = tm.locate((e - fr.E0, n - fr.N0, ALT), _grid_head(P, s))
+        assert c.get("br", {}).get("k") == k, (k, c)
+        assert _d(c, fr, (e, n)) < 0.5
+        _go(tm, c, 5.0)                                 # и едет по оси ветки
+        assert _d(c, fr, _at(P, s + 5.0)) < 0.5
+    e, n = _at(plat, 150.0)
+    c = tm.locate((e - fr.E0, n - fr.N0, ALT), EAST)
+    assert "br" not in c and c["on_map"]
+    tm0 = _map(branches=False)                          # без веток — как было
+    _, fr0 = _cursor(tm0)
+    e, n = _at(sw, 100.0)
+    c = tm0.locate((e - fr0.E0, n - fr0.N0, ALT), _grid_head(sw, 100.0))
+    assert "br" not in c and not c["on_map"]
+
+
+def test_offmap_cursor_reacquires_branch():
+    """Курсор вне карты в 4,5 м от оси бокового пути (дальше snap_r: так
+    бывает сразу после перестановки по GNSS у стрелки, где ось ветки ещё не
+    началась) — через несколько метров пути он уходит на ветку, а не ищет
+    облако."""
+    tm = _map()
+    plat, dep, sw, loop = _geometry()
+    _, fr = _cursor(tm)
+    s = 60.0
+    h = _grid_head(sw, s)
+    e, n = _at(sw, s)
+    e, n = e + 4.5 * math.cos(h), n - 4.5 * math.sin(h)    # вбок от оси
+    c = tm.locate((e - fr.E0, n - fr.N0, ALT), h)
+    assert not c["on_map"] and "br" not in c
+    _go(tm, c, 20.0)
+    assert c.get("br", {}).get("k") == 0
+    assert _d(c, fr, _at(sw, s + 20.0)) < 2.5
+
+
 def test_frequency_decides_when_evidence_equal():
     """Стоянка одинаково вероятна на обеих ветках — выбор по числу проходов."""
     tm = _map(n=(1, 6), ns=(1, 6))

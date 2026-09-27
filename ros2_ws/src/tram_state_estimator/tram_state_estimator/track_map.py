@@ -155,6 +155,7 @@ class TrackMap:
     BR_MIN = 15.0            # м: курсор в тупике накопил столько пути — вагон уехал дальше
     BR_DE_R = 6.0            # м: тупик ветки не дальше этого от точки удержания
     BR_KEEP_STOPS = 8        # сколько последних стоянок помнит курсор
+    BR_LOC_MARGIN = 1.0      # м: точка ближе к оси ветки, чем к облаку, на столько — на ветку
 
     def __init__(self, lat, lon, alt, head, weight, scale=1.0, stops=None,
                  scale_frame="equirect", terminals=None, point="master"):
@@ -504,7 +505,48 @@ class TrackMap:
         c = dict(x=float(xyz0[0]), y=float(xyz0[1]), z=float(xyz0[2]),
                  h=float(az), on_map=False, k=1.0, hold=0.0, off=0.0)
         self._snap(c)
+        self._br_locate(c, float(xyz0[0]), float(xyz0[1]), float(az))
         return c
+
+    def _br_locate(self, c, x0, y0, az):
+        """Точка на ветке за тупиком (кольцо, боковой путь): этих проездов нет
+        в облаке карты, и без этого курсор, поставленный в точку на ветке
+        (выставка или перестановка по GNSS — Position, коррекция посреди
+        маршрута), притягивался к соседнему пути облака и уходил не туда.
+        Курсор — на ось ветки, если точка ближе к ней, чем к облаку, на
+        BR_LOC_MARGIN (у стрелки, где ветка и облако рядом, остаётся облако),
+        не дальше snap_r от оси и курс тот же."""
+        if not self.branches_on or not self._br:
+            return
+        d_cloud = math.hypot(c["x"] - x0, c["y"] - y0) if c.get("on_map") else math.inf
+        q = dict(c, x=x0, y=y0, h=az)
+        if self._br_acquire(q, min(self.snap_r, d_cloud - self.BR_LOC_MARGIN)):
+            c.clear()
+            c.update(q)
+
+    def _br_acquire(self, c, r):
+        """Курсор c (x, y, курс h) — на ось ветки за тупиком, если её точка с
+        тем же курсом ближе r. True — поставлен на ветку."""
+        if not self.branches_on or not self._br or not r > 0.0:
+            return False
+        best = None
+        for B in self._br:
+            d = np.hypot(B["xy"][:, 0] - c["x"], B["xy"][:, 1] - c["y"])
+            j = int(np.argmin(d))
+            if d[j] > r:
+                continue
+            hj = math.atan2(float(B["hs"][j]), float(B["hc"][j]))
+            if abs(math.remainder(hj - c["h"], 2 * math.pi)) > self.max_dh:
+                continue
+            if best is None or d[j] < best[0]:
+                best = (float(d[j]), B, j)
+        if best is None:
+            return False
+        _, B, j = best
+        c.update(hold=0.0, off=0.0)
+        c["br"] = dict(k=int(B["k"]), s=float(B["s"][j]))
+        self._br_place(c)
+        return True
 
     def heading_at(self, xy, r_near=3.0, r_wide=30.0):
         """Курс пути в точке без курса выставки (нет rover): ближайшая точка
@@ -664,6 +706,13 @@ class TrackMap:
         if not force and (r <= self.snap_r + 1.0 or int(c["off"]) % 5):
             return
         idx = self._near(c["x"], c["y"], c["h"], r=r)
+        # ветка за тупиком (кольцо, боковой путь) ближе облака — на неё:
+        # курсор вне карты у конечной после перестановки по GNSS (Position)
+        # там, где проездов ветки в облаке нет
+        d_cloud = (float(np.hypot(*(self._xy[idx] - (c["x"], c["y"])).T).min())
+                   if idx is not None else math.inf)
+        if self._br_acquire(c, min(r, d_cloud - self.BR_LOC_MARGIN)):
+            return
         if idx is None:
             return
         d = np.hypot(*(self._xy[idx] - (c["x"], c["y"])).T)
