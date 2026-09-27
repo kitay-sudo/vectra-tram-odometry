@@ -4,7 +4,7 @@ g.TV_SHEET = {
  "sheet": "jury",
  "path": "ros2_ws/src/tram_state_estimator/config/tram.yaml",
  "label": "боевой config/tram.yaml (все данные)",
- "sheet_sha1": "c9775d14e616",
+ "sheet_sha1": "f90a13fe9937",
  "core_sha1": "684530832766",
  "core": {
   "M_nom": 28000.0,
@@ -481,7 +481,7 @@ g.TV_SHEET = {
   "noise_k": 3.0,
   "meas_units": "km_h",
   "ppr": 200,
-  "meas_scale": 1.001093,
+  "meas_scale": 1.001362,
   "sensor_ratio": 1.0,
   "sensors_per_axle": 1,
   "sensor_axles": [
