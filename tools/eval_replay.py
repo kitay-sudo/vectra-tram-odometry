@@ -30,7 +30,7 @@
 * База «только колесо»: тот же Runner (сетка, выставка, карта, привязка к
   остановкам), но вместо ядра — среднее свежих показаний тележек
   × meas_scale / 3,6 (без заглядывания вперёд), путь — интеграл на сетке.
-  Совпадает с NaiveRunner из tools/dev/core_metrics.py.
+  Совпадает с NaiveRunner из tools/core_metrics.py.
 """
 
 import ast
@@ -234,7 +234,7 @@ def make_params(sheet, overrides=None, bag=None):
 
 
 def apply_vehicle(p, node, bag=None):
-    """-> (Params, сведения о вагоне). Код без vehicle.py (до 26.09) — как есть."""
+    """-> (Params, сведения о вагоне). Старый код пакета без vehicle.py — как есть."""
     try:
         from tram_state_estimator import vehicle as V
     except ImportError:
@@ -296,7 +296,7 @@ def make_runner(params, node, tmap, cls=None):
     if cls is runner_mod.Runner and node.get("wheel_scale_online"):
         try:
             from tram_state_estimator import vehicle as V
-        except ImportError:         # код до 26.09
+        except ImportError:         # старый код пакета без vehicle.py
             V = None
         if V is not None and hasattr(V, "wheel_scale_hook"):
             V.wheel_scale_hook(r, True)

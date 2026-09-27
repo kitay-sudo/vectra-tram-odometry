@@ -1,8 +1,9 @@
+# 15 сценариев prototype/scenarios.py на имитаторе, ядро с Params по умолчанию -> rec.json
+# для compare.js. Запуск из js-port/ (см. check.sh).
 import sys, json, hashlib
 sys.path.insert(0, '../prototype')
-import numpy as np
-exec(open('../prototype/scenarios.py').read().split('if __name__')[0])
-import tram_state_estimator.estimator_core as EC  # то ядро, которое сейчас сверяется (через шим prototype)
+from scenarios import SCENARIOS, Plant, Estimator, DT, SUB  # noqa: E402  (шимы prototype -> ядро пакета)
+import tram_state_estimator.estimator_core as EC  # noqa: E402  то ядро, которое сейчас сверяется
 out = {}
 for name, kw in SCENARIOS:
     pl = Plant(kw['track'], dt=DT, seed=1); es = Estimator()

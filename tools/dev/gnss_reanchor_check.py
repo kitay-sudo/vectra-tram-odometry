@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gnss_reanchor_check — ошибка положения, когда GNSS идёт ВЕСЬ прогон.
 
-Гипотеза (аудит ROS 2 E2E): runner.Runner.on_fix (runner.py:149-157) после
+Гипотеза (проверка ROS 2 E2E): runner.Runner.on_fix (runner.py:149-157) после
 выставки на КАЖДОМ fix делает self.s0 = s ядра, даже когда Position.on_fix
 этот fix отбросил (окно init_window прошло). Тогда положение xyz(s - s0)
 каждые 0,1 с возвращается к точке выставки — положение «замерзает».

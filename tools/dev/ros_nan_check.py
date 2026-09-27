@@ -24,7 +24,7 @@ def st(t):
 
 class P(Node):
     def __init__(self):
-        super().__init__("audit_pub")
+        super().__init__("nan_check_pub")
         q = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=100)
         self.f = self.create_publisher(VelocitySensor, "/vehicle/front_bogie_velocity", q)
         self.r = self.create_publisher(VelocitySensor, "/vehicle/rear_bogie_velocity", q)

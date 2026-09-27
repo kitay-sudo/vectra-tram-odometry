@@ -279,10 +279,10 @@ def test_naive_speed_is_mean_of_fresh_bogies():
 
 def test_naive_matches_core_metrics_baseline():
     """База на Runner (eval_replay.make_naive) = NaiveRunner независимой
-    реализации (tools/dev/core_metrics.py). Только для связки с той же сеткой
+    реализации (tools/core_metrics.py). Только для связки с той же сеткой
     (узлы от первой метки); при узлах, кратных dt, базу проверяет
     test_naive_speed_is_mean_of_fresh_bogies."""
-    sys.path.insert(0, str(ROOT / "tools" / "dev"))
+    sys.path.insert(0, str(ROOT / "tools"))
     import eval_replay as R
     import core_metrics as CM
     a = _synthetic_run()

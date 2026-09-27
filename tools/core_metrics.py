@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
-"""Аудит ядра на реальных данных: метрики «как у судьи» + наивная база «только колесо».
+"""Независимая реализация метрик ядра на реальных данных: метрики «как у судьи»
+и наивная база «только колесо». С ней сверяются tools/eval_selftest.py
+(самотест оценки) и tools/export_replay.py (ошибка вдоль и поперёк пути);
+analysis/calib_eval.py берёт из неё метрики подгонки.
 
-Файлы напарника НЕ меняются: импортируются analysis/bagio.py, analysis/evaluate.py
-(порядок событий, GNSS только первые 3 с, пары по ближайшей метке <= 0,05 с) и
-пакет tram_state_estimator (Runner, Position, TrackMap) прямо из репозитория.
+Порядок событий, GNSS только первые 3 с и пары по ближайшей метке <= 0,05 с —
+из analysis/bagio.py и analysis/evaluate.py; Runner, Position и TrackMap —
+из пакета tram_state_estimator прямо из репозитория.
 
 Запуск — в образе vectra/tram:dev из корня репозитория:
 
   # метрики (held-out / все прогоны), конфиг ядра json (как evaluate.py) или yaml (как нода)
-  python3 tools/dev/core_metrics.py metrics --set val --cfg json --map train
-  python3 tools/dev/core_metrics.py metrics --set all --cfg yaml --map train
+  python3 tools/core_metrics.py metrics --set val --cfg json --map train
+  python3 tools/core_metrics.py metrics --set all --cfg yaml --map train
   # стоимость шага (мс на выход), память, детерминизм
-  python3 tools/dev/core_metrics.py timing --bags 30618_3e9f4952,30639_d3c43d69
-  # инъекция отказа всех датчиков в реальную запись (issue #8)
-  python3 tools/dev/core_metrics.py inject --bags 30618_3e9f4952
+  python3 tools/core_metrics.py timing --bags 30618_3e9f4952,30639_d3c43d69
+  # инъекция отказа всех датчиков в реальную запись
+  python3 tools/core_metrics.py inject --bags 30618_3e9f4952
   # скачок метки времени во входе (устойчивость связки)
-  python3 tools/dev/core_metrics.py probe
+  python3 tools/core_metrics.py probe
 
 Сырые результаты — out/core/*.json|csv.
 """
@@ -34,7 +37,7 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "ros2_ws" / "src" / "tram_state_estimator"
 sys.path.insert(0, str(ROOT / "analysis"))
 sys.path.insert(0, str(PKG))
@@ -66,7 +69,7 @@ CFGS = ("json", "yaml", "json_nocreep", "yaml_nocreep")
 
 def load_params(cfg):
     """json — config/tram_calibration.json (так считает analysis/evaluate.py);
-    yaml — config/tram.yaml (так работает нода). *_nocreep — ЭКСПЕРИМЕНТ аудита:
+    yaml — config/tram.yaml (так работает нода). *_nocreep — эксперимент:
     заготовочные c_creep, c_creep_drag обнулены (масштаб колёс уже откалиброван
     по GNSS, крип-заглушка сверху даёт систематический сдвиг)."""
     from dataclasses import replace

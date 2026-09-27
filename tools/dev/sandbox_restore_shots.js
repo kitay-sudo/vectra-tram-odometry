@@ -1,7 +1,8 @@
 // Снимки «было / стало» песочницы: исходная страница (110a5e0) и восстановленная (ядро пакета).
 //   git worktree add <old> 110a5e0   # исходная страница, только чтение
-//   docker run --rm --network none -v <old>/simulator:/old:ro -v <repo>/simulator:/new:ro -v <repo>/out/restore:/out \
-//     vectra/tram:sim node /new/test/sandbox_restore_shots.js /old/index.html /new/index.html /out
+//   docker run --rm --network none -v <old>/simulator:/old:ro -v <repo>/simulator:/new:ro \
+//     -v <repo>/tools/dev:/dev-tools:ro -v <repo>/out/restore:/out \
+//     vectra/tram:sim node /dev-tools/sandbox_restore_shots.js /old/index.html /new/index.html /out
 // Для каждого состояния: old_<имя>.png, new_<имя>.png и рядом — sbs_<имя>.png.
 const fs = require('fs');
 const path = require('path');

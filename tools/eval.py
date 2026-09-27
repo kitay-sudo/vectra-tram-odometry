@@ -872,6 +872,9 @@ def main():
     ap.add_argument("--baseline", default=None,
                     help="итоги прежней версии (summary.json) для раздела «До и после»; по "
                          "умолчанию docs/data/eval_before/summary.json, если есть; none — без него")
+    ap.add_argument("--baseline-label", default="",
+                    help="подпись прежней версии в разделе «До и после» вместо meta.label её "
+                         "summary.json")
     ap.add_argument("--gnss", default="3",
                     help="секунд GNSS в связку (3), full или сценарий доступности tools/inject.py "
                          "(sparse, bursts, nostart, midstart, glitchy, none)")

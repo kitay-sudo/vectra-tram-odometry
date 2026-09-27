@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Полный набор экспериментов аудита ROS 2 E2E (docs/audit/ROS2_E2E.md).
+# Полный набор экспериментов ROS 2 E2E: нода на реальных bag и с инъекциями.
 # Каждый эксперимент — отдельный контейнер (tools/ros_e2e.sh), результаты в
 # out/ros_e2e/<tag>/. Запуск из корня репозитория (Git Bash / Linux):
 #   bash tools/dev/ros_e2e_suite.sh            # всё подряд (~35 мин)

@@ -228,7 +228,7 @@ def render(summary):
     A("")
     A(f"Прогоны: {meta['split']} ({len(meta['runs'])}), лист {meta['sheet']}, карта {meta['map']}. "
       f"Код пакета sha `{meta['pkg_src_sha']}`. «до» — `gnss_correction: false` (GNSS только "
-      "для выставки, как до 26.09), «после» — `true`. Эталон — base_link по всем точкам GNSS "
+      "для выставки), «после» — `true`. Эталон — base_link по всем точкам GNSS "
       "прогона, MGRS 37UCB.")
     A("")
     for sc in meta["scenarios"]:

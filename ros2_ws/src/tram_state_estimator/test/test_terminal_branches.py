@@ -223,7 +223,7 @@ def test_locate_on_branch_axis():
     (Position, коррекция посреди маршрута) идёт через locate. Точка на
     боковом пути или на кольце — курсор на ось ветки (в облаке их нет,
     иначе он притянулся бы к соседнему пути облака или остался вне карты);
-    на платформе — облако, как было."""
+    на платформе — облако, как без веток."""
     tm = _map()
     plat, dep, sw, loop = _geometry()
     _, fr = _cursor(tm)
@@ -237,7 +237,7 @@ def test_locate_on_branch_axis():
     e, n = _at(plat, 150.0)
     c = tm.locate((e - fr.E0, n - fr.N0, ALT), EAST)
     assert "br" not in c and c["on_map"]
-    tm0 = _map(branches=False)                          # без веток — как было
+    tm0 = _map(branches=False)                          # без веток — только удержание
     _, fr0 = _cursor(tm0)
     e, n = _at(sw, 100.0)
     c = tm0.locate((e - fr0.E0, n - fr0.N0, ALT), _grid_head(sw, 100.0))

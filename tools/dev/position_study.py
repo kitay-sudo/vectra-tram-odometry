@@ -1,7 +1,7 @@
 """Аудит конвейера положения (шаг 4 PROMPT_FOR_AGENT): выставка по GNSS,
 карта путей, система координат судьи.
 
-Работает на кэше analysis/cache/*.npz (analysis/bagio.py) и коде напарника
+Работает на кэше analysis/cache/*.npz (analysis/bagio.py) и исходном коде пакета
 (runner.py, track_map.py, evaluate.py) БЕЗ их изменения: варианты выставки
 делаются подклассами в этом файле.
 
@@ -13,7 +13,7 @@
 Подкоманды (результаты — out/position/):
     inventory  GNSS по прогонам: антенны, статус, база, старт на ходу, задержки меток
     timing     сдвиг меток GNSS относительно меток тележек (взаимная корреляция скоростей)
-    frames     чувствительность к проекции: equirect напарника / ENU WGS84 / UTM
+    frames     чувствительность к проекции: исходный equirect / ENU WGS84 / UTM
     dups       дубликаты и перекрытия прогонов по времени
     coverage   покрытие отложенных прогонов обучающей картой, leave-one-out
     run        прогоны конвейера (варианты выставки/карты) -> out/position/runs/
@@ -53,7 +53,7 @@ E2 = F_WGS * (2.0 - F_WGS)
 
 
 def equirect(lat, lon, alt, o):
-    """Проекция напарника (runner.Enu): сфера R = a, x = dλ·R·cos φ0."""
+    """Исходная проекция пакета (runner.Enu): сфера R = a, x = dλ·R·cos φ0."""
     k = math.cos(math.radians(o[0]))
     return np.c_[np.radians(np.asarray(lon) - o[1]) * A_WGS * k,
                  np.radians(np.asarray(lat) - o[0]) * A_WGS,
@@ -371,7 +371,7 @@ def cmd_frames():
     print(f"UTM 37N у ({lat}, {lon}): масштаб E {k_e:.6f}, N {k_n:.6f}, "
           f"сближение меридианов {gamma:+.3f}° (теория Δλ·sinφ = "
           f"{(lon - 39) * math.sin(math.radians(lat)):+.3f}°)")
-    print(f"equirect напарника / строгий ENU: масштаб E {Qe[0] / Ee[0]:.6f} "
+    print(f"исходный equirect / строгий ENU: масштаб E {Qe[0] / Ee[0]:.6f} "
           f"({(Qe[0] / Ee[0] - 1) * 100:+.3f} %), N {Qn[1] / En[1]:.6f} "
           f"({(Qn[1] / En[1] - 1) * 100:+.3f} %)")
     with ProcessPoolExecutor(WORKERS) as ex:
@@ -597,7 +597,7 @@ def _events(a, drop_rover=False, init_s=INIT_S, t_cut=None):
 
 def _to_strict_enu(tmap):
     """Привязка карты в строгом ENU WGS84 (как pymap3d / GeographicLib
-    LocalCartesian) вместо equirect напарника (track_map.py:48-54)."""
+    LocalCartesian) вместо исходный equirect (track_map.py:48-54)."""
     from tram_state_estimator.track_map import CELL
 
     class MapENU(type(tmap)):
@@ -621,7 +621,7 @@ def _to_strict_enu(tmap):
 
 
 def _strict_origin(r):
-    """Начало выставки — строгий ENU (runner.Enu напарника — equirect)."""
+    """Начало выставки — строгий ENU (исходный runner.Enu — equirect)."""
     from tram_state_estimator import runner as rmod
 
     class StrictEnu(rmod.Enu):
@@ -640,7 +640,7 @@ def _strict_origin(r):
 
 
 def make_runner(variant, tmap):
-    """Варианты конвейера. Код напарника не меняется: подклассы здесь."""
+    """Варианты конвейера. Код пакета не меняется: подклассы здесь."""
     import evaluate
     from tram_state_estimator.runner import Runner, Position
     from tram_state_estimator.estimator_core import IS, IV
@@ -657,7 +657,7 @@ def make_runner(variant, tmap):
         r = Runner(params, track_map=(None if base == "nomap" else tmap))
         return _strict_origin(r) if strict else r
     if base in ("v3_scale", "v3b_scale"):
-        # напарник + онлайн-подстройка множителя пути по привязкам к остановкам:
+        # исходный код + онлайн-подстройка множителя пути по привязкам к остановкам:
         # сдвиг вдоль пути при привязке / путь с прошлой привязки -> масштаб колёс
         class PositionS(Position):
             """Масштаб = (s0·L_prior + Σ(L_i·scale_i + δ_i)) / (L_prior + ΣL_i):
@@ -846,7 +846,7 @@ def run_variants(variants, ids):
                 print(f"  {v}/{b}: {st}")
 
 
-# partner      — код напарника как есть (карта train)
+# partner      — исходный код пакета как есть (карта train)
 # nomap        — без карты: прямая вдоль начального курса
 # norover      — нет rover в окне выставки (выставка не состоится)
 # v2           — выставка «на ходу» (якорь — последняя точка master, курс по парам одной эпохи)
@@ -854,7 +854,7 @@ def run_variants(variants, ids):
 # v2w_norover  — то же, поиск курса по карте до 30 м (стоянка на конечной вне карты)
 # enu          — строгий ENU WGS84 в выставке и привязке карты, множитель 0,99777
 # enu_s1       — строгий ENU, множитель пути 1,0
-# v3_scale     — напарник + онлайн-масштаб пути по привязкам к остановкам
+# v3_scale     — исходный код + онлайн-масштаб пути по привязкам к остановкам
 # v3b_scale    — то же, осторожные настройки
 # enu_v3b      — строгий ENU + v3b_scale (рекомендуемая связка)
 # *_cut        — запись обрезана: старт на ходу (> 8 м/с, после 300 с)

@@ -63,8 +63,7 @@ import time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PKG = os.path.join(ROOT, "ros2_ws", "src", "tram_state_estimator")
-for p in (os.path.join(ROOT, "analysis"), PKG, os.path.join(ROOT, "tools"),
-          os.path.join(ROOT, "tools", "dev")):
+for p in (os.path.join(ROOT, "analysis"), PKG, os.path.join(ROOT, "tools")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -272,7 +271,7 @@ def resolve_sheet(spec=None):
         leak = "лист не оценочный (не из config/eval/): на отложенных числа не отчётные"
     params = EC.Params.from_dict(corep)
     # вагон листа (vehicle: 30618 по умолчанию) — масштаб колёс как в ноде
-    # (tram_node.py -> vehicle.apply); лист до 26.09 без vehicle — как есть
+    # (tram_node.py -> vehicle.apply); старый лист без vehicle — как есть
     vehicle = None
     try:
         import eval_replay as ER
@@ -644,11 +643,11 @@ def selftest(bag):
 
 def along_cross(ref_xy, idx, est_xy):
     """Ошибка вдоль/поперёк траектории эталона — алгоритм независимой
-    реализации метрик (tools/dev/core_metrics.py; в tools/eval_metrics.py — тот же)."""
+    реализации метрик (tools/core_metrics.py; в tools/eval_metrics.py — тот же)."""
     try:
         from eval_metrics import along_cross as ac      # tools/eval_metrics.py
     except ImportError:
-        from core_metrics import along_cross as ac      # tools/dev/core_metrics.py
+        from core_metrics import along_cross as ac      # tools/core_metrics.py
     return ac(ref_xy, idx, est_xy)
 
 

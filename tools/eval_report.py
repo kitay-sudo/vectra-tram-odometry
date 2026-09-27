@@ -472,6 +472,8 @@ def load_baseline(root, args):
         return None, None
     import json
     B = json.loads(path.read_text(encoding="utf-8"))
+    if getattr(args, "baseline_label", ""):
+        B["meta"]["label"] = args.baseline_label
     try:
         rel = path.relative_to(root).as_posix()
     except ValueError:
@@ -835,6 +837,7 @@ def render(result, timing, args, pics, root):
          "`jury` — боевая; `none` — без карты; путь"],
         ["`--baseline`", "`docs/data/eval_before/summary.json`", "итоги прежней версии для раздела 0 "
          "«До и после»; `none` — без раздела"],
+        ["`--baseline-label`", "—", "подпись прежней версии в разделе 0 (иначе — из её `summary.json`)"],
         ["`--gnss`", "`3`", "секунд GNSS в связку от первой записи master; `full` — весь прогон; "
          "сценарии доступности `sparse`, `bursts`, `nostart`, `midstart`, `glitchy`, `none` "
          "(`tools/inject.py`; до/после коррекции по GNSS по всем сценариям — `tools/eval_gnss.py`)"],
@@ -967,7 +970,7 @@ def render(result, timing, args, pics, root):
       "UTM. Так ошибка перевода равна нулю, а «взгляд судьи» показывает, что увидел бы судья без "
       "перевода.")
     A("* **Вдоль/поперёк пути.** Проекция на ломаную эталона (медиана по 5 фиксам, шаг 1 м, окно "
-      "±1 км, то же направление движения; алгоритм `tools/dev/core_metrics.py`). Дрейф — ошибка **в конце "
+      "±1 км, то же направление движения; алгоритм `tools/core_metrics.py`). Дрейф — ошибка **в конце "
       "прогона**, отнесённая к длине пути (PDF, стр. 6): 3D и вдоль пути.")
     A("* **Итоги.** Средние взвешены числом пар скорости прогона: "
       "для MAE, смещения и RMSE это пул всех пар; максимумы — по всем прогонам; дрейф — среднее, "

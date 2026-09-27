@@ -408,7 +408,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       ws.on('close', () => clearInterval(iv));
     });
     await new Promise(r => wss.on('listening', r));
-    // правка поля адреса при подключении: страница не замирает (review: new URL в цикле кадра)
+    // правка поля адреса при подключении: страница не замирает (адрес не разбирается в цикле кадра)
     {
       const page = await open('?mode=live&ros=ws://127.0.0.1:9090');
       await sleep(3500);
