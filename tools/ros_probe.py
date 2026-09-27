@@ -497,7 +497,10 @@ def _num(x, nd=1):
 
 def brief(R):
     """Итог пробы таблицей: критерии ТЗ (частота, задержка, CPU, ОЗУ) и
-    санити выхода. «OK» / «НЕТ» — только для критериев с порогом ТЗ."""
+    санити выхода. «OK» / «НЕТ» — только для критериев с порогом ТЗ.
+    Задержка оценивается без первых 2 с bag: там хвост буфера записи — метки
+    на 2–6 с старше момента записи приходят пачкой (docs/JURY.md §6); с ними —
+    строка «вместе со стартом bag», справочно."""
     o = R["outputs"].get("velocity", {}) or {}
     op = R["outputs"].get("position", {}) or {}
     L = R.get("latency", {}) or {}
@@ -525,14 +528,17 @@ def brief(R):
          f"{op.get('count', 0)} выходов, {_num(op.get('rate_stamp_hz'))} Гц; frame_id "
          f"{','.join((R.get('frame_ids') or {}).get('position', {}) or ['—'])} -> "
          f"{','.join((R.get('frame_ids') or {}).get('position_child', {}) or ['—'])}", "—"),
-        ("задержка in2out ≤ 100 мс (устан., p99)",
-         f"p50 {_num(steady.get('p50'))} / p99 {_num(steady.get('p99'))} / "
-         f"max {_num(steady.get('max'))} мс (без первых 2 с bag)",
+        ("задержка in2out ≤ 100 мс (p99)",
+         f"p50 {_num(steady.get('p50'))} / p99 {_num(steady.get('p99'))} мс "
+         "(без первых 2 с bag)",
          ok(None if steady.get("p99") is None else steady["p99"] <= 100.0)),
-        ("пик задержки ≤ 250 мс (весь прогон)",
+        ("пик задержки ≤ 250 мс",
+         f"max {_num(steady.get('max'))} мс; > 250 мс: "
+         f"{L.get('in2out_vehicle_steady_over_250ms', '—')} из {steady.get('n', '—')}",
+         ok(None if steady.get("max") is None else steady["max"] <= 250.0)),
+        ("вместе со стартом bag (справочно)",
          f"in2out(vehicle): p99 {_num(full.get('p99'))}, max {_num(full.get('max'))} мс; "
-         f"> 250 мс: {L.get('in2out_vehicle_over_250ms', '—')} из {full.get('n', '—')}",
-         ok(None if full.get("max") is None else L.get("in2out_vehicle_over_250ms", 1) == 0)),
+         f"> 250 мс: {L.get('in2out_vehicle_over_250ms', '—')} из {full.get('n', '—')}", "—"),
         ("CPU ≤ 2 ядра",
          f"ср. {_num(cpu.get('mean'))} % ядра, макс {_num(cpu.get('max'))} %",
          ok(None if cpu.get("max") is None else cpu["max"] <= 200.0)),
