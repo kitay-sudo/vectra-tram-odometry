@@ -64,7 +64,7 @@
 
 ## 3. Параметры `vehicle` и `wheel_scale_online`
 
-В листе `config/tram.yaml` (его делает `tools/gen_params.py` из калибровки):
+В листе `config/tram.yaml` (его делает `ros2_ws/src/tram_state_estimator/tools/gen_params.py` из калибровки):
 
 ```yaml
 vehicle: "30618"                          # 30618 | 30639 | auto

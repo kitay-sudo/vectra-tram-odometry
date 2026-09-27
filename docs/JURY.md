@@ -75,8 +75,9 @@ ros2 bag play <путь к прогону> -d 3
      жду входы: /vehicle/front_bogie_velocity, /vehicle/rear_bogie_velocity, /vehicle/driver_position_cmd, /sensing/gnss/master/fix, /sensing/gnss/rover/fix
    ```
 
-   `код sha` — отпечаток кода пакета; он же стоит в шапке [EVAL.md](EVAL.md)
-   («Код пакета: sha»), так что видно, на каком коде посчитаны числа отчёта.
+   `код sha` — отпечаток кода пакета. Тем же способом посчитан «Код пакета: sha»
+   в шапке [EVAL.md](EVAL.md): совпадают — числа отчёта посчитаны на этом коде;
+   не совпадают — код менялся после расчёта (пересчёт — раздел 7).
    Когда пойдёт bag, нода напишет «входы пошли», затем «положение есть с метки …»
    (выставка по GNSS прошла) и дальше раз в 10 с — строку состояния: частота,
    режим, позиция ручки, скорость, x, y, z и их σ, сколько тележек принято.
@@ -195,7 +196,7 @@ ros2 run tram_state_estimator tram_estimator --ros-args -p output_point:=master 
 `ros__parameters` и перезапустите launch. Свой лист целиком:
 `ros2 launch tram_state_estimator tram.launch.py params_file:=/путь/лист.yaml`.
 Все параметры есть в листе с комментариями. Лист генерирует
-`tools/gen_params.py`, а тест `test_sheets.py` сверяет его с объявлениями ноды.
+`ros2_ws/src/tram_state_estimator/tools/gen_params.py`, а тест `test_sheets.py` сверяет его с объявлениями ноды.
 
 ## 5. Топики
 
@@ -315,7 +316,7 @@ tools/measure_realtime.sh --bag 30618_e9a34502 --cpus 2 --memory 512m --build
 | Критерий ТЗ | Измерено | Итог |
 |---|---|---|
 | частота ≥ 10 Гц | 20,0 Гц по меткам, 20,04 Гц по стенным часам; 24 117 из 24 117 узлов сетки | PASS |
-| задержка ≤ 100 мс, пик ≤ 250 мс | установившийся режим: p50 51,2, p95 53,2, p99 54,1, max 132,0 мс; весь прогон: max 165,0 мс; больше 250 мс — 0 из 46 023 | PASS |
+| задержка ≤ 100 мс, пик ≤ 250 мс | установившийся режим: p50 51,2, p95 53,2, p99 54,1, max 132,0 мс; весь прогон: max 165,0 мс; больше 250 мс — ни одного | PASS |
 | CPU ≤ 2 ядра | в среднем 0,105 ядра, максимум 0,17 | PASS |
 | ОЗУ ≤ 0,5 ГБ, без утечки | RSS 69,6 МБ, рост 0,0 МБ/мин, OOM нет | PASS |
 | работа без вмешательства | нода жива 20,1 мин, разрывов выхода больше 0,3 с нет, останов по SIGINT, код 0 | PASS |
@@ -368,7 +369,7 @@ docker compose run --rm eval # офлайн-оценка tools/eval.py (разд
 | Сервис `docker compose up` | Что делает |
 |---|---|
 | `estimator` | `ros2 launch tram_state_estimator tram.launch.py` |
-| `player` | ждёт подписчиков и выполняет `ros2 bag play /data/$BAG -d 2`; `PLAY_LOOP=1` — по кругу |
+| `player` | ждёт подписчиков (ноду и пробу) и выполняет `ros2 bag play /data/$BAG -d 5` (`PLAY_DELAY`); `PLAY_LOOP=1` — по кругу |
 | `probe` | `tools/ros_probe.py`; итог — `out/probe/summary.json` |
 | `bridge` | rosbridge `ws://localhost:9090`, только для чтения |
 | `web` | страница симулятора `http://localhost:8080` |
@@ -424,4 +425,5 @@ tools/measure_realtime.sh --bag 30618_e9a34502 --cpus 2 --memory 512m --build   
 | первые секунды частота больше 20 Гц, задержка по `/clock` до 2,5 с | хвост буфера записи в начале bag (раздел 6) |
 | подписчик теряет выходы на старте | глубина очереди меньше 50 (раздел 5) |
 | Docker: порт 9090 или 8080 занят | `BRIDGE_PORT` / `WEB_PORT` в `.env` |
+| Docker: сборка остановилась с `image … already exists` | Compose собирал один тег параллельно. Повторить команду или `COMPOSE_BAKE=false docker compose up --build` |
 | Docker: `player` пишет «bag не найден» | `DATA_DIR` в `.env` — папка с каталогами прогонов; `BAG` — имя каталога |
