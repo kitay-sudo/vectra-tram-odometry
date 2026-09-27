@@ -71,7 +71,7 @@ services:
       BAG: ${BAG:-30618_e9a34502}
       PLAY_LOOP: ${PLAY_LOOP:-0}
       PLAY_RATE: ${PLAY_RATE:-1.0}
-      PLAY_DELAY: ${PLAY_DELAY:-2}
+      PLAY_DELAY: ${PLAY_DELAY:-5}
       WAIT_SUBSCRIBERS: ${WAIT_SUBSCRIBERS:-2}
     volumes:
       - ./:/repo:ro
