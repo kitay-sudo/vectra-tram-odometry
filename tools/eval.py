@@ -288,7 +288,7 @@ def run_task(task):
     gnss = task.get("gnss", cfg["gnss"])
     if gnss == "midstart":                  # запись с середины: входы и эталон обрезаны
         a, _ = I.cut_start(a, I.seed_for(bag, "gnss|midstart"))
-    p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]))
+    p = R.make_params(cfg["sheet"], task.get("overrides", cfg["overrides"]), bag=bag)
     runners, unused = _runners(cfg, p, task.get("naive", True))
     evs = R.events(a, gnss, seed=I.seed_for(bag, f"gnss|{gnss}"))
     if cfg.get("drop_antenna"):             # выставка без одной антенны (WP14)
@@ -321,7 +321,7 @@ def run_inject_bag(task):
     cfg = task["cfg"]
     bag = task["bag"]
     a = _load_run(bag, cfg["quick_s"])
-    p = R.make_params(cfg["sheet"], cfg["overrides"])
+    p = R.make_params(cfg["sheet"], cfg["overrides"], bag=bag)
     gnss = cfg["gnss"]
     plan = []
     out = []

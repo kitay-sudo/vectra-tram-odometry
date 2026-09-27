@@ -48,6 +48,7 @@ from rclpy.clock import Clock, ClockType
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from builtin_interfaces.msg import Time as TimeMsg
@@ -62,6 +63,7 @@ from .estimator_core import Params
 from .estimator_node import declare_core_params
 from .runner import Runner, StartSorter
 from .track_map import TrackMap
+from . import vehicle as vehicle_sheet
 
 IN_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                     history=HistoryPolicy.KEEP_LAST, depth=50)
@@ -202,6 +204,17 @@ class TramEstimatorNode(Node):
         P("antenna_rover_x", 2.563)
         P("antenna_z", 3.0)
         P("scale_adapt", True)             # онлайн-масштаб пути по остановкам
+        # вагон (docs/VEHICLES.md): 30618 | 30639 — масштаб колёс этого вагона
+        # из таблицы листа; auto — общий лист; незнакомое — auto с предупреждением.
+        # dynamic_typing: `-p vehicle:=30639` и launch дают целое, а не строку
+        P("vehicle", "30618", descriptor=ParameterDescriptor(dynamic_typing=True))
+        P("vehicle_ids", ["30618", "30639"],
+          descriptor=ParameterDescriptor(dynamic_typing=True))
+        P("vehicle_meas_scale", [1.001362, 0.997575],
+          descriptor=ParameterDescriptor(dynamic_typing=True))
+        # онлайн-масштаб колёс по привязкам к остановкам: поправка скорости
+        # при смене масштаба по датам (vehicle.OnlineWheelScale)
+        P("wheel_scale_online", True)
         P("nomap_mode", "hold")            # без карты: hold (стоять в якоре) | line
         P("keep_offset_xy", True)          # сдвиг GNSS окна − карта в выходе,
         P("keep_offset_z", True)           # если медиана статуса окна ≤
@@ -226,6 +239,10 @@ class TramEstimatorNode(Node):
         g = lambda n: self.get_parameter(n).value
 
         params = declare_core_params(self, include_dt=True)
+        params, self.vehicle_info = vehicle_sheet.apply(
+            params, g("vehicle"), g("vehicle_ids"), g("vehicle_meas_scale"))
+        if self.vehicle_info["warning"]:
+            self.get_logger().warn(self.vehicle_info["warning"])
         tmap = None
         path = g("map_file")
         if path:
@@ -252,6 +269,7 @@ class TramEstimatorNode(Node):
                              antenna_rover_x=g("antenna_rover_x"),
                              antenna_z=g("antenna_z"),
                              **{n: g(n) for n in GNSS_PARAMS})
+        vehicle_sheet.wheel_scale_hook(self.runner, g("wheel_scale_online"))
         self.frame_id, self.child = g("frame_id"), g("child_frame_id")
         self.frame = 0
         self._robust_setup()
@@ -281,7 +299,9 @@ class TramEstimatorNode(Node):
             f"оценщик запущен: шаг {params.dt * 1000:.0f} мс, "
             f"карта {'есть' if tmap is not None else 'нет'}; "
             f"лист: {self.sheet_src}; карта: {path or 'нет (map_file пуст)'}; "
-            f"единицы {params.meas_units}; пульс {self.pulse_h:.1f} с; выход "
+            f"единицы {params.meas_units}; "
+            f"{vehicle_sheet.describe(self.vehicle_info, g('wheel_scale_online'))}; "
+            f"пульс {self.pulse_h:.1f} с; выход "
             f"{g('projection')}"
             + (f" от квадрата {g('mgrs_grid')} непрерывно" if g("mgrs_grid") else
                " (MGRS: каждая точка в своём 100-км квадрате)" if g("projection") == "mgrs" else "")

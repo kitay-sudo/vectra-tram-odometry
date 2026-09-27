@@ -66,6 +66,22 @@ TRAM_NODE_ONLY = [
     ("antenna_rover_x", "2.563", "м", "антенна rover в base_link, x (вперёд); y = 0"),
     ("antenna_z", "3.0", "м", "высота обеих антенн над base_link (уровень рельса)"),
     ("scale_adapt", "true", "—", "онлайн-подстройка масштаба пути по привязкам к остановкам (±1 %)"),
+    ("vehicle", None, "—",
+     "вагон (docs/VEHICLES.md): 30618 (по умолчанию: организаторы проверяют только "
+     "30618) | 30639 — meas_scale этого вагона из vehicle_meas_scale; auto — общий "
+     "лист (оба вагона); онлайн-масштабы по остановкам (scale_adapt, "
+     "wheel_scale_online) работают при любом значении; незнакомое значение — "
+     "auto с предупреждением в логе"),
+    ("vehicle_ids", None, "—", "вагоны со своей калибровкой, в порядке vehicle_meas_scale"),
+    ("vehicle_meas_scale", None, "—",
+     "масштаб колёс каждого вагона (GNSS / тележки на установившемся ходу, записи "
+     "вагона из тех же данных, что лист); заменяет meas_scale, если vehicle — из "
+     "vehicle_ids"),
+    ("wheel_scale_online", "true", "—",
+     "онлайн-масштаб колёс по привязкам к остановкам: скорость × «путь по "
+     "карте / путь колёс» на отрезках между остановками (не короче 300 м, не "
+     "меньше двух), если он отходит от 1 больше чем на 0,5 % (не больше ±2 %); "
+     "для смены масштаба колёс по датам (docs/VEHICLES.md §6)"),
     ("nomap_mode", '"hold"', "—",
      "без карты (map_file пуст): hold — стоять в якоре выставки (выбрано на "
      "train), line — по прямой вдоль курса выставки"),
@@ -171,12 +187,27 @@ def groups():
     return order, table
 
 
+def _calibration(which):
+    with open(os.path.join(PKG, SHEETS[which][0]), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 def tram_params(which="jury"):
     """Лист вагона: Params с подстановкой калибровки по данным."""
-    path = os.path.join(PKG, SHEETS[which][0])
-    with open(path, encoding="utf-8") as fh:
-        over = json.load(fh)["params"]
-    return Params.from_dict(over)
+    return Params.from_dict(_calibration(which)["params"])
+
+
+def vehicle_values(which="jury"):
+    """Параметры ноды vehicle, vehicle_ids, vehicle_meas_scale из блока
+    "vehicles" калибровки (analysis/calib_vehicle.py): {имя: строка YAML}."""
+    blk = _calibration(which).get("vehicles")
+    if not blk:
+        raise SystemExit(f"{SHEETS[which][0]}: нет блока vehicles — "
+                         "python3 analysis/calib_vehicle.py --write")
+    ids = sorted(k for k in blk if not k.startswith("_"))
+    return {"vehicle": fmt(str(blk["_default"])),
+            "vehicle_ids": fmt([str(k) for k in ids]),
+            "vehicle_meas_scale": fmt([float(blk[k]["meas_scale"]) for k in ids])}
 
 
 def core_rows(p, skip_dt=True):
@@ -201,6 +232,7 @@ def tram_yaml_text(which="jury"):
     """Текст листа вагона: параметры ноды + Params с калибровкой."""
     calib, _, map_file, head = SHEETS[which]
     p = tram_params(which)
+    veh = vehicle_values(which)
     out = head + [
         "#",
         "# ФАЙЛ СГЕНЕРИРОВАН tools/gen_params.py: значения Params, заменённые",
@@ -213,6 +245,8 @@ def tram_yaml_text(which="jury"):
     for name, val, unit, doc in TRAM_NODE_ONLY:
         if name == "map_file" and map_file is not None:
             val = map_file
+        if name in veh:
+            val = veh[name]
         out.append(f"    {name}: {val}    # {unit} · {doc}")
     out += core_rows(p, skip_dt=False)
     out.append("")

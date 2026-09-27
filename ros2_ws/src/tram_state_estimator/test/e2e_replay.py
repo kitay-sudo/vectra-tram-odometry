@@ -45,7 +45,8 @@ def load_fixture(path=FIXTURE):
 
 
 def sheet():
-    """(Params, параметры ноды) из config/tram.yaml — как в tram_node.py."""
+    """(Params, параметры ноды) из config/tram.yaml — как в tram_node.py
+    (с масштабом колёс вагона из параметра vehicle, если он есть)."""
     import yaml
     from tram_state_estimator.estimator_core import Params
     with open(os.path.join(PKG, "config", "tram.yaml"), encoding="utf-8") as fh:
@@ -53,7 +54,11 @@ def sheet():
     names = {f.name for f in fields(Params)}
     params = Params.from_dict({k: v for k, v in got.items() if k in names})
     node = {k: v for k, v in got.items() if k not in names}
-    return params, node
+    try:
+        from tram_state_estimator import vehicle
+    except ImportError:             # код до 26.09
+        return params, node
+    return vehicle.apply_node(params, node)[0], node
 
 
 def _accepts(fn, name):

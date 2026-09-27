@@ -973,6 +973,7 @@ class Runner:
     age_comp = True         # WP6: приводить показания к моменту шага
     grid_align = True       # WP23: узлы сетки кратны dt
     _POS_KEEP = ("init_window",)    # настройки выставки, заданные после __init__
+    wheel_scale = None      # vehicle.OnlineWheelScale: поправка скорости (задаёт нода)
 
     def __new__(cls, *args, **kwargs):
         # Аргументы конструктора запоминаются для reset(): новый прогон
@@ -1463,6 +1464,10 @@ class Runner:
         v = float(c.x[IV])
         a = (body_force(c.u_filt, v, c.x[3], c.x[4], c.mu, c.p)
              - resistance(v, c.p)) / c.p.M_nom + float(c.x[ID])
+        if self.wheel_scale is not None:
+            # онлайн-масштаб колёс по привязкам к остановкам (vehicle.py)
+            o["v"] = float(o["v"]) * self.wheel_scale.factor(
+                self.pos.scale_log, getattr(self.pos.map, "scale", None))
         o.update(stamp=t, x=x, y=y, z=z, yaw=yaw,
                  a=float(a) if v > 0 or a > 0 else 0.0,
                  pos_ready=pos.ready, pos_valid=pq is not None,
