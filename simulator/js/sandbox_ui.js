@@ -102,7 +102,7 @@
   const paxMass = E => { if (UI.key === 'free') E.userMass = Math.round((M_EMPTY + M_PAX * UI.onboard) / E.sheet.M_nom * 1000) / 1000; };
   const seed = +(qs.get('seed') || 7);
   // водитель свободной поездки видит скользкий рельс впереди и тормозит к остановке раньше
-  function makeDriver(E) { E.route = E.track.stops.filter(x => x > E.plant.s + 30); return new SB.Driver(E, { grip: true }); }
+  function makeDriver(E) { E.route = E.track.stops.filter(x => x > E.plant.s + 30); return new SB.Driver(E, { grip: () => UI.fwx }); }
   // сценарий с настоящей записью: файл replays/rec_<прогон>.js (около 1 МБ) грузится по первому выбору
   function pick(key) {
     const p = presetOf(key), run = p && p.record;
